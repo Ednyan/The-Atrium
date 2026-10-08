@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { asStrokeStyle } from '../lib/strokeStyle'
 import { asStrokeData } from '../lib/brushes'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -78,6 +79,7 @@ export function mapRowToTrace(row: any): Trace {
     showBackground: row.show_background ?? true,
     borderColor: row.border_color,
     borderOpacity: row.border_opacity,
+    strokeStyle: asStrokeStyle(row.stroke_style),
     fillColor: row.fill_color,
     fillOpacity: row.fill_opacity,
     showDescription: row.show_description ?? true,

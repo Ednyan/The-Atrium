@@ -23,7 +23,7 @@ export interface TraceStyle {
 }
 
 const DEFAULTS: Partial<Record<keyof Trace, unknown>> = {
-  showBorder: true, borderColor: null, borderOpacity: 1, borderWidth: 2,
+  showBorder: true, borderColor: null, borderOpacity: 1, borderWidth: 2, strokeStyle: 'solid',
   showBackground: true, fillColor: null, fillOpacity: 0.95, borderRadius: 0, showShadow: true,
   showFilename: true, showDescription: false,
   fontFamily: 'sans', fontSize: 16, textColor: '#ffffff', textBold: false, textItalic: false,

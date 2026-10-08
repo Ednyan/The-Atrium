@@ -2,6 +2,9 @@
 // ...existing code...
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
+import { corsReady, useSpatialSound } from '../lib/spatialSound'
+import { dashProps } from '../lib/strokeStyle'
+import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
@@ -38,7 +41,7 @@ import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import ShapeStyleControls, { Check, ScaleControls } from './ShapeStyleControls'
+import ShapeStyleControls, { Check, ScaleControls, StrokeStylePicker } from './ShapeStyleControls'
 import BatchEditPanel from './BatchEditPanel'
 import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
@@ -1682,8 +1685,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         if (processedImageIds.current.has(processKey)) return
         processedImageIds.current.add(processKey)
         
-        // Data URLs (e.g. from freehand drawing) need no proxy
-        if (url.startsWith('data:')) {
+        // Data URLs (e.g. from freehand drawing) need no proxy, and a
+        // stand-in's address (Force import) is no picture to fetch.
+        if (url.startsWith('data:') || url.startsWith(UNSUPPORTED)) {
           setImageProxySources(prev => ({ ...prev, [trace.id]: '' }))
           return
         }
@@ -5086,6 +5090,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const dismissedRef = useRef<string | null>(null)
   const requestedRef = useRef<string | null>(null)
   const autoOpenCustomization = useGameStore(state => state.autoOpenCustomization)
+  // A playing trace heard from where it is (User Preferences).
+  useSpatialSound(useGameStore(state => state.spatialSound))
   const selectionKey = () => (multiSelectedIdsRef.current.size > 1 ? [...multiSelectedIdsRef.current].sort().join(',') : selectedTraceIdRef.current ?? '')
   useEffect(() => {
     if (!canEdit || pressHeldRef.current) return
@@ -5880,6 +5886,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           strokeWidth={zoomedOutlineWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
+          {...dashProps(displayTrace.strokeStyle, zoomedOutlineWidth)}
           opacity={shapeOpacity}
           markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
           markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
@@ -6277,7 +6284,7 @@ return (
             // bar's preview paints with too). The outline's width in world
             // units, like a path's thickness and a frame's border: drawn
             // non-scaling, so it carries the zoom.
-            const { fill, fillOpacity: shapeOpacity, stroke, strokeOpacity: outlineOpacity, strokeWidth } = shapePaint(shapeStyleOf(trace), zoom)
+            const { fill, fillOpacity: shapeOpacity, stroke, strokeOpacity: outlineOpacity, strokeWidth, dash } = shapePaint(shapeStyleOf(trace), zoom)
             const hasOutline = strokeWidth > 0
             // How far to pull the shape in so the whole stroke stays in
             // the box, in viewBox units -- per axis, because the viewBox
@@ -6344,6 +6351,7 @@ return (
                     fill={fill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    {...dash}
                     vectorEffect="non-scaling-stroke"
                     fillOpacity={shapeOpacity}
                     strokeOpacity={outlineOpacity}
@@ -6374,6 +6382,7 @@ return (
                     fill={fill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    {...dash}
                     vectorEffect="non-scaling-stroke"
                     fillOpacity={shapeOpacity}
                     strokeOpacity={outlineOpacity}
@@ -6403,6 +6412,7 @@ return (
                     fill={fill}
                     stroke={stroke}
                     strokeWidth={strokeWidth}
+                    {...dash}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                     fillOpacity={shapeOpacity}
@@ -6433,7 +6443,7 @@ return (
             boxSizing: 'content-box',
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px solid ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+            border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px ${displayTrace.strokeStyle ?? 'solid'} ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
             borderRadius: `${displayTrace.borderRadius ?? 0}px`,
             backgroundColor: showBackground ? (() => {
               const fc = displayTrace.fillColor || '#191919';
@@ -6549,6 +6559,9 @@ return (
       {!paintStroke && trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
         (() => {
           const rawUrl = trace.mediaUrl || trace.imageUrl || ''
+          // A stand-in for a trace this atrium couldn't have (Force import,
+          // lib/atriumFile): the error, saying what it was.
+          if (rawUrl.startsWith(UNSUPPORTED)) return <TraceGlitch reason={t('atrium.error.unsupportedType', { type: rawUrl.slice(UNSUPPORTED.length) })} />
           const isLocal = rawUrl.startsWith('local://')
           const resolvedSrc = imageProxySources[trace.id]
           // For local:// URLs, wait for resolved blob URL before rendering
@@ -6637,6 +6650,8 @@ return (
           src={trace.mediaUrl?.startsWith('local://')
             ? localMediaUrls[trace.id]
             : (localMediaUrls[trace.id] || trace.mediaUrl)}
+          // Asked for where it's answered, so spatial sound can place it (lib/spatialSound).
+          crossOrigin={corsReady(trace.mediaUrl?.startsWith('local://') ? localMediaUrls[trace.id] : (localMediaUrls[trace.id] || trace.mediaUrl)) ? 'anonymous' : undefined}
           controls={false}
           className="w-full h-full pointer-events-none select-none"
           style={{ 
@@ -6792,6 +6807,7 @@ return (
           src={trace.mediaUrl?.startsWith('local://')
             ? localMediaUrls[trace.id]
             : (localMediaUrls[trace.id] || trace.mediaUrl)}
+            crossOrigin={corsReady(trace.mediaUrl?.startsWith('local://') ? localMediaUrls[trace.id] : (localMediaUrls[trace.id] || trace.mediaUrl)) ? 'anonymous' : undefined}
             className="hidden"
             onError={() => setFailedMedia(prev => new Set(prev).add(trace.id))}
             onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
@@ -9341,6 +9357,13 @@ return (
                   />
                 </div>
               )}
+              <StrokeStylePicker
+                value={editingTrace.strokeStyle}
+                onChange={strokeStyle => {
+                  setEditingTrace({ ...editingTrace, strokeStyle })
+                  updateTraceCustomization(editingTrace.id, { strokeStyle })
+                }}
+              />
               {/* Border Radius Customization (for non-shape traces) */}
               {has(editingTrace, 'frame') && (
                 <div>

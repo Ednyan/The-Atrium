@@ -162,6 +162,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             show_background: trace.show_background,
             border_color: trace.border_color,
             border_opacity: trace.border_opacity,
+            stroke_style: trace.stroke_style ?? undefined,
             fill_color: trace.fill_color,
             fill_opacity: trace.fill_opacity,
             show_description: trace.show_description,

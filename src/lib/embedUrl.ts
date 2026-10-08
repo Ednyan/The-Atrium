@@ -33,6 +33,12 @@ const GOOGLE_DOC = /docs\.google\.com\/(document|spreadsheets|presentation|forms
 const SOUNDCLOUD = /^https?:\/\/(?:www\.|m\.|on\.)?soundcloud\.com\/[^\s]+/i
 const SOUNDCLOUD_LIST = /soundcloud\.com(?:\/|%2F)[^\s]*(?:\/|%2F)(?:sets|playlists)(?:\/|%2F)/i
 
+// A YouTube video's id, from any of its addresses -- a watch page, a short,
+// youtu.be, or the player toEmbedUrl makes of them.
+export function youtubeId(url: string): string | null {
+  return url.match(YOUTUBE)?.[1] ?? url.match(/youtube(?:-nocookie)?\.com\/embed\/([^?#/\s]+)/)?.[1] ?? null
+}
+
 export function toEmbedUrl(rawUrl: string): string {
   const url = rawUrl.trim()
   if (!url) return rawUrl

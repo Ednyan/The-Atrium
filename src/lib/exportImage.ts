@@ -27,6 +27,8 @@ import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, shapePolygon,
 import { ARROW_SCALE, shapePaint, shapeStyleOf } from './shapeStyle'
 import { fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
 import { asStrokeData, renderStrokeData, strokeDensity } from './brushes'
+import { dashArray } from './strokeStyle'
+import { embedSourcesIn, youtubeId } from './embedUrl'
 import { isPathTrace, pathWorldBounds } from './pathBounds'
 import { cropOf } from './traceCrop'
 import { chartSvg, sheetFile, sheetRows, sheetSvg } from './sheetDraw'
@@ -59,6 +61,9 @@ interface Paint {
   opacity?: number
   // A trace's soft shadow, as the canvas draws it under a background.
   shadow?: boolean
+  // Dashed or dotted (lib/strokeStyle dashArray): its pattern; a 0 dash is a
+  // dot, which takes a round cap.
+  dash?: number[] | null
 }
 interface Font { family: string; size: number; bold?: boolean; italic?: boolean }
 interface Picture { source: CanvasImageSource; width: number; height: number; href: () => Promise<string> }
@@ -110,6 +115,10 @@ function canvasPainter(ctx: CanvasRenderingContext2D, pixelsPerUnit: number): Pa
       ctx.globalAlpha = (paint.opacity ?? 1) * (paint.strokeOpacity ?? 1)
       ctx.strokeStyle = paint.stroke
       ctx.lineWidth = paint.strokeWidth!
+      if (paint.dash) {
+        ctx.setLineDash(paint.dash)
+        if (paint.dash[0] === 0) ctx.lineCap = 'round'
+      }
       if (path) ctx.stroke(path); else { shape(); ctx.stroke() }
     }
     ctx.restore()
@@ -195,6 +204,7 @@ function svgPainter(): Painter & { markup: () => Promise<{ defs: string; body: s
     if (p.stroke && (p.strokeWidth ?? 0) > 0) {
       a.push(`stroke="${esc(p.stroke)}" stroke-width="${num(p.strokeWidth!)}"`)
       if (p.strokeOpacity !== undefined && p.strokeOpacity < 1) a.push(`stroke-opacity="${num(p.strokeOpacity)}"`)
+      if (p.dash) a.push(`stroke-dasharray="${p.dash.map(num).join(' ')}"${p.dash[0] === 0 && !p.round ? ' stroke-linecap="round"' : ''}`)
     }
     if (p.round) a.push('stroke-linecap="round" stroke-linejoin="round"')
     if (p.opacity !== undefined && p.opacity < 1) a.push(`opacity="${num(p.opacity)}"`)
@@ -326,6 +336,66 @@ async function sheetPicture(trace: Trace, density: number): Promise<Picture | nu
   return pictureOf(new Blob([markup], { type: 'image/svg+xml' }))
 }
 
+// What an embed or a video looks like, for one with no preview kept: a
+// YouTube video's thumbnail (the largest there is), a frame of a video file a
+// second in, the picture itself for a link to one. Anything else -- a page --
+// stays a card. Each given a while, not forever: a picture is waited for.
+// Found once a visit for each address: the export dialog makes its preview
+// again at every change, and a thumbnail took seconds to come.
+// ponytail: unbounded for the visit; thumbnails are small, a video's frame is one picture.
+const found = new Map<string, Promise<Picture | null>>()
+function mediaPicture(trace: Trace): Promise<Picture | null> {
+  const key = `${trace.type} ${trace.mediaUrl ?? ''}`
+  if (!found.has(key)) found.set(key, findMediaPicture(trace))
+  return found.get(key)!
+}
+async function findMediaPicture(trace: Trace): Promise<Picture | null> {
+  let url = (trace.mediaUrl ?? '').trim()
+  if (!url) return null
+  // Embed code: what it frames.
+  if (url.startsWith('<')) url = embedSourcesIn(url)[0] ?? ''
+  if (!url) return null
+  const youtube = youtubeId(url)
+  if (youtube) {
+    for (const size of ['maxresdefault', 'hqdefault']) {
+      const picture = await within(8000, loadPicture(`https://i.ytimg.com/vi/${youtube}/${size}.jpg`))
+      // YouTube answers for a size it hasn't got with a grey 120 x 90.
+      if (picture && picture.width > 120) return picture
+    }
+    return null
+  }
+  if (trace.type === 'video') return within(15000, videoPicture(url))
+  return within(8000, loadPicture(url))
+}
+
+const within = <T,>(ms: number, work: Promise<T | null>): Promise<T | null> =>
+  Promise.race([work, new Promise<null>(resolve => setTimeout(resolve, ms, null))])
+
+// A frame of a video, a second in (or a tenth of the way, for a short one).
+async function videoPicture(url: string): Promise<Picture | null> {
+  const blob = await fetchMedia(url)
+  if (!blob) return null
+  const src = URL.createObjectURL(blob)
+  try {
+    const video = document.createElement('video')
+    video.muted = true
+    video.preload = 'auto'
+    video.src = src
+    await new Promise((resolve, reject) => { video.onloadeddata = resolve; video.onerror = reject })
+    video.currentTime = Math.min(1, (video.duration || 0) / 10)
+    await new Promise(resolve => { video.onseeked = resolve })
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 1
+    canvas.height = video.videoHeight || 1
+    canvas.getContext('2d')!.drawImage(video, 0, 0)
+    return canvasPicture(canvas)
+  } catch {
+    return null
+  } finally {
+    URL.revokeObjectURL(src)
+  }
+}
+
 const canvasPicture = (canvas: HTMLCanvasElement): Picture => ({
   source: canvas, width: canvas.width, height: canvas.height, href: async () => canvas.toDataURL('image/png'),
 })
@@ -387,7 +457,7 @@ function drawPath(p: Painter, trace: Trace) {
   if (trace.illuminate) {
     p.path(d, { stroke: trace.lightColor ?? '#cbcbcb', strokeWidth: width + 4, round: true, opacity: 0.22 * (trace.lightIntensity ?? 1) })
   }
-  p.path(d, { stroke: colour, strokeWidth: width, round: true, opacity })
+  p.path(d, { stroke: colour, strokeWidth: width, round: true, opacity, dash: dashArray(trace.strokeStyle, width) })
   // Arrowheads as the canvas draws them: ARROW_SCALE times the line's width,
   // a triangle reaching out past the end, a diamond centred on it.
   const m = width * ARROW_SCALE
@@ -419,6 +489,7 @@ function drawShape(p: Painter, trace: Trace) {
     strokeWidth: paint.strokeWidth,
     strokeOpacity: paint.strokeOpacity,
     round: true,
+    dash: dashArray(trace.strokeStyle, paint.strokeWidth),
   }
   p.push(rotation(t.x, t.y, t.rotation))
   // A shape crops in place, in a box that doesn't move: what's outside the
@@ -490,7 +561,7 @@ function drawBoxed(p: Painter, item: Prepared, measure: CanvasRenderingContext2D
   }
   if (border > 0) {
     p.rect(-bw / 2 - border / 2, -bh / 2 - border / 2, bw + border, bh + border, Math.max(0, r - border / 2), {
-      stroke: borderColour, strokeWidth: border, strokeOpacity: trace.borderOpacity ?? 1,
+      stroke: borderColour, strokeWidth: border, strokeOpacity: trace.borderOpacity ?? 1, dash: dashArray(trace.strokeStyle, border),
     })
   }
   p.push([1, 0, 0, 1, -bw / 2, -bh / 2], { x: 0, y: 0, w: bw, h: bh, r: Math.max(0, r - border) })
@@ -535,7 +606,7 @@ function drawLink(p: Painter, link: TraceLink, a: End, b: End, measure: CanvasRe
   const size = 6 + width * 2
   const headsTo = link.arrow === 'forward' || link.arrow === 'both'
   const headsFrom = link.arrow === 'back' || link.arrow === 'both'
-  const line: Paint = { stroke: colour, strokeWidth: width, strokeOpacity: link.opacity, round: true }
+  const line: Paint = { stroke: colour, strokeWidth: width, strokeOpacity: link.opacity, round: true, dash: dashArray(link.strokeStyle, width) }
   const fill: Paint = { fill: colour, fillOpacity: link.opacity }
   let middle: { x: number; y: number }
   if (link.elbow) {
@@ -590,9 +661,9 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       picture = await loadPicture((trace.mediaUrl || trace.imageUrl)!)
     } else if (trace.type === 'sheet' || trace.type === 'chart') {
       picture = await sheetPicture(trace, options.scale * Math.max(Math.abs(t.scaleX), Math.abs(t.scaleY)))
-    } else if ((trace.type === 'embed' || trace.type === 'video') && trace.imageUrl) {
-      // A preview it keeps, where it has one.
-      picture = await loadPicture(trace.imageUrl)
+    } else if (trace.type === 'embed' || trace.type === 'video') {
+      // A preview it keeps, where it has one; else one found for it.
+      picture = (trace.imageUrl ? await loadPicture(trace.imageUrl) : null) ?? await mediaPicture(trace)
     }
     const natural = picture && !(trace.width && trace.height) ? { width: picture.width, height: picture.height } : undefined
     prepared.set(trace.id, { trace, size: baseSizeOf(trace, natural), picture })

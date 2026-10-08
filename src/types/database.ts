@@ -1,3 +1,4 @@
+import type { StrokeStyle } from '../lib/strokeStyle'
 import type { StrokeData } from '../lib/brushes'
 export interface Database {
   public: {
@@ -117,6 +118,8 @@ export interface Trace {
   showBackground?: boolean
   borderColor?: string // Custom border color
   borderOpacity?: number // Border opacity 0-1
+  // Its border's, outline's or line's style (lib/strokeStyle); none is solid.
+  strokeStyle?: StrokeStyle
   borderWidth?: number // Frame thickness in px when showBorder is on
   fillColor?: string // Custom fill/background color
   fillOpacity?: number // Fill/background opacity 0-1

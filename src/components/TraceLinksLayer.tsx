@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { dashProps } from '../lib/strokeStyle'
 import { useTranslation } from '../lib/i18n'
 import { LABEL_SIZE_RANGE, arrowhead, bend, curveMiddle, restOf, visiblePart, type LinkArrow, type TraceLink } from '../lib/traceLinks'
 import { ELBOW_RADIUS, elbowAtFor, elbowAxis, elbowGrip, elbowRoute, roundedPath, trimEnds } from '../lib/elbow'
-import { Check, ColourField, Slider } from './ShapeStyleControls'
+import { Check, ColourField, Slider, StrokeStylePicker } from './ShapeStyleControls'
 
 // Where a trace is, in world units: its centre, its box's half-size and turn
 // (radians), the colour its border is drawn in (a thread's colour when it
@@ -235,7 +236,7 @@ export default function TraceLinksLayer({
                 showed darker where the two overlapped. Together they're
                 made whole, then seen through, as a path is. */}
             <g opacity={link.opacity}>
-              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" />
+              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" {...dashProps(link.strokeStyle, width)} />
               {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
               {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
             </g>
@@ -424,6 +425,7 @@ export function LinkMenu({ at, links, borderOf, onEdit, onDelete, onClose }: {
       )}
       <Slider label={t('atrium.links.thickness', { value: first.width })} min={0.5} max={12} step={0.5} value={first.width} onChange={width => onEdit({ width })} />
       <Slider label={t('atrium.customize.opacity', { value: Math.round(first.opacity * 100) })} min={0.05} max={1} step={0.05} value={first.opacity} onChange={opacity => onEdit({ opacity })} />
+      <StrokeStylePicker value={first.strokeStyle} onChange={strokeStyle => onEdit({ strokeStyle })} />
       <div>
         <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.links.label')}</label>
         <input

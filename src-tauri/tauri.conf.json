@@ -19,7 +19,8 @@
         "fullscreen": false,
         "decorations": true,
         "dragDropEnabled": false,
-        "zoomHotkeysEnabled": true
+        "zoomHotkeysEnabled": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-renderer-backgrounding"
       }
     ],
     "security": {

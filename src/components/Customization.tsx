@@ -18,7 +18,7 @@ export type SectionId = 'name' | 'style' | 'fill' | 'outline' | 'text' | 'shape'
   // Atrium Themes (ThemeCustomization).
   | 'presets' | 'mine' | 'grid' | 'room' | 'particles' | 'ground'
   // User Preferences (ProfileCustomization).
-  | 'you' | 'work' | 'moving' | 'see' | 'people' | 'motion'
+  | 'you' | 'work' | 'moving' | 'see' | 'people' | 'sound' | 'motion'
 
 // Each kind of trace by its name: the panel's subtitle, and Batch Edit's
 // notes on which of a selection a setting is for.

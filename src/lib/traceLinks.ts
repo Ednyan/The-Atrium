@@ -37,6 +37,9 @@ export interface TraceLink {
   // How opaque the thread is, line and arrowheads alike (the heads were
   // drawn solid while the line was at three quarters).
   opacity: number
+  // Solid when none (lib/strokeStyle's StrokeStyle -- written out: this file
+  // imports nothing).
+  strokeStyle?: 'solid' | 'dashed' | 'dotted'
 }
 
 export const DEFAULT_LINK_WIDTH = 2
@@ -65,6 +68,7 @@ export function mapRowToLink(row: any): TraceLink {
     elbow: !!row.elbow,
     elbowAt: typeof row.elbow_at === 'number' && Number.isFinite(row.elbow_at) ? Math.max(-5, Math.min(6, row.elbow_at)) : 0.5,
     opacity: typeof row.opacity === 'number' && Number.isFinite(row.opacity) ? Math.max(0, Math.min(1, row.opacity)) : DEFAULT_LINK_OPACITY,
+    strokeStyle: row.stroke_style === 'dashed' || row.stroke_style === 'dotted' || row.stroke_style === 'solid' ? row.stroke_style : undefined,
   }
 }
 
@@ -85,6 +89,8 @@ export function linkRow(link: TraceLink) {
     elbow: link.elbow,
     elbow_at: link.elbowAt,
     opacity: link.opacity,
+    // Left out when none, so a database without the column still takes it.
+    ...(link.strokeStyle ? { stroke_style: link.strokeStyle } : {}),
   }
 }
 

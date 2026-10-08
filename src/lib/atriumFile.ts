@@ -113,7 +113,35 @@ export class ImportTooLargeError extends Error {
   }
 }
 
-export interface ImportIntoResult { added: number; missing: number; failed: number }
+export interface ImportIntoResult { added: number; missing: number; failed: number; standIns?: number }
+
+// The kinds of trace this app draws. One of another kind -- from a newer
+// version -- can't be had here, nor can one a database turns away.
+const KNOWN_TYPES: readonly Trace['type'][] = ['text', 'image', 'audio', 'video', 'embed', 'shape', 'document', 'frame', 'sheet', 'chart']
+export const isKnownTraceType = (type: unknown): boolean => (KNOWN_TYPES as readonly unknown[]).includes(type)
+
+// Force import (the import's option, remembered here): what can't be had
+// comes in anyway as a stand-in -- a picture in its place, at its size and in
+// its group, whose address names what it was, shown as the glitch error saying
+// so (TraceOverlay). A picture, since any database takes one: the trace's own
+// kind is what was refused.
+export const UNSUPPORTED = 'unsupported:'
+const FORCE_KEY = 'atrium.import.force'
+export const forceImport = (): boolean => { try { return localStorage.getItem(FORCE_KEY) === 'true' } catch { return false } }
+export const setForceImport = (on: boolean) => { try { localStorage.setItem(FORCE_KEY, String(on)) } catch { /* for this visit, then */ } }
+export function standInRow(row: Record<string, any>): Record<string, any> {
+  return {
+    ...row,
+    type: 'image',
+    media_url: `${UNSUPPORTED}${String(row.type ?? 'trace')}`,
+    image_url: null,
+    shape_type: null,
+    shape_points: null,
+    stroke_data: null,
+    width: row.width || 300,
+    height: row.height || 200,
+  }
+}
 
 // A file the desktop made, brought onto the web: its layout comes, its
 // pictures and files stay behind for now -- the web atrium's storage is small
@@ -151,10 +179,14 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     const { traceKeyOf, layerKeyOf } = fileOrderKeys(file)
     const textNames = nameFileTraces(file, store.traces.filter(tr => tr.type === 'text').map(tr => tr.layerName ?? ''))
 
-    // The file's traces, as this atrium would have them.
+    // The file's traces, as this atrium would have them -- those of a kind it
+    // can't have left out, or, forced, as stand-ins.
     const now = new Date().toISOString()
-    const parsed = file.traces.map(row => ({ row, trace: mapRowToTrace({ ...row, id: row.id ?? crypto.randomUUID(), lobby_id: lobbyId, user_id: userId, created_at: now }) }))
-    if (parsed.length === 0) return { added: 0, missing: 0, failed: 0 }
+    const force = forceImport()
+    let standIns = 0
+    const known = file.traces.flatMap(row => isKnownTraceType(row.type) ? [row] : force ? [(standIns++, standInRow(row))] : [])
+    const parsed = known.map(row => ({ row, trace: mapRowToTrace({ ...row, id: row.id ?? crypto.randomUUID(), lobby_id: lobbyId, user_id: userId, created_at: now }) }))
+    if (parsed.length === 0) return { added: 0, missing: 0, failed: file.traces.length }
     const uploads = behind ? 0 : parsed.reduce((n, { trace }) => n + [trace.mediaUrl, trace.imageUrl].filter(url => typeof url === 'string' && url.startsWith('data:')).length, 0)
     const total = uploads + parsed.length
     let done = 0
@@ -255,8 +287,17 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     for (let i = 0; i < rows.length; i += 50) {
       const batch = rows.slice(i, i + 50)
       const { error } = await (db.from('traces') as any).insert(batch)
-      if (error) failed += batch.length
-      else written.push(...batch)
+      if (!error) written.push(...batch)
+      else if (!force) failed += batch.length
+      else {
+        // Forced: one at a time, and what's still turned away as a stand-in.
+        for (const row of batch) {
+          if (!(await (db.from('traces') as any).insert(row)).error) { written.push(row); continue }
+          const standIn = standInRow(row)
+          if ((await (db.from('traces') as any).insert(standIn)).error) failed++
+          else { written.push(standIn); standIns++ }
+        }
+      }
       done += batch.length
       onProgress?.(done, total)
     }
@@ -272,6 +313,6 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
       if (Array.isArray(data)) for (const row of data) { own.links.add(row.id); useGameStore.getState().receiveLink(mapRowToLink(row)) }
     }
     window.dispatchEvent(new Event('atrium:layers-changed'))
-    return { added, missing, failed }
+    return { added, missing, failed: failed + (file.traces.length - known.length), standIns }
   }, () => own))
 }

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 
 import { readFileSync } from 'node:fs'
 
-import { defaultEmbedBox, EMBED_RELAY, embedSourcesIn, linksIn, RELAYED_HOSTS, throughRelay, toEmbedUrl } from '../src/lib/embedUrl.ts'
+import { defaultEmbedBox, EMBED_RELAY, embedSourcesIn, linksIn, RELAYED_HOSTS, throughRelay, toEmbedUrl, youtubeId } from '../src/lib/embedUrl.ts'
 
 test('every shape of YouTube link becomes the one embed URL', () => {
   const embed = 'https://www.youtube.com/embed/abc123'
@@ -70,4 +70,11 @@ test('embed code is read for where its frames point; the code itself is never ke
   // Plain text: every link in it, as before.
   assert.deepEqual(embedSourcesIn('see https://a.example/x and b.example'), linksIn('see https://a.example/x and b.example'))
   assert.deepEqual(linksIn('see https://a.example/x and b.example'), ['https://a.example/x', 'https://b.example'])
+})
+
+test('a YouTube video is known by its id from any of its addresses, the player included', () => {
+  for (const link of ['https://www.youtube.com/watch?v=abc123', 'https://youtu.be/abc123?t=3', 'https://www.youtube.com/embed/abc123?si=x', 'https://www.youtube-nocookie.com/embed/abc123', toEmbedUrl('https://youtube.com/shorts/abc123')]) {
+    assert.equal(youtubeId(link), 'abc123', link)
+  }
+  assert.equal(youtubeId('https://example.com/watch.png'), null)
 })

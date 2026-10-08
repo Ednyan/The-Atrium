@@ -58,11 +58,11 @@ export function kindOf(trace: Kinded): TraceKind {
 // link (each trace's own address) nor a drawing's strokes, which are kept in
 // its stroke data rather than in fields (lib/drawingFiles changeStrokes).
 export const SETTING_FIELDS: Record<Exclude<Setting, 'link' | 'strokes'>, readonly (keyof Trace)[]> = {
-  frame: ['showBorder', 'borderColor', 'borderOpacity', 'borderWidth', 'showBackground', 'fillColor', 'fillOpacity', 'borderRadius', 'showShadow'],
+  frame: ['showBorder', 'borderColor', 'borderOpacity', 'borderWidth', 'strokeStyle', 'showBackground', 'fillColor', 'fillOpacity', 'borderRadius', 'showShadow'],
   captions: ['showFilename', 'showDescription'],
   font: ['fontFamily', 'fontSize', 'textColor', 'textBold', 'textItalic', 'textUnderline', 'textAlign', 'textScaleWithBox'],
-  shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'cornerRadius'],
-  line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
+  shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'cornerRadius'],
+  line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
   light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed'],
 }
 

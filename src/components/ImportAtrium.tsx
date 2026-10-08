@@ -4,7 +4,8 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
 import { AtriumFileError, fileOrderKeys, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
-import { mediaStaysBehind, nameFileTraces } from '../lib/atriumFile'
+import { forceImport, isKnownTraceType, mediaStaysBehind, nameFileTraces, setForceImport, standInRow } from '../lib/atriumFile'
+import { Check } from './ShapeStyleControls'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -46,6 +47,8 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
   // Import succeeded but something was lost or refused -- distinct from
   // `error`, which means the import didn't happen.
   const [notice, setNotice] = useState('')
+  // Force import: what can't be had here comes in as a stand-in (lib/atriumFile).
+  const [force, setForce] = useState(forceImport)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,6 +158,9 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // import that lost media can't report itself as having gone fine.
       let mediaMissing = 0
       let failed = 0
+      // Brought in as stand-ins (Force import), or left out without it.
+      let standIns = 0
+      let incompatible = 0
       let firstFailure = ''
       let firstMissingReason = ''
       const missingNames: string[] = []
@@ -224,7 +230,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       // New ids made up front, so a frame and what it holds point at each
       // other whatever order they go in (lib/frames).
       const newTraceIds = freshIds(parsed.traces, () => crypto.randomUUID())
-      for (const trace of parsed.traces) {
+      for (const original of parsed.traces) {
+        // Of a kind this version can't have: a stand-in, or left out.
+        if (!isKnownTraceType(original.type) && !force) { incompatible++; continue }
+        const trace = isKnownTraceType(original.type) ? original : standInRow(original)
+        if (trace !== original) standIns++
         // Traces referencing desktop-local vault storage (not embeds, not
         // data: URLs, not remote http(s) links) can't be resolved outside
         // the machine that made them -- skip rather than import broken.
@@ -336,7 +346,12 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           image_url: imageUrl || null,
         }
 
-        const failure = await insertTrace(traceData)
+        let failure = await insertTrace(traceData)
+        // Forced: turned away, it comes as a stand-in instead.
+        if (failure && force && traceData.type !== 'image') {
+          const standIn = standInRow(traceData)
+          if (!(await insertTrace(standIn))) { failure = null; standIns++; Object.assign(traceData, standIn) }
+        }
         if (failure) {
           failed++
           // Kept so the summary can say *why*. Silently counting failures is
@@ -395,6 +410,8 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       const summary = [t('transfer.import.summaryTraces', { count: imported })]
       if (mediaMissing > 0) summary.push(t('transfer.import.summaryNoFiles', { count: mediaMissing }))
       if (failed > 0) summary.push(t('transfer.import.summaryFailed', { count: failed }))
+      if (standIns > 0) summary.push(t('transfer.import.summaryStandIns', { count: standIns }))
+      if (incompatible > 0) summary.push(t('transfer.import.summaryIncompatible', { count: incompatible }))
       if (linksImported > 0) summary.push(t('transfer.import.summaryLinks', { count: linksImported }))
       if (locationsImported > 0) summary.push(t('transfer.import.summaryLocations', { count: locationsImported }))
       setProgress(t('transfer.import.done', { name: atriumName, summary: summary.join(', '), layers: Object.keys(layerIdMap).length }))
@@ -500,6 +517,15 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
                 placeholder={t('transfer.import.namePlaceholder')}
                 className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                 maxLength={50}
+              />
+            </div>
+
+            <div className="mb-4">
+              <Check
+                checked={force}
+                label={t('transfer.import.force')}
+                hint={t('transfer.import.forceHint')}
+                onChange={on => { setForce(on); setForceImport(on) }}
               />
             </div>
           </>

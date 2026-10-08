@@ -1193,6 +1193,7 @@ export async function initLocalDb(): Promise<void> {
       border_color TEXT,
       border_width REAL DEFAULT 2,
       border_opacity REAL,
+      stroke_style TEXT,
       fill_color TEXT,
       fill_opacity REAL,
       show_description INTEGER DEFAULT 1,
@@ -1293,7 +1294,8 @@ export async function initLocalDb(): Promise<void> {
       label_size REAL NOT NULL DEFAULT 12,
       elbow INTEGER NOT NULL DEFAULT 0,
       elbow_at REAL NOT NULL DEFAULT 0.5,
-      opacity REAL NOT NULL DEFAULT 0.75
+      opacity REAL NOT NULL DEFAULT 0.75,
+      stroke_style TEXT
     )
   `)
   try {
@@ -1311,7 +1313,7 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
-  for (const column of ['label_size REAL NOT NULL DEFAULT 12', 'elbow INTEGER NOT NULL DEFAULT 0', 'elbow_at REAL NOT NULL DEFAULT 0.5', 'opacity REAL NOT NULL DEFAULT 0.75']) {
+  for (const column of ['label_size REAL NOT NULL DEFAULT 12', 'elbow INTEGER NOT NULL DEFAULT 0', 'elbow_at REAL NOT NULL DEFAULT 0.5', 'opacity REAL NOT NULL DEFAULT 0.75', 'stroke_style TEXT']) {
     try {
       await db.execute(`ALTER TABLE trace_links ADD COLUMN ${column}`)
     } catch {
@@ -1529,6 +1531,12 @@ export async function initLocalDb(): Promise<void> {
   try {
     // The frame a trace is in (lib/frames).
     await db.execute('ALTER TABLE traces ADD COLUMN frame_id TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  // A line's style (lib/strokeStyle, add_stroke_style.sql).
+  try {
+    await db.execute('ALTER TABLE traces ADD COLUMN stroke_style TEXT')
   } catch {
     // Column already exists — ignore
   }

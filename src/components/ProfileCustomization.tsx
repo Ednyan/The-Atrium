@@ -47,7 +47,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete')
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete, spatialSound, setSpatialSound } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete', 'spatialSound', 'setSpatialSound')
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -325,6 +325,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <Switch testId="my-name" label={t('atrium.profile.hideMyNameTag')} hint={t('atrium.profile.hideMyNameTagHint')} on={hideOwnNameTag} onChange={setHideOwnNameTag} />
         <Switch testId="their-names" label={t('atrium.profile.hideOtherNameTags')} hint={t('atrium.profile.hideOtherNameTagsHint')} on={hideOtherNameTags} onChange={setHideOtherNameTags} />
         <Switch testId="their-cursors" label={t('atrium.profile.hideOtherCursors')} hint={t('atrium.profile.hideOtherCursorsHint')} on={hideOtherCursors} onChange={setHideOtherCursors} />
+      </Section>
+
+      <Section id="sound" title={t('atrium.profile.sound')}>
+        <Switch testId="spatial-sound" label={t('atrium.profile.spatialSound')} hint={t('atrium.profile.spatialSoundHint')} on={spatialSound} onChange={setSpatialSound} />
       </Section>
 
       <Section id="motion" title={t('atrium.profile.animations')}>

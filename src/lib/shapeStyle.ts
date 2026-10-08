@@ -6,6 +6,7 @@
 // about outlines, so a shape could only get a border after it existed -- and
 // this is what makes them the same set. See ShapeStyleControls.
 
+import { dashProps, type StrokeStyle } from './strokeStyle.ts'
 import type { Trace } from '../types/database'
 
 // The shapes drawn in a box, in the order they're offered; and a path.
@@ -31,6 +32,7 @@ export interface ShapeStyle {
   pathCurveType: 'straight' | 'bezier' | 'elbow'
   pathArrowStart: ArrowKind
   pathArrowEnd: ArrowKind
+  strokeStyle?: StrokeStyle
 }
 
 export const defaultShapeColor = (kind: ShapeKind) => (kind === 'path' ? '#9ca3af' : '#3b82f6')
@@ -61,6 +63,7 @@ export function shapeStyleOf(trace: Partial<Trace>): ShapeStyle {
     pathCurveType: (trace.pathCurveType as ShapeStyle['pathCurveType']) ?? 'straight',
     pathArrowStart: (trace.pathArrowStart as ArrowKind) ?? 'none',
     pathArrowEnd: (trace.pathArrowEnd as ArrowKind) ?? 'none',
+    strokeStyle: trace.strokeStyle,
   }
 }
 
@@ -112,6 +115,7 @@ export function shapeStyleColumns(style: ShapeStyle) {
     path_curve_type: style.pathCurveType,
     path_arrow_start: style.pathArrowStart,
     path_arrow_end: style.pathArrowEnd,
+    stroke_style: style.strokeStyle,
   }
 }
 
@@ -129,14 +133,17 @@ export function colourToNumber(colour: string | undefined): number {
  * dragged out is what appears. The outline's width is in screen pixels (drawn
  * non-scaling), so it carries the zoom: its thickness is in world units.
  */
-export function shapePaint(style: Pick<ShapeStyle, 'shapeColor' | 'shapeOpacity' | 'shapeNoFill' | 'shapeOutlineOnly' | 'shapeOutlineColor' | 'shapeOutlineWidth' | 'shapeOutlineOpacity'>, zoom: number) {
+export function shapePaint(style: Pick<ShapeStyle, 'shapeColor' | 'shapeOpacity' | 'shapeNoFill' | 'shapeOutlineOnly' | 'shapeOutlineColor' | 'shapeOutlineWidth' | 'shapeOutlineOpacity' | 'strokeStyle'>, zoom: number) {
   const outline = style.shapeOutlineOnly
+  const strokeWidth = outline ? Math.max(style.shapeOutlineWidth * zoom, 0.5) : 0
   return {
     fill: style.shapeNoFill ? 'none' : style.shapeColor,
     fillOpacity: style.shapeOpacity,
     stroke: outline ? style.shapeOutlineColor || style.shapeColor : 'none',
     strokeOpacity: style.shapeOutlineOpacity,
-    strokeWidth: outline ? Math.max(style.shapeOutlineWidth * zoom, 0.5) : 0,
+    strokeWidth,
+    // Dashed or dotted, in the outline's own (screen) width.
+    dash: dashProps(style.strokeStyle, strokeWidth),
   }
 }
 

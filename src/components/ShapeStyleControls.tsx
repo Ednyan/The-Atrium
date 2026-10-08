@@ -15,6 +15,7 @@ import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
 import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
 import { Switch } from './Customization'
+import { dashProps, STROKE_STYLES, type StrokeStyle } from '../lib/strokeStyle'
 
 const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
@@ -191,6 +192,39 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
 }
 
 /**
+ * A line's style -- solid, dashed, dotted (lib/strokeStyle) -- each choice
+ * drawn as itself: for a border, an outline, a path or a connection.
+ */
+export function StrokeStylePicker({ value, onChange }: { value: StrokeStyle | undefined; onChange: (style: StrokeStyle) => void }) {
+  const { t } = useTranslation()
+  const current = value ?? 'solid'
+  return (
+    <div>
+      <label className={LABEL}>{t('atrium.customize.strokeStyle')}</label>
+      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('atrium.customize.strokeStyle')}>
+        {STROKE_STYLES.map(style => (
+          <button
+            key={style}
+            type="button"
+            role="radio"
+            data-stroke-style={style}
+            aria-checked={current === style}
+            aria-label={t(`atrium.customize.stroke.${style}`)}
+            title={t(`atrium.customize.stroke.${style}`)}
+            onClick={() => onChange(style)}
+            className={choice(current === style)}
+          >
+            <svg width="40" height="10" viewBox="0 0 40 10" className="mx-auto block" aria-hidden="true">
+              <line x1="4" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" {...dashProps(style, 2)} />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
  * A trace's scale, in percent, across and down: tied together while Keep
  * proportions is on (as it starts, the way Photoshop links width and height),
  * so changing one changes the other by as much. A flip's sign is kept.
@@ -293,6 +327,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
             min={1} max={20} step={1} value={value.shapeOutlineWidth}
             onChange={v => onChange({ shapeOutlineWidth: v })}
           />
+          <StrokeStylePicker value={value.strokeStyle} onChange={strokeStyle => onChange({ strokeStyle })} />
           <div>
             <label className={LABEL}>{t('atrium.customize.pathStyle')}</label>
             <div className="grid grid-cols-3 gap-2">
@@ -347,6 +382,7 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
                 min={0} max={1} step={0.01} value={value.shapeOutlineOpacity}
                 onChange={v => onChange({ shapeOutlineOpacity: v })}
               />
+              <StrokeStylePicker value={value.strokeStyle} onChange={strokeStyle => onChange({ strokeStyle })} />
             </div>
           )}
         </div>
