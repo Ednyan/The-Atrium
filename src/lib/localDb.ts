@@ -558,6 +558,11 @@ async function migrateTraceLocalMediaUrl(currentUrl: string, lobbyId: string): P
   if (!fileName) return currentUrl
 
   const desiredUrl = buildLobbyScopedLocalUrl(parsed.bucket, lobbyId, fileName)
+  // Already the atrium's own: nothing to move -- consolidate_runtime_media,
+  // just before, brings in any still in _runtime. Looking for each on disk
+  // anyway, on every launch, was several calls into Rust a file: on a vault
+  // of 743 files, six of the seven seconds the app took to open.
+  if (currentUrl === desiredUrl) return currentUrl
   // The atrium's own folder, which is where media lives.
   //
   // This asked for the _runtime path, from when _runtime WAS where media

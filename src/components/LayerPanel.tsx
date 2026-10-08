@@ -1045,10 +1045,17 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
     if (selectedTrace.layerId && !expandedGroups.has(selectedTrace.layerId)) {
       setExpandedGroups(prev => new Set(prev).add(selectedTrace.layerId!))
     }
+    // A group selected whole is shown from its top -- its header, where it
+    // starts -- not around the one trace clicked, which in a long group left
+    // its beginning out of sight. A trace on its own, in the middle.
+    const group = selectedTrace.layerId
+    const wholeGroup = !!group && traces.filter(t => t.layerId === group).every(t => t.id === selectedTraceId || multiSelectedSet.has(t.id))
     const raf = requestAnimationFrame(() => {
-      traceRowRefs.current.get(selectedTraceId)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      const row = wholeGroup ? document.querySelector(`[data-group-card="${CSS.escape(group!)}"]`) : traceRowRefs.current.get(selectedTraceId)
+      row?.scrollIntoView({ block: wholeGroup ? 'start' : 'center', behavior: 'smooth' })
     })
     return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTraceId, traces, expandedGroups])
 
   // One place up or down in the stack, past a trace or a whole group: one

@@ -1,7 +1,8 @@
 // The Customization panel, as Excalidraw's properties are: one frame, docked
 // on the right (--right-rail), its sections always in
 // one order -- Name, Style, Fill, Outline, Text, Shape, Content, Effects,
-// Size -- and only those the thing being customized has. For a trace, for
+// Size, a text trace's Content first -- and only those the thing being
+// customized has. For a trace, for
 // several at once (Batch Edit), for the tool in hand (how what it makes
 // starts), and for drawing. Its sections fold, and stay folded, on this
 // device; its foot is a row of actions.

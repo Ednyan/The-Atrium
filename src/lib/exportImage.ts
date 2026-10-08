@@ -171,7 +171,12 @@ function withAlpha(hex: string, alpha: number): string {
 
 // ---- SVG: markup ----------------------------------------------------------------------
 
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+// What XML can't hold at all, escaped or not: the control characters (bar tab
+// and the line breaks) and its two non-characters. A trace's text can carry
+// them -- a file's bytes put in as text -- and one such trace made the whole
+// file unreadable.
+const XML_INVALID = /[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]/g
+const esc = (s: string) => s.replace(XML_INVALID, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const num = (n: number) => String(Math.round(n * 1000) / 1000)
 
 function svgPainter(): Painter & { markup: () => Promise<{ defs: string; body: string }> } {
@@ -563,7 +568,8 @@ function drawLink(p: Painter, link: TraceLink, a: End, b: End, measure: CanvasRe
   }
 }
 
-export interface ExportResult { blob: Blob; scale: number; width: number; height: number }
+// maxScale: the largest a PNG of it can be made (MAX_SIDE, MAX_AREA).
+export interface ExportResult { blob: Blob; scale: number; width: number; height: number; maxScale: number }
 
 // The picture of `traces` -- and of the connections between two of them --
 // in the atrium's order (`layers` for its groups).
@@ -618,10 +624,8 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
   const width = maxX - minX, height = maxY - minY
 
   // As big as asked, or as big as a canvas may be.
-  let scale: number = options.scale
-  if (options.format === 'png') {
-    scale = Math.min(scale, MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)))
-  }
+  const maxScale = Math.min(MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)))
+  const scale = options.format === 'png' ? Math.min(options.scale, maxScale) : options.scale
 
   // Bottom first, as the atrium stacks them; a connection just under the
   // lower of its two traces, as the canvas draws it.
@@ -657,7 +661,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
     const { defs, body } = await painter.markup()
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pixelWidth}" height="${pixelHeight}" viewBox="${num(minX)} ${num(minY)} ${num(width)} ${num(height)}">`
       + (defs ? `<defs>${defs}</defs>` : '') + body + '</svg>'
-    return { blob: new Blob([svg], { type: 'image/svg+xml' }), scale, width: pixelWidth, height: pixelHeight }
+    return { blob: new Blob([svg], { type: 'image/svg+xml' }), scale, width: pixelWidth, height: pixelHeight, maxScale }
   }
   const canvas = document.createElement('canvas')
   canvas.width = pixelWidth
@@ -667,5 +671,5 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
   paint(canvasPainter(ctx, scale))
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('The picture could not be made')
-  return { blob, scale, width: pixelWidth, height: pixelHeight }
+  return { blob, scale, width: pixelWidth, height: pixelHeight, maxScale }
 }

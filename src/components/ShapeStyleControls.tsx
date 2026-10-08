@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
 import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
+import { Switch } from './Customization'
 
 const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
@@ -186,6 +187,35 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
         className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
       />
     </div>
+  )
+}
+
+/**
+ * A trace's scale, in percent, across and down: tied together while Keep
+ * proportions is on (as it starts, the way Photoshop links width and height),
+ * so changing one changes the other by as much. A flip's sign is kept.
+ */
+export function ScaleControls({ scaleX, scaleY, onChange }: { scaleX: number; scaleY: number; onChange: (scaleX: number, scaleY: number) => void }) {
+  const { t } = useTranslation()
+  const [linked, setLinked] = useState(true)
+  const signed = (was: number, size: number) => (was < 0 ? -size : size)
+  const set = (axis: 'x' | 'y', percent: number) => {
+    const next = percent / 100
+    if (linked) {
+      const ratio = next / (Math.abs(axis === 'x' ? scaleX : scaleY) || 1)
+      onChange(scaleX * ratio, scaleY * ratio)
+    } else {
+      onChange(axis === 'x' ? signed(scaleX, next) : scaleX, axis === 'y' ? signed(scaleY, next) : scaleY)
+    }
+  }
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <SizeInput label={t('atrium.customize.scaleX')} value={Math.abs(scaleX) * 100} onCommit={p => set('x', p)} />
+        <SizeInput label={t('atrium.customize.scaleY')} value={Math.abs(scaleY) * 100} onCommit={p => set('y', p)} />
+      </div>
+      <Switch label={t('atrium.customize.keepProportions')} on={linked} onChange={setLinked} testId="keep-proportions" />
+    </>
   )
 }
 

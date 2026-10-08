@@ -2048,6 +2048,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // ---- The quick bar (QuickBar) ---------------------------------------------
 
+  // The scale a new trace is made at, so it's its usual size on screen however
+  // far the view is zoomed: 2 at half zoom. Two decimals, as the panel shows it.
+  const scaleForZoom = () => Math.round(100 / (zoomRef.current || 1)) / 100
+
   const screenToWorld = (sx: number, sy: number) => {
     const c = worldContainerRef.current
     return c ? { x: (sx - c.x) / zoomRef.current, y: (sy - c.y) / zoomRef.current } : { x: sx, y: sy }
@@ -3977,7 +3981,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (droppedPdfs.length > 0 && userId) {
       for (const [i, pdf] of droppedPdfs.entries()) {
         try {
-          await createPdfTrace(pdf, { x: worldX + i * 640, y: worldY }, { lobbyId, userId, username })
+          await createPdfTrace(pdf, { x: worldX + i * 640 / zoomRef.current, y: worldY }, { lobbyId, userId, username, scale: scaleForZoom() })
         } catch (err) {
           console.error('PDF trace failed:', pdf.name, err)
           showToast(t('atrium.trace.pdfUnreadable'))
@@ -4139,6 +4143,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     look?: { showBorder?: boolean; showBackground?: boolean; showShadow?: boolean; textColor?: string },
   ) => {
     const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
+    // Not dragged out to a size: its usual size on screen, at any zoom --
+    // bigger in the atrium, zoomed out, so it isn't a speck.
+    const scale = size ? 1 : scaleForZoom()
     // The live store, not the render-time `traces`, so a multi-file drop --
     // which adds each inserted row back before the next -- stacks each one
     // above the last instead of giving them all the same place.
@@ -4188,7 +4195,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       position_x: x,
       position_y: y,
       media_url: mediaUrl || null,
-      scale: 1.0,
+      scale,
       rotation: 0.0,
       // Explicit, not left to the column default.
       //
@@ -5309,7 +5316,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   }
                   // A shape: the one Shapes has in hand, at a usual size there.
                   if (item.type === 'shape') {
-                    const id = await insertShapeTrace(nextShapeStyle(shapeKindRef.current), anchor, undefined, { width: 200, height: 150 })
+                    const id = await insertShapeTrace(nextShapeStyle(shapeKindRef.current), anchor, undefined, { width: 200 / zoomRef.current, height: 150 / zoomRef.current })
                     if (id) setCustomizeRequest([id])
                     return
                   }

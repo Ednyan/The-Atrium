@@ -343,6 +343,12 @@ img {
   user-select: none;
   pointer-events: auto;
 }
+/* ...but not a drawing's picture, where only its strokes are to be found
+   (TraceOverlay strokeHits). */
+[data-strokes-only] img,
+[data-strokes-only] canvas {
+  pointer-events: none;
+}
 
 /* Prevent selection on game container */
 .fixed.inset-0 {

@@ -45,6 +45,9 @@ interface GameState {
   hideOwnNameTag: boolean
   // A trace clicked opens its Customization panel (User Preferences).
   autoOpenCustomization: boolean
+  // Deleting asks first (User Preferences); its dialog's Don't ask again
+  // turns it off, under the key that has always kept that.
+  confirmDelete: boolean
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -79,6 +82,7 @@ interface GameState {
   setShowTraceTypeLabels: (show: boolean) => void
   setHideOwnNameTag: (hide: boolean) => void
   setAutoOpenCustomization: (on: boolean) => void
+  setConfirmDelete: (on: boolean) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -191,6 +195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('autoOpenCustomization')
     return stored !== null ? stored === 'true' : true
   })(),
+  confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
   hideOtherNameTags: (() => {
     const stored = localStorage.getItem('hideOtherNameTags')
     return stored !== null ? stored === 'true' : false
@@ -246,6 +251,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setAutoOpenCustomization: (on) => {
     localStorage.setItem('autoOpenCustomization', String(on))
     set({ autoOpenCustomization: on })
+  },
+  setConfirmDelete: (on) => {
+    localStorage.setItem('dontAskDeleteTrace', String(!on))
+    set({ confirmDelete: on })
   },
   setHideOtherNameTags: (hide) => {
     localStorage.setItem('hideOtherNameTags', String(hide))

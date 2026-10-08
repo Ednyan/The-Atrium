@@ -48,6 +48,8 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
   const [scale, setScale] = useState<ExportScale>(2)
   const [withBackground, setWithBackground] = useState(true)
   const [preview, setPreview] = useState<{ url: string; width: number; height: number } | null>(null)
+  // How big a PNG of it can be made: 2x and 3x are off past it.
+  const [maxScale, setMaxScale] = useState(Infinity)
   const [busy, setBusy] = useState<string | null>(null)
 
   // What's exported: the whole atrium, or the selection -- with what any
@@ -73,6 +75,7 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
         if (previewRef.current) URL.revokeObjectURL(previewRef.current)
         previewRef.current = url
         setPreview({ url, width: result.width, height: result.height })
+        setMaxScale(result.maxScale)
       } catch {
         if (live) setPreview(null)
       }
@@ -80,6 +83,9 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
     return () => { live = false; window.clearTimeout(timer) }
   }, [format, scope, links, layers, scale, withBackground, background])
   useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current) }, [])
+  useEffect(() => {
+    if (format === 'png' && scale > 1 && scale > maxScale) setScale(Math.max(1, Math.floor(maxScale)) as ExportScale)
+  }, [format, scale, maxScale])
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose() }
@@ -173,7 +179,7 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
                   <span className={LABEL}>{t('atrium.export.scale')}</span>
                   <div className="flex gap-2">
                     {([1, 2, 3] as const).map(s => (
-                      <button key={s} type="button" data-scale={s} onClick={() => setScale(s)} className={choice(scale === s)}>{s}×</button>
+                      <button key={s} type="button" data-scale={s} disabled={format === 'png' && s > 1 && s > maxScale} onClick={() => setScale(s)} className={choice(scale === s)}>{s}×</button>
                     ))}
                   </div>
                 </div>
@@ -193,6 +199,13 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
               </div>
               {preview && format === 'png' && (
                 <p className="text-nier-bg/60 text-[11px] tracking-wide text-right">{t('atrium.export.pixels', { width: preview.width, height: preview.height })}</p>
+              )}
+              {format === 'png' && maxScale < 3 && (
+                <p data-export-too-big="" className="text-[11px] tracking-wide leading-relaxed" style={{ color: 'rgb(var(--c-orange))' }}>
+                  {maxScale < 1
+                    ? t('atrium.export.tooBigAtAll', { scale: maxScale.toFixed(2) })
+                    : t('atrium.export.tooBig', { max: Math.floor(maxScale * 10) / 10 })}
+                </p>
               )}
             </>
           )}

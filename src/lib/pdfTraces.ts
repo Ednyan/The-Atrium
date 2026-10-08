@@ -21,7 +21,8 @@ import { t, tCount } from './i18n'
 import type { RenderedPage } from './pdf'
 import type { Trace } from '../types/database'
 
-export interface TraceMaker { lobbyId: string; userId: string; username: string }
+// scale: what it's made at (1 unless said: LobbyScene's scaleForZoom).
+export interface TraceMaker { lobbyId: string; userId: string; username: string; scale?: number }
 
 // A PDF as a document trace at `at`: the shape of its first page, named after
 // the file unless given a title. Thrown when the file isn't a PDF that reads.
@@ -45,7 +46,7 @@ export async function createPdfTrace(file: File, at: { x: number; y: number }, w
     position_x: at.x,
     position_y: at.y,
     media_url: url,
-    scale: 1.0,
+    scale: who.scale ?? 1.0,
     rotation: 0.0,
     border_radius: 0,
     lobby_id: who.lobbyId,

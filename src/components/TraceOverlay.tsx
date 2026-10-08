@@ -38,7 +38,7 @@ import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import ShapeStyleControls, { Check } from './ShapeStyleControls'
+import ShapeStyleControls, { Check, ScaleControls } from './ShapeStyleControls'
 import BatchEditPanel from './BatchEditPanel'
 import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
@@ -280,6 +280,26 @@ function floatTiming(id: string): { duration: number; delay: number } {
 // How far, in screen pixels, a trace drifts at Floating 100%.
 const FLOAT_MAX_PX = 8
 
+// A drawing's strokes as outlines to hit, once per kept drawing: each a line
+// through its points, as wide as it was drawn. Erasing isn't taken off them.
+// Null for a trace with no strokes kept.
+const strokeHitCache = new WeakMap<object, { d: string; width: number }[]>()
+function strokeHits(kept: unknown): { d: string; width: number }[] | null {
+  if (!kept) return null
+  // Kept by what the trace holds: asStrokeData reads it into a new object each time.
+  let hits = typeof kept === 'object' ? strokeHitCache.get(kept) : undefined
+  if (!hits) {
+    const data = asStrokeData(kept)
+    if (!data) return null
+    hits = data.ops.filter(op => !op.isEraser && op.points.length > 0).map(op => ({
+      d: op.points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('') + (op.points.length === 1 ? 'l0.01 0' : ''),
+      width: op.width,
+    }))
+    if (typeof kept === 'object') strokeHitCache.set(kept, hits)
+  }
+  return hits
+}
+
 // A #rrggbb colour as numbers, white for anything else. For the cursors.
 function hexToRgb(hex: string) {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
@@ -488,11 +508,13 @@ function OwnCursor({ hidden, zIndex, pointerInWindow, crosshair, pan }: {
     // of it, never with the traces and ground beneath.
     //
     // Grabbing and not-allowed keep their coloured edges: those say something.
+    // Each icon at its own point -- an arrow's tip, the four arrows' middle --
+    // at once. It was eased there, so changing icon slid the cursor across.
     const at = (transform: string) => ({
       width: 24,
       height: 24,
       viewBox: '0 0 24 24',
-      style: { transform, transition: 'transform 0.1s ease-out' } as React.CSSProperties,
+      style: { transform } as React.CSSProperties,
     })
     const ARROW = 'M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z'
     let outline: React.ReactNode = null
@@ -2718,9 +2740,15 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       if (!a || !b) return false
       return l.elbow ? lineCrosses(elbowRoute(centred(a), centred(b), l.elbowAt), area) : threadCrosses(a, b, area, l.straight)
     }).map(l => l.id)
-    setMultiSelectedIds(new Set(picked))
-    setSelectedTraceId(picked[0] ?? null)
-    setSelectedLinks(new Set(crossed))
+    // Added to what's selected already, not in place of it, so one area after
+    // another gathers a selection.
+    setMultiSelectedIds(prev => {
+      const next = new Set([...prev, ...picked])
+      if (selectedTraceId) next.add(selectedTraceId)
+      return next
+    })
+    setSelectedTraceId(selectedTraceId ?? picked[0] ?? null)
+    setSelectedLinks(prev => new Set([...prev, ...crossed]))
     setLinkMenuAt(null)
   }, [areaSelectRequest])
 
@@ -2887,7 +2915,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     return buildTraceInsertRow(trace, userId, username, lobbyId, offsetX, offsetY)
   }, [lobbyId, userId, username])
 
-  const duplicateTraces = useCallback(async (sourceTraces: Trace[]) => {
+  // `at`: where the copies go, their middle on it (a paste, at the pointer);
+  // without, each just below and right of its original (Duplicate).
+  const duplicateTraces = useCallback(async (sourceTraces: Trace[], at?: { x: number; y: number }) => {
     if (!userId || sourceTraces.length === 0) return
 
     if (useGameStore.getState().isLobbyFull()) {
@@ -2897,8 +2927,15 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
     setContextMenu(null)
 
-    const offsetX = 50
-    const offsetY = 50
+    let offsetX = 50
+    let offsetY = 50
+    if (at) {
+      const boxes = sourceTraces.map(trace => traceBoxFor(trace, undefined, 1, true))
+      const left = Math.min(...boxes.map(b => b.cx - b.halfW)), right = Math.max(...boxes.map(b => b.cx + b.halfW))
+      const top = Math.min(...boxes.map(b => b.cy - b.halfH)), bottom = Math.max(...boxes.map(b => b.cy + b.halfH))
+      offsetX = at.x - (left + right) / 2
+      offsetY = at.y - (top + bottom) / 2
+    }
 
     // Each copy just above its original, among what that's ordered among (its
     // group, or the stack). A pasted trace from another atrium has no original
@@ -3033,7 +3070,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
       if (payload?.traces.length) {
         e.preventDefault()
-        void duplicateTraces(payload.traces.map(trace => cloneTraceSnapshot(trace)))
+        // At the pointer, as a pasted picture goes.
+        void duplicateTraces(payload.traces.map(trace => cloneTraceSnapshot(trace)), useGameStore.getState().position)
       } else if (e.clipboardData && onPasteRef.current?.(e.clipboardData)) {
         e.preventDefault()
       }
@@ -3108,7 +3146,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
   const deleteTraces = (traceIds: string[], linkIds: string[] = []) => {
     if (traceIds.length === 0) return
-    const dontAskAgain = localStorage.getItem('dontAskDeleteTrace') === 'true'
+    const dontAskAgain = !useGameStore.getState().confirmDelete
 
     if (!dontAskAgain) {
       // Show custom confirmation dialog
@@ -5276,7 +5314,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // or dragged out with the quick bar.
   useEffect(() => {
     if (!frameRequest) return
-    const { x, y, width = FRAME_DEFAULT.width, height = FRAME_DEFAULT.height, customize } = frameRequest
+    // A click's frame at its usual size on screen, at any zoom.
+    const { x, y, width = FRAME_DEFAULT.width / zoom, height = FRAME_DEFAULT.height / zoom, customize } = frameRequest
     void createFrame({ cx: x, cy: y, halfW: width / 2, halfH: height / 2 }, undefined, customize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameRequest])
@@ -5953,6 +5992,11 @@ const isSelected = selectedTraceId === trace.id && !isPressed && !inWholeGroup.h
 const isMultiSelected = multiSelectedIds.has(trace.id) && !inWholeGroup.has(trace.id)
 // Selected at all, lit or not: held still rather than floating.
 const isInSelection = selectedTraceId === trace.id || multiSelectedIds.has(trace.id)
+// A drawing is taken by its strokes, not its box: unselected, a click beside
+// them goes on to whatever is under it (strokeHits). Selected, all its box
+// holds it, to be moved. A drawing from before strokes were kept has only its
+// picture, and is taken anywhere in it, as before.
+const hitStrokes = trace.type === 'image' && !isInSelection ? strokeHits(trace.strokeData) : null
 
 // Apply customization defaults
 const showBorder = trace.showBorder ?? true
@@ -6063,6 +6107,7 @@ return (
     <div
       data-trace-element="true"
       data-trace-id={trace.id}
+      data-strokes-only={hitStrokes ? '' : undefined}
       className="absolute"
       style={{
         left: `${screenX + boxOffset.x}px`,
@@ -6113,7 +6158,7 @@ return (
         cursor: trace.isClickable && trace.linkUrl ? 'pointer' : undefined,
         // A frame is taken hold of by its edge and title (below); its inside
         // is left to what it holds, and to the canvas under it.
-        pointerEvents: isFrame(trace) ? 'none' : 'auto',
+        pointerEvents: isFrame(trace) || hitStrokes ? 'none' : 'auto',
       }}
       onMouseEnter={() => setCursorState('pointer')}
       onMouseLeave={() => setCursorState('default')}
@@ -6401,7 +6446,7 @@ return (
             padding: '0px',
             // A frame is taken hold of by its edge and title (below); its inside
             // is left to what it holds, and to the canvas under it.
-            pointerEvents: isFrame(trace) ? 'none' : 'auto',
+            pointerEvents: isFrame(trace) || hitStrokes ? 'none' : 'auto',
             // No backgroundImage scanline texture here -- a fine 2-3px
             // repeating-linear-gradient on a container whose pixel size
             // varies continuously with zoom caused visible moire/
@@ -6474,6 +6519,19 @@ return (
           const standIn = raw && !failedImages.has(trace.id) && (!raw.startsWith('local://') || (resolved && !resolved.startsWith('local://'))) ? resolved || raw : undefined
           return <StrokeCanvas data={keptStroke} width={trace.width!} height={trace.height!} density={strokePaintDensity} standIn={standIn} style={{ clipPath: cropClip(shownCrop) }} />
         })()
+      )}
+
+      {/* Where an unselected drawing can be taken: its strokes, unseen, the
+          only part of it the pointer finds (hitStrokes) -- at least a few
+          pixels wide on screen, however thin they're drawn. */}
+      {hitStrokes && (
+        <svg className="absolute inset-0 overflow-visible" width={trace.width!} height={trace.height!} viewBox={`0 0 ${trace.width} ${trace.height}`} style={{ pointerEvents: 'none' }}>
+          <g fill="none" stroke="transparent" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'stroke' }}>
+            {hitStrokes.map((hit, i) => (
+              <path key={i} d={hit.d} strokeWidth={Math.max(hit.width, 8 / (Math.abs(transform.scaleX ?? 1) * zoom || 1))} />
+            ))}
+          </g>
+        </svg>
       )}
 
       {/* Image Content */}
@@ -8822,6 +8880,135 @@ return (
         const isPathTrace = editingTrace.shapeType === 'path'
         const framed = has(editingTrace, 'frame')
         const hasContent = editingTrace.type === 'text' || editingTrace.type === 'embed' || has(editingTrace, 'link') || has(editingTrace, 'captions')
+        // What a trace holds. A text trace's is what it's for, so it comes first
+        // there; for the rest it keeps its place in the order.
+        const contentSection = hasContent && (
+            <Section id="content" title={t('atrium.customize.sectionContent')}>
+              {editingTrace.type === 'text' && (
+                <div>
+                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textContent')}</label>
+                  <textarea
+                    value={editingTrace.content ?? ''}
+                    onChange={(e) => {
+                      const effectiveFontSize = fontPxOf(editingTrace.fontSize)
+                      const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
+                      fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
+                    }}
+                    onBlur={() => endTextEdit(editingTrace.id)}
+                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                    placeholder={t('atrium.customize.messagePlaceholder')}
+                    rows={4}
+                  />
+                </div>
+              )}
+              {/* Embed Content Editor */}
+              {editingTrace.type === 'embed' && (
+                <>
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.embedUrl')}</label>
+                    <textarea
+                      value={editingTrace.mediaUrl ?? ''}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, mediaUrl: e.target.value }
+                        setEditingTrace(updated)
+                      }}
+                      onBlur={(e) => {
+                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
+                      }}
+                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+                      placeholder={t('atrium.customize.embedUrlPlaceholder')}
+                      rows={4}
+                    />
+                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
+                      {t('atrium.customize.embedHint')}
+                    </p>
+                  </div>
+
+                </>
+              )}
+              {/* Clickable -- text, embed and shape only. Image, audio and
+                  video already do something of their own on click (open the
+                  viewer, play), and a second competing action there would be
+                  ambiguous.
+
+                  Placed above the toggle group below rather than inside it,
+                  because that group is hidden for shapes -- which are one of
+                  the three types this applies to. */}
+              {has(editingTrace, 'link') && (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
+                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
+                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editingTrace.isClickable ?? false}
+                      onChange={(e) => {
+                        const updated = { ...editingTrace, isClickable: e.target.checked }
+                        setEditingTrace(updated)
+                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
+                      }}
+                      className="hidden"
+                    />
+                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
+                  </label>
+
+                  {/* The destination, shown only once Clickable is on so the
+                      field can't sit there filled in and doing nothing. */}
+                  {editingTrace.isClickable && (
+                    <div>
+                      <input
+                        type="url"
+                        value={editingTrace.linkUrl ?? ''}
+                        onChange={(e) => {
+                          const updated = { ...editingTrace, linkUrl: e.target.value }
+                          setEditingTrace(updated)
+                          updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
+                        }}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+                      />
+                      {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
+                        <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
+                          {t('atrium.customize.needsFullUrl')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {has(editingTrace, 'captions') && (
+              <>
+              <Check
+                checked={editingTrace.showFilename ?? true}
+                label={t('atrium.customize.showUsername')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showFilename: on })
+                  updateTraceCustomization(editingTrace.id, { showFilename: on })
+                }}
+              />
+              <Check
+                checked={editingTrace.showDescription ?? false}
+                label={t('atrium.customize.showDescription')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, showDescription: on })
+                  updateTraceCustomization(editingTrace.id, { showDescription: on })
+                }}
+              />
+              </>
+              )}
+              {editingTrace.type === 'embed' && (
+              <Check
+                checked={editingTrace.enableInteraction ?? false}
+                label={t('atrium.menu.enableInteraction')}
+                onChange={on => {
+                  setEditingTrace({ ...editingTrace, enableInteraction: on })
+                  updateTraceCustomization(editingTrace.id, { enableInteraction: on })
+                }}
+              />
+              )}
+            </Section>
+        )
         const locked = isLockedTrace(live)
         const done = () => {
           // Mark as pending if there were any changes
@@ -8886,6 +9073,7 @@ return (
               </>
             }
           >
+            {editingTrace.type === 'text' && contentSection}
             <Section id="name" title={t('atrium.customize.sectionName')}>
               {/* The layer's name, first -- the one field that used to be called a
                   label, a caption or a description depending on the trace. */}
@@ -9197,14 +9385,10 @@ return (
                         const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
                         const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
                         const textSize = computeAutoFitTextSize(editingTrace.content ?? '', value, { fontFamily: effectiveFontFamily })
-                        const updated = { ...editingTrace, fontSize: value, width: textSize.width, height: textSize.height };
-                        setEditingTrace(updated);
-                        // Update trace in store for live preview and mark as pending
-                        const trace = traces.find(t => t.id === editingTrace.id);
-                        if (trace) {
-                          addTrace({ ...trace, fontSize: value, width: textSize.width, height: textSize.height });
-                          markTraceChanged(editingTrace.id);
-                        }
+                        // Through updateTraceCustomization, as every other
+                        // setting: it was written straight into the store, so
+                        // a size change was no step of undo at all.
+                        updateTraceCustomization(editingTrace.id, { fontSize: value, width: textSize.width, height: textSize.height })
                       }}
                       placeholder={t('atrium.customize.fontSizeHint')}
                     />
@@ -9370,133 +9554,7 @@ return (
             </Section>
             )}
 
-            {hasContent && (
-            <Section id="content" title={t('atrium.customize.sectionContent')}>
-              {editingTrace.type === 'text' && (
-                <div>
-                  <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textContent')}</label>
-                  <textarea
-                    value={editingTrace.content ?? ''}
-                    onChange={(e) => {
-                      const effectiveFontSize = fontPxOf(editingTrace.fontSize)
-                      const effectiveFontFamily = resolveFontFamilyCss(editingTrace.fontFamily ?? 'sans')
-                      fitTextLive(traces.find(tr => tr.id === editingTrace.id) ?? editingTrace, e.target.value, effectiveFontSize, effectiveFontFamily)
-                    }}
-                    onBlur={() => endTextEdit(editingTrace.id)}
-                    className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                    placeholder={t('atrium.customize.messagePlaceholder')}
-                    rows={4}
-                  />
-                </div>
-              )}
-              {/* Embed Content Editor */}
-              {editingTrace.type === 'embed' && (
-                <>
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.embedUrl')}</label>
-                    <textarea
-                      value={editingTrace.mediaUrl ?? ''}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, mediaUrl: e.target.value }
-                        setEditingTrace(updated)
-                      }}
-                      onBlur={(e) => {
-                        updateTraceCustomization(editingTrace.id, { mediaUrl: e.target.value })
-                      }}
-                      className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
-                      placeholder={t('atrium.customize.embedUrlPlaceholder')}
-                      rows={4}
-                    />
-                    <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide mt-1.5">
-                      {t('atrium.customize.embedHint')}
-                    </p>
-                  </div>
-
-                </>
-              )}
-              {/* Clickable -- text, embed and shape only. Image, audio and
-                  video already do something of their own on click (open the
-                  viewer, play), and a second competing action there would be
-                  ambiguous.
-
-                  Placed above the toggle group below rather than inside it,
-                  because that group is hidden for shapes -- which are one of
-                  the three types this applies to. */}
-              {has(editingTrace, 'link') && (
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.isClickable ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, isClickable: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
-                  </label>
-
-                  {/* The destination, shown only once Clickable is on so the
-                      field can't sit there filled in and doing nothing. */}
-                  {editingTrace.isClickable && (
-                    <div>
-                      <input
-                        type="url"
-                        value={editingTrace.linkUrl ?? ''}
-                        onChange={(e) => {
-                          const updated = { ...editingTrace, linkUrl: e.target.value }
-                          setEditingTrace(updated)
-                          updateTraceCustomization(editingTrace.id, { linkUrl: e.target.value })
-                        }}
-                        placeholder="https://..."
-                        className="w-full px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                      />
-                      {(editingTrace.linkUrl ?? '').trim() !== '' && !/^https?:\/\/\S+$/i.test((editingTrace.linkUrl ?? '').trim()) && (
-                        <p className="text-[9px] tracking-wider mt-1.5" style={{ color: '#FF6161' }}>
-                          {t('atrium.customize.needsFullUrl')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {has(editingTrace, 'captions') && (
-              <>
-              <Check
-                checked={editingTrace.showFilename ?? true}
-                label={t('atrium.customize.showUsername')}
-                onChange={on => {
-                  setEditingTrace({ ...editingTrace, showFilename: on })
-                  updateTraceCustomization(editingTrace.id, { showFilename: on })
-                }}
-              />
-              <Check
-                checked={editingTrace.showDescription ?? false}
-                label={t('atrium.customize.showDescription')}
-                onChange={on => {
-                  setEditingTrace({ ...editingTrace, showDescription: on })
-                  updateTraceCustomization(editingTrace.id, { showDescription: on })
-                }}
-              />
-              </>
-              )}
-              {editingTrace.type === 'embed' && (
-              <Check
-                checked={editingTrace.enableInteraction ?? false}
-                label={t('atrium.menu.enableInteraction')}
-                onChange={on => {
-                  setEditingTrace({ ...editingTrace, enableInteraction: on })
-                  updateTraceCustomization(editingTrace.id, { enableInteraction: on })
-                }}
-              />
-              )}
-            </Section>
-            )}
+            {editingTrace.type !== 'text' && contentSection}
 
             {(framed || has(editingTrace, 'light')) && (
             <Section id="effects" title={t('atrium.customize.sectionEffects')}>
@@ -9717,6 +9775,23 @@ return (
             {shapeLike && !isPathTrace && (
             <Section id="size" title={t('atrium.customize.sectionSize')}>
               <ShapeStyleControls {...shapeProps} part="size" />
+            </Section>
+            )}
+            {/* A picture, a video, an embed, a document... sized by its
+                scale, as its handles size it: typed here instead, one step of
+                undo. Not a text (its font size is its size) nor a frame (its box). */}
+            {!shapeLike && !isFrame(editingTrace) && editingTrace.type !== 'text' && (
+            <Section id="size" title={t('atrium.customize.sectionSize')}>
+              {(() => {
+                const tf = localTraceTransforms[editingTrace.id] || getTraceTransform(editingTrace)
+                return (
+                  <ScaleControls
+                    scaleX={(tf as any).scaleX ?? 1}
+                    scaleY={(tf as any).scaleY ?? 1}
+                    onChange={(scaleX, scaleY) => updateTraceTransform(editingTrace.id, { scaleX, scaleY })}
+                  />
+                )
+              })()}
             </Section>
             )}
           </CustomizationPanel>
@@ -10179,8 +10254,11 @@ return (
             }}
           />
           
+          {/* The theme's own panel: it was a fixed dark grey under the
+              theme's ink, so on a light theme its words were dark on dark. */}
           <div
-            className="bg-gray-900 border border-red-500/40 p-6 max-w-md w-full mx-4 relative"
+            data-delete-confirm=""
+            className="bg-nier-blackLight border border-red-500/40 p-6 max-w-md w-full mx-4 relative"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}
@@ -10210,7 +10288,7 @@ return (
                   type="checkbox"
                   className="hidden"
                   onChange={(e) => {
-                    localStorage.setItem('dontAskDeleteTrace', e.target.checked ? 'true' : 'false')
+                    useGameStore.getState().setConfirmDelete(!e.target.checked)
                     e.currentTarget.parentElement?.classList.toggle('bg-nier-bg')
                   }}
                 />
@@ -10226,7 +10304,7 @@ return (
                 {t('common.cancel')}
               </button>
               <button
-                className="flex-1 py-3 border border-red-500/40 bg-red-500/20 text-white text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
+                className="flex-1 py-3 border border-red-500/60 bg-red-500/20 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
                 onClick={() => executeDelete(deleteConfirmDialog.traceIds, deleteConfirmDialog.linkIds)}
               >
                 {t('common.delete')}
