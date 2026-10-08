@@ -236,7 +236,7 @@ export default function TraceLinksLayer({
                 showed darker where the two overlapped. Together they're
                 made whole, then seen through, as a path is. */}
             <g opacity={link.opacity}>
-              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" {...dashProps(link.strokeStyle, width)} />
+              <path ref={part(link.id, 'line')} fill="none" stroke={colour} strokeWidth={isSelected ? width + 1 : width} strokeLinecap="round" {...dashProps(link.strokeStyle, link.width, zoom)} />
               {headsTo(link) && <polygon ref={part(link.id, 'headTo')} fill={colour} />}
               {headsFrom(link) && <polygon ref={part(link.id, 'headFrom')} fill={colour} />}
             </g>

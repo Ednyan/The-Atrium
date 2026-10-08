@@ -254,6 +254,8 @@ export interface ThemeSettings {
   backgroundImageOpacity?: number
   backgroundImageScale?: number
   backgroundParallax?: number
+  backgroundParallaxEnabled?: boolean
+  backgroundImageFill?: boolean
 }
 
 export interface Lobby {

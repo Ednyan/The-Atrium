@@ -142,8 +142,8 @@ export function shapePaint(style: Pick<ShapeStyle, 'shapeColor' | 'shapeOpacity'
     stroke: outline ? style.shapeOutlineColor || style.shapeColor : 'none',
     strokeOpacity: style.shapeOutlineOpacity,
     strokeWidth,
-    // Dashed or dotted, in the outline's own (screen) width.
-    dash: dashProps(style.strokeStyle, strokeWidth),
+    // Dashed or dotted, from the outline's width in the atrium, at the zoom.
+    dash: dashProps(style.strokeStyle, outline ? style.shapeOutlineWidth : 0, zoom),
   }
 }
 

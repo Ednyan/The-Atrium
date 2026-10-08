@@ -447,17 +447,21 @@ function refreshGround(theme: ThemeSettings | null | undefined) {
 // element behind the canvas -- so a GIF moves -- with the canvas made see-
 // through while there is one (the room's colour is the element behind both).
 // Repeated, and moved with the view by its parallax share of the world's
-// movement; placed in drawGrid, which `version` tells to place it again.
-const backdrop = { el: null as HTMLDivElement | null, url: '', w: 0, h: 0, scale: 1, parallax: 0.3, version: 0 }
+// movement (none, staying still, with parallax off) -- or, as `fill`, one
+// picture where the world is (see drawGrid); placed in drawGrid, which
+// `version` tells to place it again.
+const backdrop = { el: null as HTMLDivElement | null, url: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0 }
 function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Application | null, placeAgain: () => void) {
   const url = theme?.backgroundImage ?? ''
   backdrop.scale = theme?.backgroundImageScale ?? 1
-  backdrop.parallax = theme?.backgroundParallax ?? 0.3
+  backdrop.parallax = theme?.backgroundParallaxEnabled === false ? 0 : theme?.backgroundParallax ?? 0.3
+  backdrop.fill = !!theme?.backgroundImageFill
   backdrop.version++
   const el = backdrop.el
   if (app) app.renderer.background.alpha = url ? 0 : 1
   if (!el) return
   el.style.opacity = String(theme?.backgroundImageOpacity ?? 1)
+  el.style.backgroundRepeat = backdrop.fill ? 'no-repeat' : 'repeat'
   if (!url) {
     backdrop.url = ''
     el.style.display = 'none'
@@ -3082,11 +3086,21 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ground.height = height
         ground.tilePosition.set(worldContainer.x, worldContainer.y)
         ground.tileScale.set(zoomRef.current / GROUND_PX)
-        // The room's picture, by its share of the view's moves and zoom.
+        // The room's picture, by its share of the view's moves and zoom; or,
+        // as one picture, centred on the world's middle and big enough there
+        // to cover the screen at the furthest zoom out, then zoomed and
+        // panned with everything else.
         if (backdrop.el && backdrop.url && backdrop.w) {
-          const k = backdrop.scale * Math.pow(zoomRef.current, backdrop.parallax)
-          backdrop.el.style.backgroundSize = `${backdrop.w * k}px ${backdrop.h * k}px`
-          backdrop.el.style.backgroundPosition = `${worldContainer.x * backdrop.parallax}px ${worldContainer.y * backdrop.parallax}px`
+          // ponytail: sized to this screen, so a collaborator's other screen size sees it a little larger or smaller
+          const k = backdrop.fill
+            ? Math.max(Math.max(window.screen.width, width) / backdrop.w, Math.max(window.screen.height, height) / backdrop.h) / MIN_ZOOM * backdrop.scale * zoomRef.current
+            : backdrop.scale * Math.pow(zoomRef.current, backdrop.parallax)
+          const w = backdrop.w * k, h = backdrop.h * k
+          const [x, y] = backdrop.fill
+            ? [worldContainer.x - w / 2, worldContainer.y - h / 2]
+            : [worldContainer.x * backdrop.parallax, worldContainer.y * backdrop.parallax]
+          backdrop.el.style.backgroundSize = `${w}px ${h}px`
+          backdrop.el.style.backgroundPosition = `${x}px ${y}px`
         }
         grid.clear()
         const style = gridStyleOf(theme)

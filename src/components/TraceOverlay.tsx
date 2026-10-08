@@ -3,7 +3,7 @@
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
-import { dashProps } from '../lib/strokeStyle'
+import { dashProps, dashedBorderImage } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import type { Trace } from '../types/database'
@@ -5943,7 +5943,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           strokeWidth={zoomedOutlineWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
-          {...dashProps(displayTrace.strokeStyle, zoomedOutlineWidth)}
+          {...dashProps(displayTrace.strokeStyle, outlineWidth, zoom)}
           opacity={shapeOpacity}
           markerStart={arrowStart !== 'none' ? `url(#${markerId}-${arrowStart}-start)` : undefined}
           markerEnd={arrowEnd !== 'none' ? `url(#${markerId}-${arrowEnd}-end)` : undefined}
@@ -6542,13 +6542,24 @@ return (
       ) : (
         /* Border container for non-shape traces - fixed size, doesn't scale with content */
         <>
+        {(() => {
+        // The border's colour, at its opacity unless selected; a dashed or
+        // dotted one is drawn as a picture over its transparent border
+        // (dashedBorderImage), so its dashes follow the zoom.
+        const lineWidth = displayTrace.borderWidth ?? 2
+        const lineColour = isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac'
+          : trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? `rgb(${rgbChannels(borderColor)} / ${trace.borderOpacity})` : borderColor
+        const dashedBorder = showBorder ? dashedBorderImage(displayTrace.strokeStyle, lineColour,
+          borderWidth + 2 * lineWidth * zoom, borderHeight + 2 * lineWidth * zoom, displayTrace.borderRadius ?? 0, lineWidth, zoom) : undefined
+        return (
         <div
           className="trace-frame-nier relative cursor-pointer transition-shadow"
           style={{
             boxSizing: 'content-box',
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            border: showBorder ? `${(displayTrace.borderWidth ?? 2) * zoom}px ${displayTrace.strokeStyle ?? 'solid'} ${isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor}` : 'none',
+            border: showBorder ? `${lineWidth * zoom}px solid ${dashedBorder ? 'transparent' : lineColour}` : 'none',
+            ...(dashedBorder ? { backgroundImage: dashedBorder, backgroundOrigin: 'border-box', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' } : {}),
             borderRadius: `${displayTrace.borderRadius ?? 0}px`,
             backgroundColor: showBackground ? (() => {
               const fc = displayTrace.fillColor || '#191919';
@@ -6559,16 +6570,6 @@ return (
               const b = parseInt(fc.slice(5, 7), 16) || 24;
               return `rgba(${r}, ${g}, ${b}, ${fo})`;
             })() : 'transparent',
-            ...(showBorder && trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? {
-              borderColor: isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : (() => {
-                const bc = borderColor;
-                const bo = trace.borderOpacity;
-                const r = parseInt(bc.slice(1, 3), 16) || 255;
-                const g = parseInt(bc.slice(3, 5), 16) || 255;
-                const b = parseInt(bc.slice(5, 7), 16) || 255;
-                return `rgba(${r}, ${g}, ${b}, ${bo})`;
-              })()
-            } : {}),
             padding: '0px',
             // A frame is taken hold of by its edge and title (below); its inside
             // is left to what it holds, and to the canvas under it.
@@ -7313,6 +7314,8 @@ return (
 
           </div>
         </div>
+        )
+        })()}
         </>
       )}
 
