@@ -102,11 +102,10 @@ function SpecialThemesTool({ onEnterAtrium }: { onEnterAtrium?: (lobbyId: string
   const themes = useSpecialThemes()
   const userId = useGameStore(state => state.userId)
   // What's being changed: a copy, written by Save. `isNew` until it has been.
-  // Kept for the session (lib/specialThemes), for the atrium entered to look
-  // around in it, and for coming back.
+  // Kept for the session while it has changes (lib/specialThemes), for the
+  // atrium entered to look around in it, and for coming back.
   const [draft, setDraft] = useState<SpecialTheme | null>(() => specialThemeDraft()?.theme ?? null)
   const [isNew, setIsNew] = useState(() => specialThemeDraft()?.isNew ?? false)
-  useEffect(() => setSpecialThemeDraft(draft ? { theme: draft, isNew } : null), [draft, isNew])
   // Where to look around: one of your own atriums.
   const [atriums, setAtriums] = useState<{ id: string; name: string }[]>([])
   const [atriumId, setAtriumId] = useState('')
@@ -119,12 +118,15 @@ function SpecialThemesTool({ onEnterAtrium }: { onEnterAtrium?: (lobbyId: string
   }, [userId])
   const enter = () => {
     if (!draft || !atriumId || !onEnterAtrium) return
+    // Kept for the visit even unchanged, for the atrium's way back here.
+    setSpecialThemeDraft({ theme: draft, isNew, base: themes.find(theme => theme.id === draft.id) ?? null })
     writeView(atriumId, `special:${draft.id}`)
     onEnterAtrium(atriumId)
   }
   const [status, setStatus] = useState<string | null>(null)
   const saved = draft && themes.find(theme => theme.id === draft.id)
   const changed = !!draft && (isNew || JSON.stringify(saved) !== JSON.stringify(draft))
+  useEffect(() => setSpecialThemeDraft(draft && changed ? { theme: draft, isNew, base: saved ?? null } : null), [draft, isNew, changed, saved])
   const today = new Date()
 
   const open = (theme: SpecialTheme, fresh = false) => {

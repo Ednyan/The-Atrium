@@ -58,21 +58,29 @@ export const specialThemesNow = () => {
   return d ? [...themes.filter(t => t.id !== d.id), d] : themes
 }
 
-// The theme being made in Developers > Special themes, kept for this session:
-// an atrium entered to look around in it shows it (specialThemesNow), and the
-// tool has it back on return. On this device alone, and never saved by
-// itself -- nor does it start a new atrium.
+// The theme being made in Developers > Special themes, kept for this session
+// while it has changes not saved: an atrium entered to look around in it shows
+// it (specialThemesNow), and the tool has it back on return. On this device
+// alone, and never saved by itself -- nor does it start a new atrium.
+//
+// It keeps the saved theme it was made from (`base`), and stands only while
+// that is still the saved one: once the theme has been saved, changed
+// elsewhere (the SQL editor, another device) or removed, the draft is stale
+// and the saved theme shows. (It used to stand for the whole session, so a
+// theme changed in the database kept showing as it had been.)
 const DRAFT_KEY = 'atrium.specialThemes.draft'
 export function specialThemeDraft(): { theme: SpecialTheme; isNew: boolean } | null {
   try {
     const stored = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null')
     const [theme] = asSpecialThemes(stored ? [asRow(stored.theme)] : [])
-    return theme ? { theme, isNew: !!stored.isNew } : null
+    if (!theme) return null
+    if (!stored.isNew && JSON.stringify(themes.find(t => t.id === theme.id) ?? null) !== JSON.stringify(stored.base ?? null)) return null
+    return { theme, isNew: !!stored.isNew }
   } catch {
     return null
   }
 }
-export function setSpecialThemeDraft(draft: { theme: SpecialTheme; isNew: boolean } | null) {
+export function setSpecialThemeDraft(draft: { theme: SpecialTheme; isNew: boolean; base: SpecialTheme | null } | null) {
   try {
     if (draft) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
     else sessionStorage.removeItem(DRAFT_KEY)
