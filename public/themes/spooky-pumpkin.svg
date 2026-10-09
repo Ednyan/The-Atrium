@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- Spooky's room picture (a special theme, add_special_themes.sql): a
+       jack-o'-lantern in its own glow, bats about it. Transparent around, so
+       the room's colour is the night; shown faint, covering the view. -->
+  <defs>
+    <radialGradient id="halo" cx="800" cy="560" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff8a2a" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ff6a12" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ff6a12" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rind" cx="0.42" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#ffb04a"/>
+      <stop offset="0.55" stop-color="#f07a18"/>
+      <stop offset="1" stop-color="#9a3a06"/>
+    </radialGradient>
+    <radialGradient id="rindDark" cx="0.5" cy="0.35" r="0.85">
+      <stop offset="0" stop-color="#e46a12"/>
+      <stop offset="1" stop-color="#7a2c04"/>
+    </radialGradient>
+    <radialGradient id="flame" cx="800" cy="600" r="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff3b0"/>
+      <stop offset="0.5" stop-color="#ffd25a"/>
+      <stop offset="1" stop-color="#ff9a1f"/>
+    </radialGradient>
+    <symbol id="bat" viewBox="-60 -24 120 44">
+      <path d="M0 -2 C -6 -12 -18 -16 -28 -9 C -34 -18 -48 -21 -58 -12 C -48 -10 -42 -2 -44 8 C -35 1 -26 3 -20 11 C -14 4 -6 4 0 10 C 6 4 14 4 20 11 C 26 3 35 1 44 8 C 42 -2 48 -10 58 -12 C 48 -21 34 -18 28 -9 C 18 -16 6 -12 0 -2 Z"/>
+      <path d="M-5 -6 L -7 -15 L -2 -9 L 2 -9 L 7 -15 L 5 -6 Z"/>
+    </symbol>
+  </defs>
+
+  <circle cx="800" cy="560" r="620" fill="url(#halo)"/>
+
+  <!-- The pumpkin: its ribs, outer to inner, then its stem. -->
+  <g>
+    <ellipse cx="555" cy="580" rx="235" ry="250" fill="url(#rindDark)"/>
+    <ellipse cx="1045" cy="580" rx="235" ry="250" fill="url(#rindDark)"/>
+    <ellipse cx="672" cy="572" rx="215" ry="272" fill="url(#rind)"/>
+    <ellipse cx="928" cy="572" rx="215" ry="272" fill="url(#rind)"/>
+    <ellipse cx="800" cy="566" rx="190" ry="286" fill="url(#rind)"/>
+    <g fill="none" stroke="#8a3205" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round">
+      <path d="M700 312 C 640 420 640 720 700 836"/>
+      <path d="M900 312 C 960 420 960 720 900 836"/>
+      <path d="M600 345 C 470 450 480 720 600 812"/>
+      <path d="M1000 345 C 1130 450 1120 720 1000 812"/>
+    </g>
+    <path d="M782 300 C 772 248 760 214 786 182 C 800 166 830 170 832 188 C 818 204 812 246 822 300 Z" fill="#4f5d26"/>
+    <path d="M826 196 C 870 170 912 186 924 214" fill="none" stroke="#4f5d26" stroke-width="9" stroke-linecap="round"/>
+  </g>
+
+  <!-- The carved face, lit from within. -->
+  <g fill="url(#flame)">
+    <path d="M598 512 L 708 512 L 660 414 Z"/>
+    <path d="M892 512 L 1002 512 L 940 414 Z"/>
+    <path d="M768 580 L 832 580 L 800 528 Z"/>
+    <path d="M572 622 Q 690 676 758 678 L 758 716 L 802 716 L 802 680 Q 920 676 1028 622 Q 992 742 872 770 L 872 728 L 828 728 L 828 776 Q 688 778 572 622 Z"/>
+  </g>
+
+  <!-- Bats, about the night. -->
+  <g fill="#120a1c">
+    <use href="#bat" x="230" y="150" width="150" height="55"/>
+    <use href="#bat" x="1210" y="110" width="190" height="70"/>
+    <use href="#bat" x="1080" y="230" width="100" height="37"/>
+    <use href="#bat" x="380" y="280" width="90" height="33"/>
+  </g>
+</svg>

@@ -22,6 +22,7 @@ const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
+import { Check } from './ShapeStyleControls'
 
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
@@ -900,18 +901,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
                 </div>
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${newLobbyIsPublic ? 'border-nier-bg bg-nier-bg' : 'border-nier-border/40 group-hover:border-nier-border/60'}`}>
-                    {newLobbyIsPublic && <span className="text-nier-black text-xs">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={newLobbyIsPublic}
-                    onChange={(e) => setNewLobbyIsPublic(e.target.checked)}
-                    className="hidden"
-                  />
-                  <span className="tracking-wider uppercase text-xs">{isDesktop ? t('browser.localPublicLabel') : t('browser.publicLabel')}</span>
-                </label>
+                <Check checked={newLobbyIsPublic} label={isDesktop ? t('browser.localPublicLabel') : t('browser.publicLabel')} onChange={setNewLobbyIsPublic} />
                 <div className="flex gap-3 pt-2">
                   {/* The cut corner every committing action wears. */}
                   <button

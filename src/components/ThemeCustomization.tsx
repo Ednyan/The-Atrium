@@ -49,7 +49,8 @@ function BackdropPicker({ lobbyId, value, onChange }: { lobbyId: string; value: 
   }, [value])
   const add = () => {
     const url = link.trim()
-    if (!/^https?:/i.test(url)) return
+    // A link, or a picture the app carries (/themes/...).
+    if (!/^(https?:|\/[^/])/i.test(url)) return
     onChange(url)
     setLink('')
   }

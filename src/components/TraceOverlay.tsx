@@ -703,7 +703,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         });
       };
     }, []);
-  const { username, playerZIndex, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, showTraceTypeLabels, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers } = useGamePick('username', 'playerZIndex', 'setCursorState', 'otherUsers', 'removeTrace', 'userId', 'addTrace', 'markTraceChanged', 'markTraceDeleted', 'showTraceTypeLabels', 'hideOtherNameTags', 'hideOtherCursors', 'traceFadeEnabled', 'traceFloat', 'traceMomentum', 'dragBounce', 'links', 'putLink', 'dropLink', 'layers')
+  const { username, playerZIndex, setCursorState, otherUsers, removeTrace, userId, addTrace, markTraceChanged, markTraceDeleted, showTraceTypeLabels, hideOtherNameTags, hideOtherCursors, traceFadeEnabled, traceFloat, traceMomentum, dragBounce, links, putLink, dropLink, layers, confirmDelete } = useGamePick('username', 'playerZIndex', 'setCursorState', 'otherUsers', 'removeTrace', 'userId', 'addTrace', 'markTraceChanged', 'markTraceDeleted', 'showTraceTypeLabels', 'hideOtherNameTags', 'hideOtherCursors', 'traceFadeEnabled', 'traceFloat', 'traceMomentum', 'dragBounce', 'links', 'putLink', 'dropLink', 'layers', 'confirmDelete')
   const [showPlayerMenu, setShowPlayerMenu] = useState(false)
   const [transformMode, setTransformMode] = useState<TransformMode>('none')
   const [isCropMode, setIsCropMode] = useState(false)
@@ -6206,6 +6206,7 @@ return (
             marginLeft: `${-borderWidth / 2}px`,
             marginTop: `${-borderHeight / 2}px`,
             transform: `rotate(${transform.rotation}deg)`,
+            ['--pulse-grow' as any]: 1,
             borderRadius: round,
             ...(emit === 'shape'
               ? { background: 'rgb(var(--light-rgb))', boxShadow: glow }
@@ -6559,6 +6560,10 @@ return (
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
             border: showBorder ? `${line}px solid ${dashed ? 'transparent' : lineColour}` : 'none',
+            // Dashed: the fill stops inside the border, so between the dashes
+            // is what's behind the trace, as in Excalidraw -- dashes the colour
+            // of the fill read as dashes, not as nothing.
+            backgroundClip: dashed ? 'padding-box' : undefined,
             borderRadius: `${radius}px`,
             backgroundColor: showBackground ? (() => {
               const fc = displayTrace.fillColor || '#191919';
@@ -9083,22 +9088,15 @@ return (
                   the three types this applies to. */}
               {has(editingTrace, 'link') && (
                 <div className="space-y-3">
-                  <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-                    <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.isClickable ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                      {(editingTrace.isClickable ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={editingTrace.isClickable ?? false}
-                      onChange={(e) => {
-                        const updated = { ...editingTrace, isClickable: e.target.checked }
-                        setEditingTrace(updated)
-                        updateTraceCustomization(editingTrace.id, { isClickable: e.target.checked })
-                      }}
-                      className="hidden"
-                    />
-                    <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={t('atrium.customize.clickableHint')}>{t('atrium.customize.clickable')}</span>
-                  </label>
+                  <Check
+                    checked={editingTrace.isClickable ?? false}
+                    label={t('atrium.customize.clickable')}
+                    hint={t('atrium.customize.clickableHint')}
+                    onChange={isClickable => {
+                      setEditingTrace({ ...editingTrace, isClickable })
+                      updateTraceCustomization(editingTrace.id, { isClickable })
+                    }}
+                  />
 
                   {/* The destination, shown only once Clickable is on so the
                       field can't sit there filled in and doing nothing. */}
@@ -9747,22 +9745,16 @@ return (
                   <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
                 </div>
 
-                <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-3 group">
-                  <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.illuminate ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                    {(editingTrace.illuminate ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                  </div>
-                  <input
-                    type="checkbox"
+                <div className="mb-3">
+                  <Check
                     checked={editingTrace.illuminate ?? false}
-                    onChange={(e) => {
-                      const updated = { ...editingTrace, illuminate: e.target.checked }
-                      setEditingTrace(updated)
-                      updateTraceCustomization(editingTrace.id, { illuminate: e.target.checked })
+                    label={isPathTrace ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')}
+                    onChange={illuminate => {
+                      setEditingTrace({ ...editingTrace, illuminate })
+                      updateTraceCustomization(editingTrace.id, { illuminate })
                     }}
-                    className="hidden"
                   />
-                  <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{isPathTrace ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')}</span>
-                </label>
+                </div>
 
                 {editingTrace.illuminate && (
                   <div className="space-y-3 ml-6">
@@ -9913,22 +9905,16 @@ return (
 
                     {!isPathTrace && (
                     <div>
-                      <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer mb-2 group">
-                        <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${editingTrace.lightPulse ?? false ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-                          {(editingTrace.lightPulse ?? false) && <span className="text-nier-bg text-[10px]">✓</span>}
-                        </div>
-                        <input
-                          type="checkbox"
+                      <div className="mb-2">
+                        <Check
                           checked={editingTrace.lightPulse ?? false}
-                          onChange={(e) => {
-                            const updated = { ...editingTrace, lightPulse: e.target.checked }
-                            setEditingTrace(updated)
-                            updateTraceCustomization(editingTrace.id, { lightPulse: e.target.checked })
+                          label={t('atrium.customize.pulsing')}
+                          onChange={lightPulse => {
+                            setEditingTrace({ ...editingTrace, lightPulse })
+                            updateTraceCustomization(editingTrace.id, { lightPulse })
                           }}
-                          className="hidden"
                         />
-                        <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.pulsing')}</span>
-                      </label>
+                      </div>
 
                       {editingTrace.lightPulse && (
                         <div className="ml-6">
@@ -10474,19 +10460,13 @@ return (
               {t('atrium.customize.deleteTipPre')} <kbd className="px-2 py-1 bg-nier-black border border-nier-border/60 text-nier-bg/70 text-[9px] tracking-wider">{t('atrium.customize.deleteKeyName')}</kbd> {t('atrium.customize.deleteTipPost')}
             </p>
             
-            <label className="flex items-center gap-3 text-nier-bg/60 text-xs mb-6 cursor-pointer group">
-              <div className="w-4 h-4 border border-nier-border/60 flex items-center justify-center group-hover:border-nier-border">
-                <input
-                  type="checkbox"
-                  className="hidden"
-                  onChange={(e) => {
-                    useGameStore.getState().setConfirmDelete(!e.target.checked)
-                    e.currentTarget.parentElement?.classList.toggle('bg-nier-bg')
-                  }}
-                />
-              </div>
-              <span className="tracking-[0.1em] uppercase text-xs text-nier-strong">{t('atrium.customize.dontAskAgain')}</span>
-            </label>
+            <div className="mb-6">
+              <Check
+                checked={!confirmDelete}
+                label={t('atrium.customize.dontAskAgain')}
+                onChange={dontAsk => useGameStore.getState().setConfirmDelete(!dontAsk)}
+              />
+            </div>
 
             <div className="flex gap-3">
               <button

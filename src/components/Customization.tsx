@@ -197,17 +197,26 @@ export function Switch({ label, hint, on, onChange, testId }: {
         <span className="block text-nier-strong text-xs tracking-[0.1em] uppercase">{label}</span>
         {hint && <span className="block mt-1 text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide">{hint}</span>}
       </span>
-      <span
-        aria-hidden="true"
-        className={`relative shrink-0 mt-0.5 w-9 h-5 border transition-colors duration-200 ${
-          on ? 'bg-nier-bg border-nier-bg' : 'border-nier-border/50 group-hover:border-nier-border/80'
-        }`}
-      >
-        <span
-          className="absolute top-[3px] left-[3px] w-3 h-3 transition-transform duration-200 ease-out"
-          style={{ transform: on ? 'translateX(16px)' : 'none', backgroundColor: on ? 'rgb(var(--c-ground))' : 'rgb(var(--c-fg) / 0.7)' }}
-        />
-      </span>
+      <ToggleTrack on={on} className="mt-0.5" />
     </button>
+  )
+}
+
+// The switch itself: a track, its knob at the far end when on -- and in the
+// middle when it's on for some of what's selected and off for the rest. The
+// one look every on/off in the app has (Switch here, Check in the panels).
+export function ToggleTrack({ on, mixed = false, className = '' }: { on: boolean; mixed?: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`relative shrink-0 w-9 h-5 border transition-colors duration-200 ${className} ${
+        on ? 'bg-nier-bg border-nier-bg' : 'border-nier-border/50 group-hover:border-nier-border/80'
+      }`}
+    >
+      <span
+        className="absolute top-[3px] left-[3px] w-3 h-3 transition-transform duration-200 ease-out"
+        style={{ transform: on ? 'translateX(16px)' : mixed ? 'translateX(8px)' : 'none', backgroundColor: on ? 'rgb(var(--c-ground))' : 'rgb(var(--c-fg) / 0.7)' }}
+      />
+    </span>
   )
 }

@@ -51,8 +51,10 @@ grant select on public.special_themes to anon, authenticated;
 grant insert, update, delete on public.special_themes to authenticated;
 
 -- The first: Spooky, for Halloween. A violet-black room, a pumpkin-orange dot
--- grid, ember particles, and fallen leaves, cracks and stardust in violet on
--- the ground. Kept as it is if it's been changed since (do nothing).
+-- grid, ember particles, fallen leaves, cracks and stardust in violet on the
+-- ground, and a jack-o'-lantern over the whole view, faint, drifting with it
+-- (public/themes/spooky-pumpkin.svg). Kept as it is if it's been changed
+-- since (do nothing).
 insert into public.special_themes (id, name, mode, starts_on, ends_on, theme_settings)
 values (
   '5b0c7a1e-0000-4000-8000-000000000031',
@@ -80,7 +82,14 @@ values (
     "groundScaleRange": 0.45,
     "groundPattern": "random",
     "groundSpacing": 220,
-    "groundRotation": 1
+    "groundRotation": 1,
+    "backgroundImage": "/themes/spooky-pumpkin.svg",
+    "backgroundImageEnabled": true,
+    "backgroundImageFill": true,
+    "backgroundImageOpacity": 0.22,
+    "backgroundImageScale": 1,
+    "backgroundParallaxEnabled": true,
+    "backgroundParallax": 0.5
   }'::jsonb
 )
 on conflict (id) do nothing;

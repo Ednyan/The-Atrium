@@ -200,7 +200,8 @@
 }
 
 /* The individual `scale`, not transform: a light from a shape or border is
-   turned by its transform, which a scale here replaced. */
+   turned by its transform, which a scale here replaced. It doesn't grow at
+   all (--pulse-grow 1): its shape, grown, showed past the trace's edges. */
 @keyframes pulse {
   0%, 100% {
     opacity: calc(var(--pulse-opacity) * 0.6);
@@ -208,7 +209,7 @@
   }
   50% {
     opacity: var(--pulse-opacity);
-    scale: 1.1;
+    scale: var(--pulse-grow, 1.1);
   }
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Lobby, LobbyAccessList, Profile } from '../types/database'
 import { useTranslation } from '../lib/i18n'
+import { Check } from './ShapeStyleControls'
 
 interface LobbyManagementProps {
   lobby: Lobby
@@ -475,22 +476,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 )}
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${
-                  isPublic ? 'border-nier-bg bg-nier-bg/10' : 'border-nier-border/40'
-                }`}>
-                  {isPublic && <span className="text-nier-bg text-xs">✓</span>}
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isPublic}
-                  onChange={(e) => setIsPublic(e.target.checked)}
-                  className="hidden"
-                />
-                <span className="text-nier-bg/80 text-xs tracking-[0.1em] uppercase group-hover:text-nier-bg transition-colors">
-                  {t('atrium.manage.public')}
-                </span>
-              </label>
+              <Check checked={isPublic} label={t('atrium.manage.public')} onChange={setIsPublic} />
 
               <div className="pt-2 border-t border-nier-border/20">
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">

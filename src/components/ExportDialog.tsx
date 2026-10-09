@@ -12,6 +12,7 @@ import { atriumFileBlob } from '../lib/atriumFile'
 import { fileNameOf, saveFile } from '../lib/fileSave'
 import { heldBy } from '../lib/frames'
 import { showToast } from '../lib/toast'
+import { Check } from './ShapeStyleControls'
 
 export type Format = 'atrium' | 'png' | 'svg'
 
@@ -183,10 +184,9 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
                     ))}
                   </div>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer pb-2 text-nier-bg/80 text-[11px] tracking-[0.1em] uppercase">
-                  <input type="checkbox" checked={withBackground} onChange={e => setWithBackground(e.target.checked)} className="accent-nier-bg" />
-                  {t('atrium.export.background')}
-                </label>
+                <div className="pb-2">
+                  <Check checked={withBackground} label={t('atrium.export.background')} onChange={setWithBackground} />
+                </div>
               </div>
               {/* As it will be: checked against the background it may go onto. */}
               <div

@@ -50,8 +50,34 @@ const watch = (fn: () => void) => {
   void loadSpecialThemes()
   return () => { watchers.delete(fn) }
 }
+// The saved ones (the presets list, the Developers list).
 export const useSpecialThemes = () => useSyncExternalStore(watch, () => themes)
-export const specialThemesNow = () => themes
+// The saved ones and the developer's draft, if any: what a theme ref can name.
+export const specialThemesNow = () => {
+  const d = specialThemeDraft()?.theme
+  return d ? [...themes.filter(t => t.id !== d.id), d] : themes
+}
+
+// The theme being made in Developers > Special themes, kept for this session:
+// an atrium entered to look around in it shows it (specialThemesNow), and the
+// tool has it back on return. On this device alone, and never saved by
+// itself -- nor does it start a new atrium.
+const DRAFT_KEY = 'atrium.specialThemes.draft'
+export function specialThemeDraft(): { theme: SpecialTheme; isNew: boolean } | null {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null')
+    const [theme] = asSpecialThemes(stored ? [asRow(stored.theme)] : [])
+    return theme ? { theme, isNew: !!stored.isNew } : null
+  } catch {
+    return null
+  }
+}
+export function setSpecialThemeDraft(draft: { theme: SpecialTheme; isNew: boolean } | null) {
+  try {
+    if (draft) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    else sessionStorage.removeItem(DRAFT_KEY)
+  } catch { /* not kept: the tool starts empty next time */ }
+}
 
 // Asked once a visit (again after a change here); what's kept stands until it
 // answers, and if it can't.

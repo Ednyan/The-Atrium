@@ -1868,7 +1868,9 @@ function AppInner() {
   // It renders over whatever comes next -- the atrium browser.
   const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean } | null>(null)
 
-  const handleLeaveLobby = async () => {
+  // To the atrium browser, or -- back from looking around in a theme being
+  // made -- to Developers.
+  const handleLeaveLobby = async (to = '/browse') => {
     // Clear active_lobby_id in database so player count updates correctly
     if (supabase) {
       const { data: { user } } = await supabase.auth.getUser()
@@ -1886,7 +1888,7 @@ function AppInner() {
     // Clear all lobby-specific data from store to free memory
     clearLobbyData()
     setCurrentLobbyId(null)
-    navigate('/browse')
+    navigate(to)
   }
 
   const handleBackToLanding = () => {
@@ -2059,7 +2061,7 @@ function AppInner() {
   }
 
   if (currentPage === 'developers') {
-    return <Suspense fallback={null}><DevelopersPage onBack={() => navigate('/welcome')} /></Suspense>
+    return <Suspense fallback={null}><DevelopersPage onBack={() => navigate('/welcome')} onEnterAtrium={lobbyId => { void handleJoinLobby(lobbyId) }} /></Suspense>
   }
 
   if (currentPage === 'welcome') {

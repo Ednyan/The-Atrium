@@ -8,7 +8,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
-import { deleteSpecialTheme, saveSpecialTheme, useSpecialThemes, type SpecialTheme } from '../lib/specialThemes'
+import { deleteSpecialTheme, saveSpecialTheme, setSpecialThemeDraft, specialThemeDraft, useSpecialThemes, type SpecialTheme } from '../lib/specialThemes'
+import { writeView } from '../lib/customThemes'
+import { supabase } from '../lib/supabase'
+import { useGameStore } from '../store/gameStore'
 import { inSeason, monthDayOf } from '../lib/season'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { THEME_DEFAULTS, ThemeSections, ThemeTile, themeSwatch } from './ThemeCustomization'
@@ -27,10 +30,11 @@ function Heading({ children }: { children: string }) {
   )
 }
 
-export default function DevelopersPage({ onBack }: { onBack: () => void }) {
+export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () => void; onEnterAtrium?: (lobbyId: string) => void }) {
   const { t } = useTranslation()
   const [allowed, setAllowed] = useState<boolean | null>(null)
-  const [tool, setTool] = useState<ToolId | null>(null)
+  // Back from looking around in a theme being made: straight to it.
+  const [tool, setTool] = useState<ToolId | null>(() => (specialThemeDraft() ? 'special-themes' : null))
   useEffect(() => { void checkPlatformAdmin().then(setAllowed) }, [])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -82,7 +86,7 @@ export default function DevelopersPage({ onBack }: { onBack: () => void }) {
             </div>
           </section>
         )}
-        {allowed && tool === 'special-themes' && <SpecialThemesTool />}
+        {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
       </div>
     </div>
   )
@@ -93,12 +97,31 @@ const asDate = (monthDay: string) => `${new Date().getFullYear()}-${monthDay}`
 const shortDate = (monthDay: string, language: string) =>
   new Date(`${asDate(monthDay)}T12:00:00`).toLocaleDateString(language, { month: 'short', day: 'numeric' })
 
-function SpecialThemesTool() {
+function SpecialThemesTool({ onEnterAtrium }: { onEnterAtrium?: (lobbyId: string) => void }) {
   const { t, language } = useTranslation()
   const themes = useSpecialThemes()
+  const userId = useGameStore(state => state.userId)
   // What's being changed: a copy, written by Save. `isNew` until it has been.
-  const [draft, setDraft] = useState<SpecialTheme | null>(null)
-  const [isNew, setIsNew] = useState(false)
+  // Kept for the session (lib/specialThemes), for the atrium entered to look
+  // around in it, and for coming back.
+  const [draft, setDraft] = useState<SpecialTheme | null>(() => specialThemeDraft()?.theme ?? null)
+  const [isNew, setIsNew] = useState(() => specialThemeDraft()?.isNew ?? false)
+  useEffect(() => setSpecialThemeDraft(draft ? { theme: draft, isNew } : null), [draft, isNew])
+  // Where to look around: one of your own atriums.
+  const [atriums, setAtriums] = useState<{ id: string; name: string }[]>([])
+  const [atriumId, setAtriumId] = useState('')
+  useEffect(() => {
+    if (!supabase || !userId) return
+    void (supabase.from('lobbies') as any).select('id,name').eq('owner_user_id', userId).order('name').then(({ data }: { data: { id: string; name: string }[] | null }) => {
+      setAtriums(data ?? [])
+      setAtriumId(id => id || data?.[0]?.id || '')
+    })
+  }, [userId])
+  const enter = () => {
+    if (!draft || !atriumId || !onEnterAtrium) return
+    writeView(atriumId, `special:${draft.id}`)
+    onEnterAtrium(atriumId)
+  }
   const [status, setStatus] = useState<string | null>(null)
   const saved = draft && themes.find(theme => theme.id === draft.id)
   const changed = !!draft && (isNew || JSON.stringify(saved) !== JSON.stringify(draft))
@@ -220,6 +243,33 @@ function SpecialThemesTool() {
             </div>
             <p className="mt-2 text-nier-bg/55 text-[0.7rem] leading-relaxed">{t('developers.everyYear')}</p>
           </div>
+
+          {/* In it, at full size: one of your atriums, seen in this theme as
+              it is now -- saved or not, for you alone. */}
+          {onEnterAtrium && atriums.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <select
+                  data-special-atrium=""
+                  value={atriumId}
+                  onChange={e => setAtriumId(e.target.value)}
+                  aria-label={t('developers.enterIn')}
+                  className="min-w-0 flex-1 bg-nier-black text-nier-bg border border-nier-border/30 px-2 py-1.5 font-mono text-xs focus:outline-none focus:border-nier-border/60"
+                >
+                  {atriums.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  data-special-enter=""
+                  onClick={enter}
+                  className="shrink-0 px-3 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.12em] uppercase hover:border-nier-bg transition-colors"
+                >
+                  {t('developers.enter')}
+                </button>
+              </div>
+              <p className="text-nier-bg/55 text-[0.7rem] leading-relaxed">{t('developers.enterHint')}</p>
+            </div>
+          )}
 
           <ThemeSections shown={{ ...THEME_DEFAULTS, ...draft.values }} setValue={setValue} lobbyId="developers" />
 

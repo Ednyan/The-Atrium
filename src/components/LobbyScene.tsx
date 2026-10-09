@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSpecialThemes } from '../lib/specialThemes'
+import { specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
@@ -412,7 +412,8 @@ const extractImageUrlFromHtml = (html: string): DroppedUrlPayload | null => {
 
 interface LobbySceneProps {
   lobbyId: string
-  onLeaveLobby: () => void
+  // Where to, if not the atrium browser.
+  onLeaveLobby: (to?: string) => void
   // Raised when this user is removed by an admin. The notice belongs to
   // whatever screen comes after the atrium, not to the atrium being left.
   onKicked: (blacklisted: boolean) => void
@@ -446,12 +447,23 @@ function refreshGround(theme: ThemeSettings | null | undefined) {
 
 // The room's picture (a theme's backgroundImage), under the grid: a page
 // element behind the canvas -- so a GIF moves -- with the canvas made see-
-// through while there is one (the room's colour is the element behind both).
+// through while there is one. The element is the room too: its colour, the
+// picture over it, and over that a veil of the colour as strong as the
+// picture is faint -- the picture at its opacity over the room, in two
+// layers of one element. (Its opacity faded the room's colour with it, and
+// what showed through was the app's own background.)
 // Repeated, and moved with the view by its parallax share of the world's
 // movement (none, staying still, with parallax off) -- or, as `fill`, one
 // picture always covering the view (see drawGrid); placed in drawGrid, which
 // `version` tells to place it again. Switched off, it keeps its picture.
-const backdrop = { el: null as HTMLDivElement | null, url: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0 }
+const backdrop = { el: null as HTMLDivElement | null, url: '', src: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0 }
+function paintBackdrop(el: HTMLDivElement, theme: ThemeSettings | null | undefined) {
+  const room = theme?.backgroundColor ?? '#0a0a0f'
+  const veil = rgbaOf(room, 1 - (theme?.backgroundImageOpacity ?? 1))
+  el.style.backgroundColor = room
+  el.style.backgroundImage = `linear-gradient(${veil}, ${veil})${backdrop.src ? `, url("${backdrop.src}")` : ''}`
+  el.style.backgroundRepeat = `no-repeat, ${backdrop.fill ? 'no-repeat' : 'repeat'}`
+}
 function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Application | null, placeAgain: () => void) {
   const url = theme?.backgroundImageEnabled === false ? '' : theme?.backgroundImage ?? ''
   backdrop.scale = theme?.backgroundImageScale ?? 1
@@ -461,28 +473,36 @@ function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Applicati
   const el = backdrop.el
   if (app) app.renderer.background.alpha = url ? 0 : 1
   if (!el) return
-  el.style.opacity = String(theme?.backgroundImageOpacity ?? 1)
-  el.style.backgroundRepeat = backdrop.fill ? 'no-repeat' : 'repeat'
   if (!url) {
     backdrop.url = ''
+    backdrop.src = ''
     el.style.display = 'none'
     return
   }
-  if (url === backdrop.url) { placeAgain(); return }
+  // The room at once; its picture once loaded.
+  el.style.display = 'block'
+  if (url === backdrop.url) { paintBackdrop(el, theme); placeAgain(); return }
   backdrop.url = url
+  backdrop.src = ''
+  paintBackdrop(el, theme)
   void resolveLocalStreamUrl(url).then(src => {
     const img = new Image()
     img.onload = () => {
       if (backdrop.url !== url) return
       backdrop.w = img.naturalWidth || 1
       backdrop.h = img.naturalHeight || 1
+      backdrop.src = src
       backdrop.version++
-      el.style.backgroundImage = `url("${src}")`
-      el.style.display = 'block'
+      paintBackdrop(el, theme)
       placeAgain()
     }
     img.src = src
   })
+}
+const rgbaOf = (hex: string, alpha: number) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  const n = m ? parseInt(m[1], 16) : 0x0a0a0f
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, alpha))})`
 }
 
 // The drifting particles' part of a theme, for the manager when it's made and
@@ -703,6 +723,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     [viewRef, currentLobby?.themeSettings, customThemes, specialThemes],
   )
   themeSettingsRef.current = viewTheme
+  // Seen in the special theme being made in Developers: said so, with the
+  // way back to it.
+  const previewDraft = useMemo(() => {
+    const draft = specialThemeDraft()?.theme
+    return draft && viewRef === `special:${draft.id}` ? draft : null
+  }, [viewRef])
 
   // Fills in indicatorColorRef (declared above, since the ticker reads it).
   // Lives here rather than beside the ref because the dependency array is
@@ -834,10 +860,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // different kind of action from the way in.
   const [leaving, setLeaving] = useState(false)
 
+  // Where leaving goes: the atrium browser, unless the way out pressed was
+  // Back to Developers.
+  const leaveToRef = useRef<string | undefined>(undefined)
   const leaveWithTransition = useCallback(() => {
     setLeaving(true)
-    setTimeout(onLeaveLobby, 210)
+    setTimeout(() => onLeaveLobby(leaveToRef.current), 210)
   }, [onLeaveLobby])
+  const askToLeave = (to?: string) => {
+    leaveToRef.current = to
+    // Changes not saved: asked whether to save them first.
+    if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
+    else leaveWithTransition()
+  }
 
   // handleKicked is defined further down, before this callback exists. A ref
   // keeps the two in the order the file reads best without a forward use.
@@ -3112,8 +3147,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             x = worldContainer.x * backdrop.parallax
             y = worldContainer.y * backdrop.parallax
           }
-          backdrop.el.style.backgroundSize = `${w}px ${h}px`
-          backdrop.el.style.backgroundPosition = `${x}px ${y}px`
+          // The veil over all of it; the picture as placed.
+          backdrop.el.style.backgroundSize = `100% 100%, ${w}px ${h}px`
+          backdrop.el.style.backgroundPosition = `0 0, ${x}px ${y}px`
         }
         grid.clear()
         const style = gridStyleOf(theme)
@@ -3879,12 +3915,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => {
     if (!appRef.current || !updateGridRef.current || !currentLobby) return
 
-    refreshGround(viewTheme)
-    refreshBackdrop(viewTheme, appRef.current, () => updateGridRef.current?.())
-
-    // Update background color
+    // The room's colour first: PIXI keeps its alpha in the same colour, and a
+    // new colour sets it back to opaque -- after refreshBackdrop had made the
+    // canvas see-through for a picture, which then never showed (until the
+    // picture was switched off and on, the colour unchanged).
     const bgColor = viewTheme?.backgroundColor ? parseInt(viewTheme.backgroundColor.replace('#', ''), 16) : 0x0a0a0f
     appRef.current.renderer.background.color = bgColor
+    refreshGround(viewTheme)
+    refreshBackdrop(viewTheme, appRef.current, () => updateGridRef.current?.())
 
     // The grid reads the theme when it draws (themeSettingsRef).
     updateGridRef.current()
@@ -4709,9 +4747,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           data-leave=""
           onClick={() => {
             if (uiHidden) { setUiHidden(false); return }
-            // Changes not saved: asked whether to save them first.
-            if (useGameStore.getState().hasPendingChanges()) setShowLeaveDialog(true)
-            else leaveWithTransition()
+            askToLeave()
           }}
           className={uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}
           // red-300 is 1.65:1 on paper -- a warning nobody can read. The token
@@ -5003,6 +5039,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           (hidden, view only), how many are selected, and what the tool in
           hand does (QuickBar's ToolHint). */}
       <div data-hud="true" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+            {previewDraft && (
+              <button
+                type="button"
+                data-theme-preview=""
+                onClick={() => askToLeave('/developers')}
+                className="pointer-events-auto px-3 py-1.5 border border-nier-border/50 bg-nier-black/85 text-nier-strong text-[10px] font-mono tracking-[0.14em] uppercase hover:border-nier-bg transition-colors"
+              >
+                ◇ {t('developers.previewing', { name: previewDraft.name })} · {t('developers.backToDevelopers')}
+              </button>
+            )}
             {/* Only the operator sees this, and only when actually hidden.
                 Without it there's no way to tell this atrium is being viewed
                 invisibly, which is exactly the state where acting as though

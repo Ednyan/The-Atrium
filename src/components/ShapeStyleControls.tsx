@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
 import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
-import { Switch } from './Customization'
+import { Switch, ToggleTrack } from './Customization'
 import { dashProps, STROKE_STYLES, type StrokeStyle } from '../lib/strokeStyle'
 
 const PALETTE = [
@@ -64,14 +64,18 @@ export function Check({ checked, onChange, label, hint, mixed = false }: {
 }) {
   const on = checked && !mixed
   return (
-    <label className="flex items-center gap-3 text-nier-bg/80 text-xs cursor-pointer group">
-      <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${on || mixed ? 'border-nier-bg bg-nier-bg/20' : 'border-nier-border/30 group-hover:border-nier-border/60'}`}>
-        {on && <span className="text-nier-bg text-[10px]">✓</span>}
-        {mixed && <span className="text-nier-bg text-[10px]">–</span>}
-      </div>
-      <input type="checkbox" checked={on} onChange={() => onChange(!on)} className="hidden" />
-      <span className="tracking-[0.1em] uppercase text-xs text-nier-strong" title={hint}>{label}</span>
-    </label>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-check={label}
+      title={hint}
+      onClick={() => onChange(!on)}
+      className="group w-full flex items-center justify-between gap-3 text-left"
+    >
+      <span className="min-w-0 tracking-[0.1em] uppercase text-xs text-nier-strong">{label}</span>
+      <ToggleTrack on={on} mixed={mixed} />
+    </button>
   )
 }
 
