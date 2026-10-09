@@ -21,6 +21,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 import PortalLoop from './PortalLoop'
 import { supabase, isDesktop } from '../lib/supabase'
 import { goTo } from '../lib/route'
+import { checkPlatformAdmin } from '../lib/platformAdmin'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
 
@@ -29,11 +30,15 @@ interface WelcomeScreenProps {
   onBackToLanding?: () => void
   // The desktop app's About page (AboutPage).
   onAbout?: () => void
+  // Developers (DevelopersPage), offered to the platform's operator alone.
+  onDevelopers?: () => void
 }
 
-export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDevelopers }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showPinterest, setShowPinterest] = useState(false)
+  const [isDeveloper, setIsDeveloper] = useState(false)
+  useEffect(() => { void checkPlatformAdmin().then(setIsDeveloper) }, [])
   const theme = useLandingTheme()
 
   // Scale the whole menu down rather than let it scroll.
@@ -598,6 +603,19 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout }: Wel
                 className="menu-row"
               >
                 <span className="relative z-10">◇ {t('welcome.about')}</span>
+              </button>
+            )}
+
+            {/* The developer's tools: the platform's operator alone. */}
+            {isDeveloper && onDevelopers && (
+              <button
+                data-welcome-developers=""
+                onClick={onDevelopers}
+                onMouseEnter={() => setIsHovered('developers')}
+                onMouseLeave={() => setIsHovered(null)}
+                className="menu-row"
+              >
+                <span className="relative z-10">◇ {t('welcome.developers')}</span>
               </button>
             )}
 

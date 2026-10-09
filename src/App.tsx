@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import LobbyScene from './components/LobbyScene'
 import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
@@ -17,6 +17,9 @@ import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { readRecentThanksName } from './lib/pendingContribution'
+
+// The developer's tools: few will ever open them, so they load when opened.
+const DevelopersPage = lazy(() => import('./components/DevelopersPage'))
 import { consumeSignInIntent } from './lib/signInIntent'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
@@ -739,6 +742,9 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
     // The desktop app's About: the app itself, not the website.
     case '/about':
       return { page: 'about' }
+    // The developer's tools (DevelopersPage): the platform's operator alone.
+    case '/developers':
+      return { page: 'developers' }
     // The landing page, opened at one of its sections. Reached from the
     // atrium's "local files not supported" panel, in a new tab, so somebody
     // mid-canvas is shown the desktop app without their own page moving.
@@ -2052,8 +2058,12 @@ function AppInner() {
     return <AboutPage onBack={() => navigate('/welcome')} />
   }
 
+  if (currentPage === 'developers') {
+    return <Suspense fallback={null}><DevelopersPage onBack={() => navigate('/welcome')} /></Suspense>
+  }
+
   if (currentPage === 'welcome') {
-    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} />
+    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} onDevelopers={() => navigate('/developers')} />
   }
 
   

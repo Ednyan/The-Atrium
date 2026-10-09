@@ -6,6 +6,12 @@ import { t } from '../lib/i18n'
 import { recordTraceCreated } from '../lib/supportAppeal'
 import type { TraceLink } from '../lib/traceLinks'
 
+// How often auto-save may write, in minutes: on the web no more than every
+// ten, as each save is a round of database writes; on the desktop, where it's
+// the vault on disk, every two. An hour at most on both.
+export const AUTO_SAVE_MINUTES = { min: isDesktop ? 2 : 10, max: 60 }
+const clampAutoSave = (minutes: number) => Math.min(AUTO_SAVE_MINUTES.max, Math.max(AUTO_SAVE_MINUTES.min, Math.round(minutes)))
+
 export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
 
 // 10 MB lobby size limit (in bytes)
@@ -56,8 +62,8 @@ interface GameState {
   spatialSound: boolean
   // Changes saved as they're made (lib/traceSave startAutosave); off, Save is pressed.
   autoSave: boolean
-  // How long after a change auto-save writes it, in seconds.
-  autoSaveSeconds: number
+  // How long after a change auto-save writes it, in minutes (AUTO_SAVE_MINUTES).
+  autoSaveMinutes: number
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
@@ -96,7 +102,7 @@ interface GameState {
   setQuickBarOrder: (order: string[] | null) => void
   setSpatialSound: (on: boolean) => void
   setAutoSave: (on: boolean) => void
-  setAutoSaveSeconds: (seconds: number) => void
+  setAutoSaveMinutes: (minutes: number) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
@@ -212,9 +218,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
   spatialSound: localStorage.getItem('spatialSound') === 'true',
   autoSave: localStorage.getItem('autoSave') === 'true',
-  autoSaveSeconds: (() => {
-    const stored = Number(localStorage.getItem('autoSaveSeconds'))
-    return Number.isFinite(stored) && stored >= 1 ? Math.min(300, stored) : 2
+  autoSaveMinutes: (() => {
+    const stored = Number(localStorage.getItem('autoSaveMinutes'))
+    return stored ? clampAutoSave(stored) : AUTO_SAVE_MINUTES.min
   })(),
   quickBarOrder: (() => {
     try {
@@ -284,9 +290,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     localStorage.setItem('dontAskDeleteTrace', String(!on))
     set({ confirmDelete: on })
   },
-  setAutoSaveSeconds: (seconds) => {
-    localStorage.setItem('autoSaveSeconds', String(seconds))
-    set({ autoSaveSeconds: seconds })
+  setAutoSaveMinutes: (minutes) => {
+    localStorage.setItem('autoSaveMinutes', String(clampAutoSave(minutes)))
+    set({ autoSaveMinutes: clampAutoSave(minutes) })
   },
   setAutoSave: (on) => {
     localStorage.setItem('autoSave', String(on))

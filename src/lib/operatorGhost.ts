@@ -1,4 +1,5 @@
 import { supabase, isDesktop } from './supabase'
+import { checkPlatformAdmin } from './platformAdmin'
 
 // Answers one question: is this user entering this atrium on operator
 // privilege rather than membership? That is the single condition for entering
@@ -27,8 +28,7 @@ const cache = new Map<string, { at: number; value: Promise<boolean> }>()
 
 async function resolve(lobbyId: string): Promise<boolean> {
   try {
-    const { data: isAdmin } = await (supabase as any).rpc('is_platform_admin')
-    if (!isAdmin) return false
+    if (!(await checkPlatformAdmin())) return false
 
     const { data: hasMemberAccess } = await (supabase as any).rpc('user_has_member_access', {
       p_lobby_id: lobbyId,

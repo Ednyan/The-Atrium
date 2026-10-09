@@ -12,6 +12,7 @@ import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { startingAtriumTheme } from '../lib/atriumThemePresets'
+import { seasonalThemeNow } from '../lib/specialThemes'
 import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
 import { useTranslation } from '../lib/i18n'
@@ -20,6 +21,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
+import { checkPlatformAdmin } from '../lib/platformAdmin'
 
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
@@ -232,15 +234,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       // while this function decides which rows are *requested*. Widening the
       // lobbies SELECT policy for the operator therefore changed nothing
       // visible until this query stopped filtering on is_public itself.
-      let isPlatformAdmin = false
-      if (!isDesktop) {
-        try {
-          const { data } = await (supabase as any).rpc('is_platform_admin')
-          isPlatformAdmin = !!data
-        } catch {
-          // Function not deployed: browse as a normal user.
-        }
-      }
+      const isPlatformAdmin = await checkPlatformAdmin()
       setIsOperator(isPlatformAdmin)
 
       let publicLobbies: any[] = []
@@ -444,10 +438,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         }
       }
 
-      // A bright room for somebody working in a bright interface, and a dark
-      // one otherwise. Only the starting point -- the theme is editable from
-      // inside the atrium, and this decides nothing that cannot be changed.
-      const startingTheme = startingAtriumTheme(resolveThemeNow() === 'light')
+      // The special theme in season (Spooky around Halloween), if one is;
+      // otherwise a bright room for somebody working in a bright interface,
+      // and a dark one otherwise. Only the starting point -- the theme is
+      // editable from inside the atrium, and this decides nothing that cannot
+      // be changed.
+      const startingTheme = (await seasonalThemeNow())?.values ?? startingAtriumTheme(resolveThemeNow() === 'light')
 
       const { data, error } = await (supabase!
         .from('lobbies') as any)

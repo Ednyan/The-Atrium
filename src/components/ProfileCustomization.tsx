@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
-import { useGamePick } from '../store/gameStore'
+import { AUTO_SAVE_MINUTES, useGamePick } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 import { Slider } from './ShapeStyleControls'
 import { CustomizationPanel, Section, Switch } from './Customization'
@@ -47,7 +47,7 @@ const PRESET_COLORS = [
 
 export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustomizationProps) {
   const { t } = useTranslation()
-  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete, spatialSound, setSpatialSound, autoSave, setAutoSave, autoSaveSeconds, setAutoSaveSeconds } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete', 'spatialSound', 'setSpatialSound', 'autoSave', 'setAutoSave', 'autoSaveSeconds', 'setAutoSaveSeconds')
+  const { userId, username, setUsername, playerColor, setPlayerColor, showTraceIndicators, setShowTraceIndicators, showTraceTypeLabels, setShowTraceTypeLabels, hideOwnNameTag, setHideOwnNameTag, hideOtherNameTags, setHideOtherNameTags, hideOtherCursors, setHideOtherCursors, traceFadeEnabled, setTraceFadeEnabled, traceFloat, setTraceFloat, traceMomentum, setTraceMomentum, dragBounce, setDragBounce, autoOpenCustomization, setAutoOpenCustomization, confirmDelete, setConfirmDelete, spatialSound, setSpatialSound, autoSave, setAutoSave, autoSaveMinutes, setAutoSaveMinutes } = useGamePick('userId', 'username', 'setUsername', 'playerColor', 'setPlayerColor', 'showTraceIndicators', 'setShowTraceIndicators', 'showTraceTypeLabels', 'setShowTraceTypeLabels', 'hideOwnNameTag', 'setHideOwnNameTag', 'hideOtherNameTags', 'setHideOtherNameTags', 'hideOtherCursors', 'setHideOtherCursors', 'traceFadeEnabled', 'setTraceFadeEnabled', 'traceFloat', 'setTraceFloat', 'traceMomentum', 'setTraceMomentum', 'dragBounce', 'setDragBounce', 'autoOpenCustomization', 'setAutoOpenCustomization', 'confirmDelete', 'setConfirmDelete', 'spatialSound', 'setSpatialSound', 'autoSave', 'setAutoSave', 'autoSaveMinutes', 'setAutoSaveMinutes')
   const [displayName, setDisplayName] = useState(username)
   const [selectedColor, setSelectedColor] = useState(playerColor)
   const [canChangeName, setCanChangeName] = useState(isDesktop) // Desktop: always allowed
@@ -289,10 +289,10 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <Switch testId="auto-save" label={t('atrium.profile.autoSave')} hint={t('atrium.profile.autoSaveHint')} on={autoSave} onChange={setAutoSave} />
         {autoSave && (
           <Slider
-            label={t('atrium.profile.autoSaveEvery', { value: autoSaveSeconds })}
+            label={t('atrium.profile.autoSaveEvery', { value: autoSaveMinutes })}
             hint={t('atrium.profile.autoSaveEveryHint')}
-            min={1} max={120} step={1} value={autoSaveSeconds}
-            onChange={setAutoSaveSeconds}
+            min={AUTO_SAVE_MINUTES.min} max={AUTO_SAVE_MINUTES.max} step={1} value={autoSaveMinutes}
+            onChange={setAutoSaveMinutes}
           />
         )}
         <Switch testId="confirm-delete" label={t('atrium.profile.confirmDelete')} hint={t('atrium.profile.confirmDeleteHint')} on={confirmDelete} onChange={setConfirmDelete} />

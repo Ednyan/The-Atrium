@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { useLandingTheme } from '../lib/useLandingTheme'
-import { supabase, isDesktop } from '../lib/supabase'
+import { checkPlatformAdmin } from '../lib/platformAdmin'
 import NameApprovalPanel from './NameApprovalPanel'
 import ThemeToggle from './ThemeToggle'
 import CurrencyToggle from './CurrencyToggle'
@@ -382,14 +382,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [seeded, setSeeded] = useState(getSeededContributors)
   const refreshSeeded = () => setSeeded(getSeededContributors())
   useEffect(() => {
-    if (isDesktop || !supabase) return
     let cancelled = false
-    ;(supabase as any)
-      .rpc('is_platform_admin')
-      .then(({ data: allowed }: { data: boolean | null }) => {
-        if (!cancelled) setIsOperator(allowed === true)
-      })
-      .catch(() => { /* signed out, or not deployed: stay hidden */ })
+    void checkPlatformAdmin().then(allowed => { if (!cancelled) setIsOperator(allowed) })
     return () => { cancelled = true }
   }, [])
 

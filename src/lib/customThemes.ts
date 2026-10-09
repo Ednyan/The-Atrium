@@ -1,4 +1,5 @@
 // A person's own atrium themes, and which theme each person sees an atrium in.
+// (The developer's special themes, shown with the presets, are lib/specialThemes.)
 //
 // Every theme is light or dark: a preset by its floor (Soft Sepia and
 // Markerboard light, Abyss dark), one of a person's own as they mark it. What
@@ -17,6 +18,7 @@ import { useSyncExternalStore } from 'react'
 import { supabase, isDesktop } from './supabase'
 import { ATRIUM_THEMES } from './atriumThemePresets'
 import { TRACE_PRESETS, defaultPresetFor } from './tracePresets'
+import { specialThemesNow } from './specialThemes'
 import type { ThemeSettings } from '../types/database'
 
 export type ThemeMode = 'light' | 'dark'
@@ -42,8 +44,9 @@ export function modeOf(values: ThemeSettings | null | undefined): ThemeMode {
   return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.5 ? 'light' : 'dark'
 }
 
-// What someone sees an atrium in: its own theme, a preset, or one of theirs.
-export type ThemeRef = 'atrium' | `preset:${string}` | `custom:${string}`
+// What someone sees an atrium in: its own theme, a preset, a special theme, or
+// one of theirs.
+export type ThemeRef = 'atrium' | `preset:${string}` | `special:${string}` | `custom:${string}`
 
 export const PRESETS = TRACE_PRESETS.map((preset, i) => ({
   ref: `preset:${preset.id}` as ThemeRef,
@@ -53,16 +56,21 @@ export const PRESETS = TRACE_PRESETS.map((preset, i) => ({
 }))
 
 // A ref's theme. Null when it names nothing -- one of a person's own themes,
-// deleted.
+// or a special theme, deleted.
 export function themeOf(ref: ThemeRef, atrium: ThemeSettings | null | undefined, customs: CustomTheme[]): ThemeSettings | null | undefined {
   if (ref === 'atrium') return atrium
   if (ref.startsWith('preset:')) return PRESETS.find(p => p.ref === ref)?.values ?? null
+  if (ref.startsWith('special:')) return specialThemesNow().find(s => `special:${s.id}` === ref)?.values ?? null
   return customs.find(c => `custom:${c.id}` === ref)?.values ?? null
 }
 
+// Marked light or dark, a person's own or a special theme; any other by its floor.
+const markedMode = (ref: string, customs: CustomTheme[]) =>
+  (ref.startsWith('custom:') ? customs.find(c => `custom:${c.id}` === ref)
+    : ref.startsWith('special:') ? specialThemesNow().find(s => `special:${s.id}` === ref) : null)?.mode
+
 export function themeModeOf(ref: ThemeRef, atrium: ThemeSettings | null | undefined, customs: CustomTheme[]): ThemeMode {
-  const custom = ref.startsWith('custom:') ? customs.find(c => `custom:${c.id}` === ref) : null
-  return custom ? custom.mode : modeOf(themeOf(ref, atrium, customs))
+  return markedMode(ref, customs) ?? modeOf(themeOf(ref, atrium, customs))
 }
 
 // ---- On this device: what each atrium is seen in; the last theme of each kind ----
@@ -71,7 +79,7 @@ const viewKey = (lobbyId: string) => `atrium.view.${lobbyId}`
 const lastKey = (mode: ThemeMode) => `atrium.lastTheme.${mode}`
 const read = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
 const write = (key: string, value: string) => { try { localStorage.setItem(key, value) } catch { /* for this visit only */ } }
-const isRef = (value: string | null): value is ThemeRef => !!value && (value === 'atrium' || /^(preset|custom):./.test(value))
+const isRef = (value: string | null): value is ThemeRef => !!value && (value === 'atrium' || /^(preset|special|custom):./.test(value))
 
 // Null: the atrium's own theme, as nobody has chosen otherwise here.
 export function readView(lobbyId: string, mode: ThemeMode): ThemeRef | null {
@@ -82,12 +90,12 @@ export function readView(lobbyId: string, mode: ThemeMode): ThemeRef | null {
 }
 export const writeView = (lobbyId: string, ref: ThemeRef) => write(viewKey(lobbyId), ref)
 
-// One of your own only while it's still there and still of that kind: marked
-// the other way since, it's the other kind's.
+// One of your own, or a special theme, only while it's still there and still
+// of that kind: marked the other way since, it's the other kind's.
 export function lastThemeOf(mode: ThemeMode): ThemeRef {
   const stored = read(lastKey(mode))
-  const custom = stored?.startsWith('custom:') ? themes.find(c => `custom:${c.id}` === stored) : null
-  const fits = isRef(stored) && stored !== 'atrium' && (!stored.startsWith('custom:') || custom?.mode === mode)
+  const marked = isRef(stored) && /^(custom|special):/.test(stored)
+  const fits = isRef(stored) && stored !== 'atrium' && (!marked || markedMode(stored, themes) === mode)
   return fits ? stored : `preset:${defaultPresetFor(mode === 'light').id}`
 }
 export const rememberLast = (mode: ThemeMode, ref: ThemeRef) => { if (ref !== 'atrium') write(lastKey(mode), ref) }

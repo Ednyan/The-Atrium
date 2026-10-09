@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSpecialThemes } from '../lib/specialThemes'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
@@ -681,6 +682,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // remembered for this atrium on this device.
   const { resolved: uiTheme, setTheme: setUiTheme } = useLandingTheme()
   const customThemes = useCustomThemes()
+  const specialThemes = useSpecialThemes()
   const [viewRef, setViewRef] = useState<ThemeRef>(() => readView(lobbyId, uiTheme) ?? 'atrium')
   const seeIn = (ref: ThemeRef) => {
     setViewRef(ref)
@@ -698,7 +700,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const followSwitch = () => seeIn(lastThemeOf(uiTheme === 'light' ? 'dark' : 'light'))
   const viewTheme = useMemo(
     () => themeOf(viewRef, currentLobby?.themeSettings, customThemes) ?? currentLobby?.themeSettings,
-    [viewRef, currentLobby?.themeSettings, customThemes],
+    [viewRef, currentLobby?.themeSettings, customThemes, specialThemes],
   )
   themeSettingsRef.current = viewTheme
 
@@ -1794,8 +1796,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { canEditRef.current = canEdit }, [canEdit])
 
   // Auto-save, while the preference is on (lib/traceSave startAutosave).
-  const { autoSave, autoSaveSeconds } = useGamePick('autoSave', 'autoSaveSeconds')
-  useEffect(() => (autoSave && canEdit ? startAutosave(autoSaveSeconds * 1000) : undefined), [autoSave, autoSaveSeconds, canEdit])
+  const { autoSave, autoSaveMinutes } = useGamePick('autoSave', 'autoSaveMinutes')
+  useEffect(() => (autoSave && canEdit ? startAutosave(autoSaveMinutes * 60_000) : undefined), [autoSave, autoSaveMinutes, canEdit])
 
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
