@@ -133,6 +133,35 @@ export function isGoogleEmbed(url: string): boolean {
 // The page frames only these hosts, and names them itself: the two lists are
 // checked against each other in tests/embedUrl.test.ts.
 export const EMBED_RELAY = 'https://digitalatrium.org/embed/'
+
+// A player whose volume the page can set by message (lib/spatialSound): a
+// YouTube player with its API on, or Vimeo's or SoundCloud's, whose APIs
+// always are. Null for anything else, a player behind the relay included --
+// the relay is between.
+export type EmbedPlayer = 'youtube' | 'vimeo' | 'soundcloud'
+export function embedPlayerOf(src: string): EmbedPlayer | null {
+  try {
+    const url = new URL(src)
+    if (/^www\.youtube(-nocookie)?\.com$/.test(url.hostname) && url.pathname.startsWith('/embed/')) return url.searchParams.get('enablejsapi') === '1' ? 'youtube' : null
+    if (url.hostname === 'w.soundcloud.com' && url.pathname.startsWith('/player')) return 'soundcloud'
+    return url.hostname === 'player.vimeo.com' ? 'vimeo' : null
+  } catch {
+    return null
+  }
+}
+
+// A YouTube player with its API on, so its volume can be set by message; any
+// other address as it is.
+export function withPlayerApi(src: string): string {
+  try {
+    const url = new URL(src)
+    if (!/^www\.youtube(-nocookie)?\.com$/.test(url.hostname) || !url.pathname.startsWith('/embed/')) return src
+    url.searchParams.set('enablejsapi', '1')
+    return url.href
+  } catch {
+    return src
+  }
+}
 export const RELAYED_HOSTS = ['www.youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com']
 
 export function throughRelay(embedUrl: string): string {

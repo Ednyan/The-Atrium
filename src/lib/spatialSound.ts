@@ -9,8 +9,14 @@
 // only a source known to allow it is asked (corsReady): the app's own files,
 // a vault file through the asset protocol, Supabase's storage, blob: and
 // data:. Anything else is still quieter with distance, from the middle.
+//
+// An embedded player -- YouTube, Vimeo, SoundCloud -- plays in a page of its
+// own, whose sound the page can't reach at all. Its volume it can set, by
+// message (embedPlayerOf), so it's quieter with distance too; never from a
+// side.
 
 import { useEffect } from 'react'
+import { embedPlayerOf } from './embedUrl.ts'
 
 export function corsReady(src: string | undefined | null): boolean {
   if (!src) return false
@@ -52,6 +58,23 @@ export function heardAt(cx: number, cy: number, width: number, height: number): 
 }
 
 const MEDIA = 'video[id^="video-"], audio[id^="audio-"]'
+const PLAYERS = '[data-trace-id] iframe'
+
+// An embedded player's volume, by message: when it changes, and once a second
+// besides, as a player may not have been listening yet when it was first told.
+const told = new WeakMap<HTMLIFrameElement, { volume: number; at: number }>()
+function tellVolume(frame: HTMLIFrameElement, volume: number, now: number) {
+  const player = embedPlayerOf(frame.src)
+  if (!player) return
+  const last = told.get(frame)
+  if (last && Math.abs(last.volume - volume) < 0.01 && now - last.at < 1000) return
+  told.set(frame, { volume, at: now })
+  // Each player its own words: YouTube's and SoundCloud's volume 0-100, Vimeo's 0-1.
+  const message = player === 'youtube' ? { event: 'command', func: 'setVolume', args: [Math.round(volume * 100)] }
+    : player === 'soundcloud' ? { method: 'setVolume', value: Math.round(volume * 100) }
+    : { method: 'setVolume', value: volume }
+  frame.contentWindow?.postMessage(JSON.stringify(message), new URL(frame.src).origin)
+}
 
 // While on: every frame, each playing trace's sound set from where it is now.
 // Turned off, all of them back as they were.
@@ -62,6 +85,9 @@ export function useSpatialSound(on: boolean) {
         el.volume = 1
         const pan = panners.get(el)
         if (pan) pan.pan.value = 0
+      }
+      for (const frame of document.querySelectorAll<HTMLIFrameElement>(PLAYERS)) {
+        if (told.has(frame)) { told.delete(frame); tellVolume(frame, 1, 0) }
       }
     }
     if (!on) { reset(); return }
@@ -79,6 +105,12 @@ export function useSpatialSound(on: boolean) {
           if (context?.state === 'suspended') void context.resume()
           panner.pan.setTargetAtTime(pan, panner.context.currentTime, 0.05)
         }
+      }
+      const now = performance.now()
+      for (const frame of document.querySelectorAll<HTMLIFrameElement>(PLAYERS)) {
+        const trace = frame.closest('[data-trace-id]')!
+        const r = trace.getBoundingClientRect()
+        tellVolume(frame, heardAt(r.left + r.width / 2, r.top + r.height / 2, innerWidth, innerHeight).volume, now)
       }
     })
     return () => { cancelAnimationFrame(frame); reset() }

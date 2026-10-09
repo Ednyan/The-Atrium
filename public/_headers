@@ -82,6 +82,12 @@
 # ahead so the two can slide past each other (src/lib/codeHistory.ts). Framed
 # by this site alone, then, with a policy of its own -- a static page that runs
 # its own script and draws on a canvas, and needs nothing else.
+# The catalog for AI agents (public/.well-known/ai-catalog.json): JSON, and
+# readable from any origin, as the Agentic Resource Discovery spec asks.
+/.well-known/ai-catalog.json
+  Content-Type: application/json
+  Access-Control-Allow-Origin: *
+
 /code-history/*
   ! X-Frame-Options
   ! Content-Security-Policy

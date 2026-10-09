@@ -1,0 +1,20 @@
+# The Digital Atrium
+
+> A collaborative infinite canvas for collecting and arranging ideas: images, videos, sounds, embeds, text, drawings, shapes, spreadsheets and PDFs placed as "traces" in shared spaces called atriums, edited together in real time. Free, on the web and as a desktop app for Windows, macOS and Linux that keeps everything in a local folder.
+
+An atrium is a space people enter together: each sees the others' cursors, and anything placed in it is a trace that can be moved, styled, grouped, framed, lit and connected to other traces. Atriums can be public or private, themed, and exported as an `.atrium` file, a PNG or an SVG. The desktop app works offline, with no account, and can upload an atrium to the web.
+
+## Pages
+
+- [The Digital Atrium](https://digitalatrium.org/): what it is, what it does, and the way in
+- [Code history](https://digitalatrium.org/code-history/): how the code grew, file by file, day by day, as a graph you can pan, zoom and play through
+- [Contributors](https://digitalatrium.org/contributors): the people who fund it
+
+## Desktop app
+
+- [Releases](https://github.com/Ednyan/The-Atrium/releases): installers for Windows, macOS and Linux, with notes for each version
+
+## Legal
+
+- [Privacy Policy](https://digitalatrium.org/privacy): what is stored, why, who it is shared with, and how to have it deleted
+- [Terms of Service](https://digitalatrium.org/terms)

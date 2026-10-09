@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 
 import { readFileSync } from 'node:fs'
 
-import { defaultEmbedBox, EMBED_RELAY, embedSourcesIn, linksIn, RELAYED_HOSTS, throughRelay, toEmbedUrl, youtubeId } from '../src/lib/embedUrl.ts'
+import { defaultEmbedBox, EMBED_RELAY, embedPlayerOf, embedSourcesIn, linksIn, RELAYED_HOSTS, throughRelay, toEmbedUrl, withPlayerApi, youtubeId } from '../src/lib/embedUrl.ts'
 
 test('every shape of YouTube link becomes the one embed URL', () => {
   const embed = 'https://www.youtube.com/embed/abc123'
@@ -77,4 +77,21 @@ test('a YouTube video is known by its id from any of its addresses, the player i
     assert.equal(youtubeId(link), 'abc123', link)
   }
   assert.equal(youtubeId('https://example.com/watch.png'), null)
+})
+
+test('a YouTube player gets its API on, so spatial sound can set its volume', () => {
+  assert.equal(withPlayerApi('https://www.youtube.com/embed/abc123'), 'https://www.youtube.com/embed/abc123?enablejsapi=1')
+  assert.equal(withPlayerApi('https://www.youtube.com/embed/abc123?start=30'), 'https://www.youtube.com/embed/abc123?start=30&enablejsapi=1')
+  assert.equal(withPlayerApi('https://player.vimeo.com/video/42'), 'https://player.vimeo.com/video/42')
+  assert.equal(withPlayerApi('https://docs.google.com/document/d/x/preview'), 'https://docs.google.com/document/d/x/preview')
+})
+
+test('players whose volume can be set by message, and only those', () => {
+  assert.equal(embedPlayerOf('https://www.youtube.com/embed/abc123?enablejsapi=1'), 'youtube')
+  assert.equal(embedPlayerOf('https://www.youtube-nocookie.com/embed/abc123?enablejsapi=1'), 'youtube')
+  assert.equal(embedPlayerOf('https://www.youtube.com/embed/abc123'), null)
+  assert.equal(embedPlayerOf('https://player.vimeo.com/video/42'), 'vimeo')
+  assert.equal(embedPlayerOf(toEmbedUrl('https://soundcloud.com/artist/track')), 'soundcloud')
+  assert.equal(embedPlayerOf(throughRelay('https://www.youtube.com/embed/abc123?enablejsapi=1')), null)
+  assert.equal(embedPlayerOf('not a url'), null)
 })

@@ -1,0 +1,17 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "The Digital Atrium",
+    "identifier": "digitalatrium.org"
+  },
+  "entries": [
+    {
+      "identifier": "urn:ai:digitalatrium.org:knowledge:llms-txt",
+      "displayName": "The Digital Atrium (llms.txt)",
+      "type": "text/plain",
+      "mediaType": "text/plain",
+      "url": "https://digitalatrium.org/llms.txt",
+      "description": "What The Digital Atrium is and does, and links to its pages, desktop releases, privacy policy and terms, for AI agents."
+    }
+  ]
+}

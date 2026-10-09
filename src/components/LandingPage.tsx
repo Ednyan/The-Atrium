@@ -886,6 +886,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </div>
       </div>
 
+      {/* The page's content, its main landmark (screen readers jump to it):
+          everything between the top bar and the footer. */}
+      <main>
       {/* SECTION 1: The Digital Atrium -- the title. The first screen, set from
           the top of it rather than centred, with room to breathe above the
           name, and closed at the foot by the code history's strip. */}
@@ -1504,6 +1507,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           </div>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       {/* The footer, in the page's own language rather than a grey line of
