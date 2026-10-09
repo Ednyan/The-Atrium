@@ -86,7 +86,7 @@ values (
     "backgroundImage": "/themes/spooky-pumpkin.svg",
     "backgroundImageEnabled": true,
     "backgroundImageFill": true,
-    "backgroundImageOpacity": 0.22,
+    "backgroundImageOpacity": 0.12,
     "backgroundImageScale": 1,
     "backgroundParallaxEnabled": true,
     "backgroundParallax": 0.5

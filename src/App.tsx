@@ -1,13 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from 'react'
-import LobbyScene from './components/LobbyScene'
-import WelcomeScreen from './components/WelcomeScreen'
 import AuthScreen from './components/AuthScreen'
 import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
 import { useTranslation } from './lib/i18n'
 import DesktopIntro from './components/DesktopIntro'
-import ContributorsAtrium from './components/ContributorsAtrium'
 import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
 import { showToast } from './lib/toast'
@@ -20,10 +17,20 @@ import { readRecentThanksName } from './lib/pendingContribution'
 
 // The developer's tools: few will ever open them, so they load when opened.
 const DevelopersPage = lazy(() => import('./components/DevelopersPage'))
+// The atrium -- pixi, the traces, export, brushes: most of the app's code --
+// in a chunk of its own, so the landing page doesn't wait on it. Fetched
+// ahead once past the landing page (see the effect by `route`), so opening
+// an atrium doesn't either.
+const loadLobbyScene = () => import('./components/LobbyScene')
+const LobbyScene = lazy(loadLobbyScene)
+// The pages past the landing page, the same way: none is the landing page's.
+const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'))
+const LobbyBrowser = lazy(() => import('./components/LobbyBrowser').then(m => ({ default: m.LobbyBrowser })))
+const ContributorsAtrium = lazy(() => import('./components/ContributorsAtrium'))
+const loadPagesAhead = () => Promise.all([loadLobbyScene(), import('./components/WelcomeScreen'), import('./components/LobbyBrowser')])
 import { consumeSignInIntent } from './lib/signInIntent'
 import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
-import { LobbyBrowser } from './components/LobbyBrowser'
 import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
 import { useTraces } from './hooks/useTraces'
@@ -928,6 +935,11 @@ function AppInner() {
 
   // URL-based routing state
   const [route, setRoute] = useState(parseRoute)
+  useEffect(() => {
+    if (route.page === 'landing') return
+    const timer = window.setTimeout(() => { void loadPagesAhead() }, 800)
+    return () => window.clearTimeout(timer)
+  }, [route.page])
   
   // Store the setRoute callback for the navigate function
   useEffect(() => {
@@ -1066,7 +1078,13 @@ function AppInner() {
   // of showing up as a stall later. canplaythrough (not just canplay/
   // loadeddata) means the browser estimates it can play to the end without
   // having to pause and rebuffer.
+  //
+  // Not on the landing page, though: nobody enters an atrium from there, and
+  // its own first paint shouldn't share the network with half a megabyte of
+  // video. From the first page past it.
+  const pastLanding = route.page !== 'landing'
   useEffect(() => {
+    if (!pastLanding) return
     let cancelled = false
     const video = document.createElement('video')
     video.muted = true
@@ -1082,7 +1100,7 @@ function AppInner() {
       video.removeEventListener('canplaythrough', markReady)
       video.removeEventListener('error', markReady)
     }
-  }, [])
+  }, [pastLanding])
 
   // Pick up a Pinterest OAuth redirect (?code=...&state=...) once the user's
   // session is confirmed -- the exchange needs their Supabase JWT to know
@@ -1973,12 +1991,14 @@ function AppInner() {
   if (currentPage === 'contributed' || currentPage === 'contributors') {
     return (
       <>
-        <ContributorsAtrium
-          thanks={currentPage === 'contributed'}
-          thanksName={thanksName}
-          onClose={() => navigate(contributorsReturnPath())}
-          onContribute={() => setShowContributeFromContributors(true)}
-        />
+        <Suspense fallback={null}>
+          <ContributorsAtrium
+            thanks={currentPage === 'contributed'}
+            thanksName={thanksName}
+            onClose={() => navigate(contributorsReturnPath())}
+            onContribute={() => setShowContributeFromContributors(true)}
+          />
+        </Suspense>
         {showContributeFromContributors && (
           <ContributePanel onClose={() => setShowContributeFromContributors(false)} />
         )}
@@ -2065,17 +2085,19 @@ function AppInner() {
   }
 
   if (currentPage === 'welcome') {
-    return <WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} onDevelopers={() => navigate('/developers')} />
+    return <Suspense fallback={null}><WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} onDevelopers={() => navigate('/developers')} /></Suspense>
   }
 
   
   if (currentPage === 'browse') {
     return (
       <>
-        <LobbyBrowser
-          onJoinLobby={handleJoinLobby}
-          onClose={() => navigate('/welcome')}
-        />
+        <Suspense fallback={null}>
+          <LobbyBrowser
+            onJoinLobby={handleJoinLobby}
+            onClose={() => navigate('/welcome')}
+          />
+        </Suspense>
         <KickedNotice notice={kickedNotice} onDismiss={() => setKickedNotice(null)} />
       </>
     )
@@ -2188,7 +2210,9 @@ function AppInner() {
       // cinematic -- opening an atrium any other way has nothing to fade from.
       return (
         <>
-          <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted) => setKickedNotice({ blacklisted })} />
+          <Suspense fallback={null}>
+            <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted) => setKickedNotice({ blacklisted })} />
+          </Suspense>
           {transitionLobbyId === route.lobbyId && <AtriumRevealOverlay />}
         </>
       )

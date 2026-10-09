@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import RichText from './RichText'
@@ -103,7 +103,22 @@ export default function DesktopAppSection() {
   // time of writing that manifest alone had three times as many hits as every
   // installer combined. Signatures are fetched by the updater too, for the
   // same reason. What is left is the number somebody meant to ask for.
+  // GitHub asked only once the section is coming into view: the list of
+  // releases is a fifth of a megabyte, and the section is far down the page.
+  const sectionRef = useRef<HTMLDivElement | null>(null)
+  const [near, setNear] = useState(false)
   useEffect(() => {
+    const el = sectionRef.current
+    if (!el || near) return
+    const watch = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) setNear(true)
+    }, { rootMargin: '600px 0px' })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [near])
+
+  useEffect(() => {
+    if (!near) return
     let cancelled = false
     const INSTALLER = /\.(exe|msi|dmg|AppImage|deb|rpm)$/i
     fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`)
@@ -120,9 +135,10 @@ export default function DesktopAppSection() {
       })
       .catch(() => { /* the count is a nicety; the downloads still work */ })
     return () => { cancelled = true }
-  }, [])
+  }, [near])
 
   useEffect(() => {
+    if (!near) return
     let cancelled = false
     fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
       .then(r => (r.ok ? r.json() : null))
@@ -139,10 +155,10 @@ export default function DesktopAppSection() {
       })
       .catch(() => { /* fall back to the releases page link below */ })
     return () => { cancelled = true }
-  }, [])
+  }, [near])
 
   return (
-    <div className="max-w-3xl w-full mx-auto" data-reveal>
+    <div ref={sectionRef} className="max-w-3xl w-full mx-auto" data-reveal>
       <div className="flex items-center gap-3 mb-10">
         <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-silver) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-silver) / 0.27)` }} />
         <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">

@@ -6547,7 +6547,7 @@ return (
         const line = lineWidth * zoom
         const radius = (displayTrace.borderRadius ?? 0) * zoom
         const lineColour = isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac'
-          : trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? `rgb(${rgbChannels(borderColor)} / ${trace.borderOpacity})` : borderColor
+          : (trace.borderOpacity ?? 1) < 1 ? `rgb(${rgbChannels(borderColor)} / ${trace.borderOpacity})` : borderColor
         const dash = showBorder ? dashProps(displayTrace.strokeStyle, lineWidth, zoom) : {}
         const dashed = !!dash.strokeDasharray
         const outerW = borderWidth + 2 * line, outerH = borderHeight + 2 * line

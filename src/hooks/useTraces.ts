@@ -78,10 +78,12 @@ export function mapRowToTrace(row: any): Trace {
     showBorder: row.show_border ?? true,
     showBackground: row.show_background ?? true,
     borderColor: row.border_color,
-    borderOpacity: row.border_opacity,
+    // Null in a row never set: none here, so it reads as unset -- full -- and
+    // not as a number (rgb(... / null) drew dashed borders with no colour).
+    borderOpacity: row.border_opacity ?? undefined,
     strokeStyle: asStrokeStyle(row.stroke_style),
     fillColor: row.fill_color,
-    fillOpacity: row.fill_opacity,
+    fillOpacity: row.fill_opacity ?? undefined,
     showDescription: row.show_description ?? true,
     showFilename: row.show_filename ?? true,
     fontSize: row.font_size ?? 16,

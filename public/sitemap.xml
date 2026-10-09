@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Only real pages belong here. The app's screens have their own paths now
-     (/welcome, /contributors), but every one of them is index.html with a
-     canonical pointing at the root, so listing them would contradict that.
-     privacy.html and terms.html are genuine static files, and the only prose
-     on the site readable without running any JavaScript. -->
+<!-- Only real pages belong here, at the address each is served at. The app's
+     screens have their own paths (/welcome, /contributors), but every one of
+     them is index.html with a canonical pointing at the root, so listing them
+     would contradict that. privacy and terms are static files, and the only
+     prose on the site readable without running any JavaScript; Cloudflare
+     Pages serves them without .html (privacy.html is a 308 to /privacy), and
+     a sitemap lists where a page is, not a redirect to it. The code history
+     is a page of its own (scripts/graph-growth.py). -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://digitalatrium.org/</loc>
@@ -11,12 +14,17 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://digitalatrium.org/privacy.html</loc>
+    <loc>https://digitalatrium.org/code-history/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://digitalatrium.org/privacy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://digitalatrium.org/terms.html</loc>
+    <loc>https://digitalatrium.org/terms</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

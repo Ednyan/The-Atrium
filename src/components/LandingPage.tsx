@@ -45,7 +45,8 @@ interface Section {
 // diorama permanently -- the two do different jobs (a living sketch of the
 // interactions vs. real footage) and both earned their place.
 const SHOWCASE_VIDEO_SRC = '/atrium-showcase.mp4'
-const SHOWCASE_POSTER_SRC = '/glass_dome.png'
+// 1200px, not glass_dome.png's 2780: shown a few hundred pixels across.
+const SHOWCASE_POSTER_SRC = '/glass_dome-poster.webp'
 
 // The product, framed like a window into an atrium. Deliberately the largest
 // element in the hero: the page could describe an atrium at length but never
@@ -1092,7 +1093,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           <span aria-hidden="true" className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60" />
           <span aria-hidden="true" className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60" />
           <span className="relative flex items-center gap-6 h-[clamp(76px,7.5vw,112px)] px-5 sm:px-8 overflow-hidden border border-nier-border/30">
-            <img src="/code-history/banner.webp" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+            <img src="/code-history/banner.webp" srcSet="/code-history/banner-800.webp 800w, /code-history/banner.webp 1774w" sizes="(min-width: 640px) 66vw, 100vw" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
             <span className="relative hidden sm:flex items-center gap-3 max-w-[46%] text-sm leading-snug text-nier-bg/75 font-light">
               <span className="byline-mark w-2 h-2 rotate-45 shrink-0" />
               {t('landing.codeHistory.what')}
@@ -1540,7 +1541,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           {!isDesktop && (
             <div className="flex items-center gap-4">
               <a
-                href="/privacy.html"
+                href="/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
@@ -1549,7 +1550,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
               </a>
               <span className="text-nier-bg/40 text-xs">◇</span>
               <a
-                href="/terms.html"
+                href="/terms"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"

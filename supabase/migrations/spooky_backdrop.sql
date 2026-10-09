@@ -1,4 +1,4 @@
--- Spooky's picture: a jack-o'-lantern over the whole view, faint, drifting
+-- Spooky's picture: a black-and-white jack-o'-lantern over the whole view, faint, drifting
 -- with it (public/themes/spooky-pumpkin.svg, carried by the app). For a
 -- database where add_special_themes.sql ran before the picture was part of
 -- Spooky. Its other settings are left as they are.
@@ -10,7 +10,7 @@ set theme_settings = theme_settings || '{
       "backgroundImage": "/themes/spooky-pumpkin.svg",
       "backgroundImageEnabled": true,
       "backgroundImageFill": true,
-      "backgroundImageOpacity": 0.22,
+      "backgroundImageOpacity": 0.12,
       "backgroundImageScale": 1,
       "backgroundParallaxEnabled": true,
       "backgroundParallax": 0.5

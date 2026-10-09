@@ -639,7 +639,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
           </button>
           <div className="flex items-center justify-center gap-3">
             <a
-              href="/privacy.html"
+              href="/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
@@ -648,7 +648,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
             </a>
             <span className="text-nier-bg/50 text-[9px]">◇</span>
             <a
-              href="/terms.html"
+              href="/terms"
               target="_blank"
               rel="noopener noreferrer"
               className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"

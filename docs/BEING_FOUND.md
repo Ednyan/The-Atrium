@@ -85,9 +85,18 @@ nothing else.
 
 ### 4. A `www` → apex redirect
 
-The DNS record exists and is proxied, but nothing redirects. `canonical` already
-points at the apex, so this is tidiness rather than a duplicate-content problem.
-A Cloudflare redirect rule does it.
+The DNS record exists and is proxied, but nothing redirects -- so Cloudflare has
+nowhere to send `www.digitalatrium.org` and answers **522** for every path.
+Search Console counts those as server errors (both `http://www` and
+`https://www` are "not indexed: 5xx", and they were most of the crawl's
+failures). A Cloudflare Redirect Rule fixes it: hostname equals
+`www.digitalatrium.org` → dynamic redirect to
+`concat("https://digitalatrium.org", http.request.uri.path)`, 301, query string
+preserved. Then "Validate fix" on the 5xx issue in Search Console.
+
+`privacy.html` and `terms.html` are served at `/privacy` and `/terms` (Pages
+answers the `.html` address with a 308), so the sitemap, their canonicals and
+the app's links use those.
 
 ### 5. Consider what `_redirects` is doing
 

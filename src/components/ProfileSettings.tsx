@@ -694,7 +694,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
           {!isDesktop && (
             <div className="flex items-center justify-center gap-3 pt-1">
               <a
-                href="/privacy.html"
+                href="/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
@@ -703,7 +703,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               </a>
               <span className="text-nier-bg/50 text-[0.7rem]">◇</span>
               <a
-                href="/terms.html"
+                href="/terms"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-nier-bg/70 hover:text-nier-bg/80 text-[0.7rem] tracking-[0.1em] uppercase transition-colors"
