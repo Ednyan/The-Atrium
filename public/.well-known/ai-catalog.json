@@ -6,12 +6,18 @@
   },
   "entries": [
     {
-      "identifier": "urn:ai:digitalatrium.org:knowledge:llms-txt",
-      "displayName": "The Digital Atrium (llms.txt)",
-      "type": "text/plain",
-      "mediaType": "text/plain",
-      "url": "https://digitalatrium.org/llms.txt",
-      "description": "What The Digital Atrium is and does, and links to its pages, desktop releases, privacy policy and terms, for AI agents."
+      "identifier": "urn:air:digitalatrium.org:skill:digital-atrium",
+      "displayName": "The Digital Atrium",
+      "type": "text/markdown; profile=\"urn:air:agent-skills\"",
+      "mediaType": "text/markdown; profile=\"urn:air:agent-skills\"",
+      "url": "https://digitalatrium.org/skills/digital-atrium/SKILL.md",
+      "description": "An agent skill for helping someone with The Digital Atrium, a free collaborative infinite canvas on the web and desktop: what it is, how to start, the desktop app, and where its pages are.",
+      "representativeQueries": [
+        "What is The Digital Atrium?",
+        "How do I make a shared moodboard canvas with friends?",
+        "Where do I download The Digital Atrium desktop app?",
+        "Does The Digital Atrium work offline?"
+      ]
     }
   ]
 }

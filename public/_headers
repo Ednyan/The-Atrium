@@ -88,6 +88,12 @@
   Content-Type: application/json
   Access-Control-Allow-Origin: *
 
+# The agent skill the catalog lists (public/skills/), as Markdown, readable
+# from any origin too.
+/skills/*
+  Content-Type: text/markdown; charset=utf-8
+  Access-Control-Allow-Origin: *
+
 /code-history/*
   ! X-Frame-Options
   ! Content-Security-Policy
