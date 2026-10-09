@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
+import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
@@ -8,7 +8,7 @@ import { customThemesNow, lastThemeOf, loadCustomThemes, readView, rememberLast,
 import { flushSync } from 'react-dom'
 import { Application, Graphics, Text, Container, TilingSprite, Texture } from 'pixi.js'
 import '@pixi/unsafe-eval'
-import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, unsavedActions, useGamePick } from '../store/gameStore'
+import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, unsavedActions, useGamePick, AUTO_SAVE_CONSTANT_MS } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
 import { currentTracePreset } from '../lib/tracePresets'
 import { readPackingShape } from '../lib/atriumPreferences'
@@ -67,8 +67,10 @@ import LaserLayer from './LaserLayer'
 import ExportDialog, { type Format as ExportFormat } from './ExportDialog'
 import SharePanel from './SharePanel'
 import { ImportTooLargeError, importIntoAtrium } from '../lib/atriumFile'
-import { createPdfTrace } from '../lib/pdfTraces'
+import { createDeckTrace, createPdfTrace } from '../lib/pdfTraces'
+import { DECK_FILE } from '../lib/deck'
 import { importSpreadsheet } from '../lib/sheetTraces'
+import { filePaths, followFiles } from '../lib/liveFiles'
 import { SPREADSHEET_FILE } from '../lib/spreadsheet'
 import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
 import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
@@ -128,7 +130,7 @@ function DrawSlider({ label, value, min, max, unit = '', onChange }: {
 }
 
 // What the quick bar's file buttons pick from.
-const TRACE_FILE_ACCEPT = { image: 'image/*,.exr', audio: 'audio/*', sound: 'audio/*', video: 'video/*', document: '.pdf,application/pdf' } as const
+const TRACE_FILE_ACCEPT = { image: 'image/*,.exr', audio: 'audio/*', sound: 'audio/*', video: 'video/*', document: '.pdf,application/pdf,.pptx' } as const
 
 // Any colour at all: the palette's hues round a wheel.
 const ANY_COLOUR = 'conic-gradient(#e87a6d, #e8c15a, #7fd1a6, #9ad4c4, #a8b6d9, #c77dff, #e87a6d)'
@@ -727,7 +729,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // way back to it.
   const previewDraft = useMemo(() => {
     const draft = specialThemeDraft()?.theme
-    return draft && viewRef === `special:${draft.id}` ? draft : null
+    return draft && viewRef === refOf(draft) ? draft : null
   }, [viewRef])
 
   // Fills in indicatorColorRef (declared above, since the ticker reads it).
@@ -1832,7 +1834,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // Auto-save, while the preference is on (lib/traceSave startAutosave).
   const { autoSave, autoSaveMinutes } = useGamePick('autoSave', 'autoSaveMinutes')
-  useEffect(() => (autoSave && canEdit ? startAutosave(autoSaveMinutes * 60_000) : undefined), [autoSave, autoSaveMinutes, canEdit])
+  useEffect(() => (autoSave && canEdit ? startAutosave(autoSaveMinutes === 0 ? AUTO_SAVE_CONSTANT_MS : autoSaveMinutes * 60_000) : undefined), [autoSave, autoSaveMinutes, canEdit])
+  // Traces that follow the file they came from, watched (lib/liveFiles).
+  useEffect(() => (canEdit ? followFiles() : undefined), [canEdit])
 
   // Check the Pinterest connection once per atrium visit, to decide whether to
   // show the import button. Asked on both platforms now: on desktop the answer
@@ -2255,10 +2259,26 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [shapeKind, setShapeKind] = useState<BoxShape>('rectangle')
   const shapeKindRef = useRef(shapeKind)
   shapeKindRef.current = shapeKind
-  const importSpreadsheetHere = async (file: File, at: { x: number; y: number }) => {
+  // PowerPoint decks: each a document trace paged as a PDF is, side by side,
+  // following its file where the webview can say where it is.
+  const placeDecks = async (files: File[], at: { x: number; y: number }) => {
+    if (!canEditRef.current || !userId) return
+    const paths = await filePaths(files)
+    for (const [i, file] of files.entries()) {
+      try {
+        await createDeckTrace(file, { x: at.x + i * 640 / zoomRef.current, y: at.y }, { lobbyId, userId, username, scale: scaleForZoom() }, paths[i])
+      } catch (e: any) {
+        console.error('Deck import failed:', file.name, e)
+        showToast(t('atrium.sheet.failed', { name: file.name, message: e?.message ?? '' }))
+      }
+    }
+  }
+  // `path`: where it is on disk, when the webview can say -- its traces then
+  // follow it (lib/liveFiles).
+  const importSpreadsheetHere = async (file: File, at: { x: number; y: number }, path?: string | null) => {
     if (!canEditRef.current || !userId) return
     try {
-      await importSpreadsheet(file, at, { lobbyId, userId, username })
+      await importSpreadsheet(file, at, { lobbyId, userId, username }, path)
     } catch (e: any) {
       console.error('Spreadsheet import failed:', file.name, e)
       showToast(t('atrium.sheet.failed', { name: file.name, message: e?.message ?? '' }))
@@ -4234,11 +4254,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return
     }
 
+    // A dropped PowerPoint deck: a document trace, its slides paged.
+    const droppedDecks = isDesktop ? droppedFiles.filter(f => DECK_FILE.test(f.name)) : []
+    if (droppedDecks.length > 0) {
+      await placeDecks(droppedDecks, { x: worldX, y: worldY })
+      return
+    }
+
     // A dropped spreadsheet becomes its sheets and charts, grouped
     // (lib/sheetTraces). Desktop only, as PDFs are.
     const droppedSheets = isDesktop ? droppedFiles.filter(f => SPREADSHEET_FILE.test(f.name)) : []
     if (droppedSheets.length > 0) {
-      for (const sheet of droppedSheets) await importSpreadsheetHere(sheet, { x: worldX, y: worldY })
+      const paths = await filePaths(droppedSheets)
+      for (const [i, sheet] of droppedSheets.entries()) await importSpreadsheetHere(sheet, { x: worldX, y: worldY }, paths[i])
       return
     }
 
@@ -4427,7 +4455,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       user_id: userId,
       username,
       type: traceType,
-      ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })) } : {}),
+      ...(traceType === 'text' ? { layer_name: nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n })), text_fit: true } : {}),
       border_color: preset.border,
       fill_color: preset.fill,
       show_border: look?.showBorder ?? !seeThrough,
@@ -5668,7 +5696,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         onChange={e => {
           const files = Array.from(e.target.files ?? [])
           e.target.value = ''
-          if (files.length > 0 && ensureLobbyHasSpace()) void placeFilesAsTraces(files, importAnchorRef.current.x, importAnchorRef.current.y)
+          if (files.length === 0 || !ensureLobbyHasSpace()) return
+          const decks = files.filter(f => DECK_FILE.test(f.name)), rest = files.filter(f => !DECK_FILE.test(f.name))
+          if (decks.length > 0) void placeDecks(decks, importAnchorRef.current)
+          if (rest.length > 0) void placeFilesAsTraces(rest, importAnchorRef.current.x, importAnchorRef.current.y)
         }}
       />
       <input
@@ -5679,7 +5710,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         onChange={e => {
           const file = e.target.files?.[0]
           e.target.value = ''
-          if (file) void importSpreadsheetHere(file, importAnchorRef.current)
+          if (file) void filePaths([file]).then(([path]) => importSpreadsheetHere(file, importAnchorRef.current, path))
         }}
       />
 
@@ -5942,7 +5973,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   setShowLeaveDialog(false)
                   leaveWithTransition()
                 }}
-                className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+                className="w-full danger-fill font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
               >
                 {t('atrium.dialog.leaveWithoutSaving')}
               </button>
@@ -5992,7 +6023,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               <button
                 onClick={() => executeKick(kickTarget.userId, true)}
                 disabled={isKicking}
-                className="w-full bg-red-900 hover:bg-red-700 text-nier-strong font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
+                className="w-full danger-fill font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600 disabled:opacity-50"
               >
                 {isKicking ? t('atrium.dialog.kicking') : t('atrium.dialog.kickBlacklist')}
               </button>

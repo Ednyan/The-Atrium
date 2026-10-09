@@ -1,8 +1,20 @@
+// Atrium settings: an atrium's owner's and admins' panel, from its menu and
+// from the atrium browser. Two tabs, by what's being decided:
+//
+//   General  its name, whether everyone can find it, its password.
+//   People   who can edit, and everyone with a part in it: the owner and the
+//            admins, the editors, those allowed in while it's private, and
+//            those kept out -- one list, added to from one search, each
+//            person added as what they're to be.
+//
+// The General tab's settings (and who can edit) are written by Save; people
+// are added and removed at once.
+
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Lobby, LobbyAccessList, Profile } from '../types/database'
 import { useTranslation } from '../lib/i18n'
-import { Check } from './ShapeStyleControls'
+import { Switch } from './Customization'
 
 interface LobbyManagementProps {
   lobby: Lobby
@@ -11,6 +23,11 @@ interface LobbyManagementProps {
   onUpdate: () => void
 }
 
+type Listed = LobbyAccessList & { username?: string }
+// What someone is added as. Admins are on the atrium's row
+// (lobbies.admin_user_ids); the rest are lobby_access_lists entries.
+type Role = 'admin' | 'editor' | 'whitelist' | 'blacklist'
+
 export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyManagementProps) {
   const { t } = useTranslation()
   const [lobbyName, setLobbyName] = useState(lobby.name)
@@ -18,14 +35,16 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
   const [showPasswordField, setShowPasswordField] = useState(false)
   const hasPassword = !!lobby.passwordHash
   const [isPublic, setIsPublic] = useState(lobby.isPublic)
-  const [whitelist, setWhitelist] = useState<(LobbyAccessList & { username?: string })[]>([])
-  const [blacklist, setBlacklist] = useState<(LobbyAccessList & { username?: string })[]>([])
-  const [editors, setEditors] = useState<(LobbyAccessList & { username?: string })[]>([])
-  const [admins, setAdmins] = useState<{ userId: string; username: string }[]>([])
+  const [whitelist, setWhitelist] = useState<Listed[]>([])
+  const [blacklist, setBlacklist] = useState<Listed[]>([])
+  const [editors, setEditors] = useState<Listed[]>([])
+  // The owner first, then the admins.
+  const [names, setNames] = useState<Record<string, string>>({})
   const [editPermissionMode, setEditPermissionMode] = useState<'all' | 'none' | 'selected'>(lobby.editPermissionMode ?? 'all')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Profile[]>([])
-  const [activeTab, setActiveTab] = useState<'settings' | 'whitelist' | 'blacklist' | 'editors' | 'admins'>('settings')
+  const [addAs, setAddAs] = useState<Role>('editor')
+  const [activeTab, setActiveTab] = useState<'general' | 'people'>('general')
   const [error, setError] = useState<string | null>(null)
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
@@ -54,24 +73,23 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
   // admin_user_ids lives on the lobby row itself (not lobby_access_lists --
   // see fix_lobby_admin_recursion_v2.sql), so it just needs a username
-  // lookup, not a separate access-list query.
+  // lookup, not a separate access-list query. The owner's name with theirs.
+  const adminIds = lobby.adminUserIds ?? []
   useEffect(() => {
-    loadAdmins()
-  }, [lobby.adminUserIds?.join(',')])
+    loadNames()
+  }, [lobby.ownerUserId, adminIds.join(',')])
 
-  const loadAdmins = async () => {
-    if (!supabase || !lobby.adminUserIds || lobby.adminUserIds.length === 0) {
-      setAdmins([])
-      return
-    }
+  const loadNames = async () => {
+    const ids = [lobby.ownerUserId, ...adminIds].filter(Boolean)
+    if (!supabase || ids.length === 0) return
     try {
       const { data, error } = await (supabase
         .from('profiles')
         .select('id, username')
-        .in('id', lobby.adminUserIds) as any)
+        .in('id', ids) as any)
 
       if (error) throw error
-      setAdmins((data || []).map((p: any) => ({ userId: p.id, username: p.username || t('atrium.manage.unknownUser') })))
+      setNames(Object.fromEntries((data || []).map((p: any) => [p.id, p.username || t('atrium.manage.unknownUser')])))
     } catch (err) {
       console.error('Error loading admins:', err)
     }
@@ -81,47 +99,25 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     if (!supabase) return
 
     try {
-      // Load whitelist
-      const { data: whitelistData, error: whitelistError } = await (supabase
-        .from('lobby_access_lists')
-        .select('*')
-        .eq('lobby_id', lobby.id)
-        .eq('list_type', 'whitelist') as any)
-
-      if (whitelistError) throw whitelistError
-
-      // Load blacklist
-      const { data: blacklistData, error: blacklistError } = await (supabase
-        .from('lobby_access_lists')
-        .select('*')
-        .eq('lobby_id', lobby.id)
-        .eq('list_type', 'blacklist') as any)
-
-      if (blacklistError) throw blacklistError
-
-      // Load editors
-      const { data: editorData, error: editorError } = await (supabase
-        .from('lobby_access_lists')
-        .select('*')
-        .eq('lobby_id', lobby.id)
-        .eq('list_type', 'editor') as any)
-
-      if (editorError) throw editorError
-
-      // Enrich with usernames
-      const enrichWhitelist = await enrichWithUsernames(whitelistData || [])
-      const enrichBlacklist = await enrichWithUsernames(blacklistData || [])
-      const enrichEditors = await enrichWithUsernames(editorData || [])
-
-      setWhitelist(enrichWhitelist)
-      setBlacklist(enrichBlacklist)
-      setEditors(enrichEditors)
+      const listOf = async (listType: string) => {
+        const { data, error } = await (supabase!
+          .from('lobby_access_lists')
+          .select('*')
+          .eq('lobby_id', lobby.id)
+          .eq('list_type', listType) as any)
+        if (error) throw error
+        return enrichWithUsernames(data || [])
+      }
+      const [allowed, blocked, editing] = await Promise.all([listOf('whitelist'), listOf('blacklist'), listOf('editor')])
+      setWhitelist(allowed)
+      setBlacklist(blocked)
+      setEditors(editing)
     } catch (err) {
       console.error('Error loading access lists:', err)
     }
   }
 
-  const enrichWithUsernames = async (list: any[]): Promise<(LobbyAccessList & { username?: string })[]> => {
+  const enrichWithUsernames = async (list: any[]): Promise<Listed[]> => {
     if (!supabase || list.length === 0) return []
 
     const enriched = await Promise.all(list.map(async (item) => {
@@ -249,12 +245,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     if (!supabase) return
 
     try {
-      const current = lobby.adminUserIds ?? []
-      if (current.includes(userId)) return
+      if (adminIds.includes(userId) || userId === lobby.ownerUserId) return
 
       const { error } = await (supabase
         .from('lobbies') as any)
-        .update({ admin_user_ids: [...current, userId] })
+        .update({ admin_user_ids: [...adminIds, userId] })
         .eq('id', lobby.id)
 
       if (error) throw error
@@ -272,10 +267,9 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     if (!supabase) return
 
     try {
-      const current = lobby.adminUserIds ?? []
       const { error } = await (supabase
         .from('lobbies') as any)
-        .update({ admin_user_ids: current.filter(id => id !== userId) })
+        .update({ admin_user_ids: adminIds.filter(id => id !== userId) })
         .eq('id', lobby.id)
 
       if (error) throw error
@@ -305,6 +299,11 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     }
   }
 
+  const add = (userId: string) => {
+    if (addAs === 'admin') void promoteToAdmin(userId)
+    else void addToList(userId, addAs)
+  }
+
   const transferOwnership = async () => {
     if (!supabase || !transferTargetUserId) return
 
@@ -331,6 +330,54 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     }
   }
 
+  const tabClass = (on: boolean) => `flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
+    on ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5' : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
+  }`
+  const smallButton = 'px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors'
+  const removeButton = 'px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors'
+  const people = 1 + adminIds.length + editors.length + whitelist.length + blacklist.length
+  // What someone can be added as: an admin only by the owner.
+  const roles: { value: Role; label: string }[] = [
+    { value: 'editor', label: t('atrium.manage.roleEditor') },
+    { value: 'whitelist', label: t('atrium.manage.whitelistedUsers') },
+    { value: 'blacklist', label: t('atrium.manage.blacklistedUsers') },
+    ...(isOwner ? [{ value: 'admin' as const, label: t('atrium.manage.roleAdmin') }] : []),
+  ]
+
+  // The editors' note, naming the setting it depends on and its choice --
+  // set in italics, so it reads as a setting and not as words.
+  const marked = t('atrium.manage.editorsNote', { setting: '\u0000setting\u0000', option: '\u0000option\u0000' })
+  const named: Record<string, string> = { setting: t('atrium.manage.editPermissions'), option: t('atrium.manage.permSelected') }
+  const editorsNote = marked.split('\u0000').map((piece, i) => (i % 2 ? <em key={i} className="text-nier-bg/90">{named[piece]}</em> : piece))
+
+  // A group of people in the list: what they are, what that means, who.
+  const Group = ({ id, title, hint, dim, children }: { id: string; title: string; hint: React.ReactNode; dim?: boolean; children: React.ReactNode }) => (
+    <div data-people-group={id} className={dim ? 'opacity-60' : undefined}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{title}</span>
+        <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+      </div>
+      <p className="text-nier-bg/65 text-[0.7rem] leading-relaxed tracking-wide mb-2">{hint}</p>
+      <div className="space-y-2">{children}</div>
+    </div>
+  )
+  const Person = ({ name, children }: { name: string; children?: React.ReactNode }) => (
+    <div className="flex justify-between items-center gap-2 bg-nier-black border border-nier-border/20 px-3 py-2">
+      <span className="min-w-0 truncate text-nier-bg text-sm tracking-wide">{name}</span>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  )
+  const Nobody = () => <div className="text-nier-bg/55 text-[10px] tracking-wider uppercase py-1">{t('atrium.manage.noUsers')}</div>
+  const Entries = ({ list }: { list: Listed[] }) => (
+    list.length === 0 ? <Nobody /> : <>
+      {list.map(entry => (
+        <Person key={entry.id} name={entry.username ?? ''}>
+          <button onClick={() => removeFromList(entry.id)} className={removeButton}>{t('atrium.manage.remove')}</button>
+        </Person>
+      ))}
+    </>
+  )
+
   return (
     <div
       data-ui-element="true"
@@ -340,7 +387,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
       onTouchStart={(e) => e.stopPropagation()}
       onClick={requestClose}
     >
-      <div className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }} onClick={(e) => e.stopPropagation()}>
+      <div data-atrium-settings="" className="bg-nier-blackLight border border-nier-border/40 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col relative" style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }} onClick={(e) => e.stopPropagation()}>
         {/* Corner brackets */}
         <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
         <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
@@ -370,64 +417,18 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
 
         {/* Tabs */}
         <div className="flex border-b border-nier-border/20">
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
-              activeTab === 'settings'
-                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
-                : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
-            }`}
-          >
-            {t('atrium.manage.settings')}
+          <button data-settings-tab="general" onClick={() => setActiveTab('general')} className={tabClass(activeTab === 'general')}>
+            {t('atrium.manage.general')}
           </button>
-          <button
-            onClick={() => setActiveTab('whitelist')}
-            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
-              activeTab === 'whitelist'
-                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
-                : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
-            }`}
-          >
-            {t('atrium.manage.whitelistTab', { count: whitelist.length })}
+          <button data-settings-tab="people" onClick={() => setActiveTab('people')} className={tabClass(activeTab === 'people')}>
+            {t('atrium.manage.people', { count: people })}
           </button>
-          <button
-            onClick={() => setActiveTab('blacklist')}
-            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
-              activeTab === 'blacklist'
-                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
-                : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
-            }`}
-          >
-            {t('atrium.manage.blacklistTab', { count: blacklist.length })}
-          </button>
-          <button
-            onClick={() => setActiveTab('editors')}
-            className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
-              activeTab === 'editors'
-                ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
-                : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
-            }`}
-          >
-            {t('atrium.manage.editorsTab', { count: editors.length })}
-          </button>
-          {isOwner && (
-            <button
-              onClick={() => setActiveTab('admins')}
-              className={`flex-1 px-4 py-3 text-xs tracking-[0.15em] uppercase transition-colors ${
-                activeTab === 'admins'
-                  ? 'text-nier-bg border-b border-nier-bg bg-nier-bg/5'
-                  : 'text-nier-bg/75 hover:text-nier-bg hover:bg-nier-bg/5'
-              }`}
-            >
-              {t('atrium.manage.adminsTab', { count: admins.length })}
-            </button>
-          )}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'settings' && (
-            <div className="space-y-4">
+          {activeTab === 'general' && (
+            <div className="space-y-5">
               <div>
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.atriumName')}</label>
                 <input
@@ -438,6 +439,8 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   maxLength={50}
                 />
               </div>
+
+              <Switch testId="atrium-public" label={t('atrium.manage.public')} hint={t('atrium.manage.publicHint')} on={isPublic} onChange={setIsPublic} />
 
               <div>
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.password')}</label>
@@ -475,22 +478,27 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   </>
                 )}
               </div>
+            </div>
+          )}
 
-              <Check checked={isPublic} label={t('atrium.manage.public')} onChange={setIsPublic} />
-
-              <div className="pt-2 border-t border-nier-border/20">
+          {activeTab === 'people' && (
+            <div className="space-y-6">
+              {/* Who can edit: decides what the Editors group means, so it
+                  comes first. */}
+              <div>
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">
                   {t('atrium.manage.editPermissions')}
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {([
                     { value: 'all', label: t('atrium.manage.permAll') },
-                    { value: 'none', label: t('atrium.manage.permNone') },
                     { value: 'selected', label: t('atrium.manage.permSelected') },
+                    { value: 'none', label: t('atrium.manage.permNone') },
                   ] as const).map(option => (
                     <button
                       key={option.value}
                       type="button"
+                      data-edit-mode={option.value}
                       onClick={() => setEditPermissionMode(option.value)}
                       className={`py-2 text-xs tracking-[0.1em] uppercase border transition-colors ${
                         editPermissionMode === option.value
@@ -508,40 +516,38 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                   {editPermissionMode === 'selected' && t('atrium.manage.permSelectedHint')}
                 </p>
               </div>
-            </div>
-          )}
 
-          {(activeTab === 'whitelist' || activeTab === 'blacklist' || activeTab === 'editors') && (() => {
-            const currentList = activeTab === 'whitelist' ? whitelist : activeTab === 'blacklist' ? blacklist : editors
-            const listLabel = activeTab === 'whitelist' ? t('atrium.manage.whitelistedUsers') : activeTab === 'blacklist' ? t('atrium.manage.blacklistedUsers') : t('atrium.manage.editors')
-            return (
-            <div className="space-y-4">
-              {activeTab === 'editors' && (
-                <p className="text-nier-bg/70 text-xs tracking-wider">
-                  {t('atrium.manage.editorsNote')}
-                </p>
-              )}
-              {/* Search Users */}
+              {/* Someone added: found by name, added as what they're to be. */}
               <div>
                 <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.addUser')}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
+                    data-people-search=""
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
                     placeholder={t('atrium.manage.searchUsername')}
-                    className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
+                    className="min-w-0 flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
+                  <select
+                    data-people-role=""
+                    value={addAs}
+                    onChange={e => setAddAs(e.target.value as Role)}
+                    aria-label={t('atrium.manage.addAs')}
+                    title={t('atrium.manage.addAs')}
+                    className="shrink-0 bg-nier-black border border-nier-border/30 text-nier-bg px-2 py-2 text-xs tracking-wide focus:border-nier-border/60"
+                  >
+                    {roles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+                  </select>
                   <button
                     onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
+                    className="shrink-0 px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
                   >
                     {t('atrium.manage.search')}
                   </button>
                 </div>
 
-                {/* Search Results */}
                 {searchResults.length > 0 && (
                   <div className="mt-2 bg-nier-black border border-nier-border/20 max-h-40 overflow-y-auto">
                     {searchResults.map(user => (
@@ -550,11 +556,8 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                         className="flex justify-between items-center px-3 py-2 hover:bg-nier-bg/5 transition-colors"
                       >
                         <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
-                        <button
-                          onClick={() => addToList(user.id, activeTab === 'editors' ? 'editor' : activeTab)}
-                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                        >
-                          {t('atrium.manage.add')}
+                        <button onClick={() => add(user.id)} className={smallButton}>
+                          {t('atrium.manage.addAsRole', { role: roles.find(r => r.value === addAs)?.label ?? '' })}
                         </button>
                       </div>
                     ))}
@@ -562,136 +565,47 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
                 )}
               </div>
 
-              {/* Current List */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                    {listLabel}
-                  </span>
-                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                </div>
-                <div className="space-y-2">
-                  {currentList.length === 0 ? (
-                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">{t('atrium.manage.noUsers')}</div>
-                  ) : (
-                    currentList.map(entry => (
-                      <div
-                        key={entry.id}
-                        className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
-                      >
-                        <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
+              <Group id="admins" title={t('atrium.manage.admins')} hint={t('atrium.manage.adminsNote')}>
+                {/* The owner is an admin too, and stays one: no buttons. */}
+                <Person name={names[lobby.ownerUserId] ?? t('atrium.manage.unknownUser')}>
+                  <span data-owner-badge="" className="px-2 py-0.5 border border-nier-border/40 text-nier-strong text-[10px] tracking-[0.15em] uppercase">{t('atrium.manage.owner')}</span>
+                </Person>
+                {adminIds.filter(id => id !== lobby.ownerUserId).map(id => (
+                  <Person key={id} name={names[id] ?? t('atrium.manage.unknownUser')}>
+                    {isOwner && (
+                      <>
                         <button
-                          onClick={() => removeFromList(entry.id)}
-                          className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
+                          onClick={() => {
+                            setTransferTargetUserId(id)
+                            setTransferTargetUsername(names[id] || t('atrium.manage.thisUser'))
+                          }}
+                          className={smallButton}
                         >
-                          {t('atrium.manage.remove')}
+                          {t('atrium.manage.makeOwner')}
                         </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-            )
-          })()}
+                        <button onClick={() => demoteAdmin(id)} className={removeButton}>{t('atrium.manage.demote')}</button>
+                      </>
+                    )}
+                  </Person>
+                ))}
+              </Group>
 
-          {activeTab === 'admins' && (
-            <div className="space-y-4">
-              {/* Said before the controls it governs, the way the editors tab
-                  says it. Explaining what a power does after somebody has
-                  already handed it out is the wrong order. */}
-              <p className="text-nier-bg/75 text-xs leading-relaxed">
-                {t('atrium.manage.adminsNote')}
-              </p>
-
-              {/* Search Users */}
-              <div>
-                <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('atrium.manage.addUser')}</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
-                    placeholder={t('atrium.manage.searchUsername')}
-                    className="flex-1 bg-nier-black border border-nier-border/30 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                  />
-                  <button
-                    onClick={searchUsers}
-                    className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
-                  >
-                    {t('atrium.manage.search')}
-                  </button>
-                </div>
-
-                {/* Search Results */}
-                {searchResults.length > 0 && (
-                  <div className="mt-2 bg-nier-black border border-nier-border/20 max-h-40 overflow-y-auto">
-                    {searchResults.map(user => (
-                      <div
-                        key={user.id}
-                        className="flex justify-between items-center px-3 py-2 hover:bg-nier-bg/5 transition-colors"
-                      >
-                        <span className="text-nier-bg text-sm tracking-wide">{user.username}</span>
-                        <button
-                          onClick={() => promoteToAdmin(user.id)}
-                          className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                        >
-                          {t('atrium.manage.add')}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Current Admins */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                    {t('atrium.manage.admins')}
-                  </span>
-                  <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                </div>
-                <div className="space-y-2">
-                  {admins.length === 0 ? (
-                    <div className="text-nier-bg/70 text-xs tracking-wider uppercase text-center py-4">{t('atrium.manage.noAdmins')}</div>
-                  ) : (
-                    admins.map(entry => (
-                      <div
-                        key={entry.userId}
-                        className="flex justify-between items-center bg-nier-black border border-nier-border/20 px-3 py-2"
-                      >
-                        <span className="text-nier-bg text-sm tracking-wide">{entry.username}</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setTransferTargetUserId(entry.userId)
-                              setTransferTargetUsername(entry.username || t('atrium.manage.thisUser'))
-                            }}
-                            className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                          >
-                            {t('atrium.manage.makeOwner')}
-                          </button>
-                          <button
-                            onClick={() => demoteAdmin(entry.userId)}
-                            className="px-3 py-1 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
-                          >
-                            {t('atrium.manage.demote')}
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
+              {/* Only counts while Who can edit is "Chosen people". */}
+              <Group id="editors" title={t('atrium.manage.editors')} hint={editorsNote} dim={editPermissionMode !== 'selected'}>
+                <Entries list={editors} />
+              </Group>
+              <Group id="allowed" title={t('atrium.manage.whitelistedUsers')} hint={t('atrium.manage.allowedHint')}>
+                <Entries list={whitelist} />
+              </Group>
+              <Group id="blocked" title={t('atrium.manage.blacklistedUsers')} hint={t('atrium.manage.blockedHint')}>
+                <Entries list={blacklist} />
+              </Group>
             </div>
           )}
         </div>
 
-        {/* Save Settings -- visible on every tab so switching to Whitelist/
-            Blacklist doesn't strand unsaved Settings-tab edits */}
+        {/* Save Settings -- visible on both tabs: who can edit is on People,
+            the rest on General, and switching tabs mustn't strand either. */}
         <div className="p-4 border-t border-nier-border/20">
           <button
             onClick={updateLobbySettings}

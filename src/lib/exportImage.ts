@@ -25,13 +25,15 @@ import { curvePath, handlesAt, type PathPoint } from './pathGeometry'
 import { drawRanks } from './order'
 import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from './traceGeometry'
 import { ARROW_SCALE, shapePaint, shapeStyleOf } from './shapeStyle'
-import { fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
+import { fitFontSize, fontPxOf, resolveFontFamilyCss, wrapLines } from './textFit'
 import { asStrokeData, renderStrokeData, strokeDensity } from './brushes'
 import { dashArray } from './strokeStyle'
 import { embedSourcesIn, youtubeId } from './embedUrl'
+import { customFontUrl } from './customFonts'
 import { isPathTrace, pathWorldBounds } from './pathBounds'
 import { cropOf } from './traceCrop'
-import { chartSvg, sheetFile, sheetRows, sheetSvg } from './sheetDraw'
+import { chartSvg, sheetFile, sheetRows, sheetSvg, atriumChartLook } from './sheetDraw'
+import { deckFile, deckSvg, isDeckFile, slidePictures } from './deckDraw'
 import { currentLanguage } from './i18n'
 import { isDesktop } from './supabase'
 
@@ -195,6 +197,9 @@ function svgPainter(): Painter & { markup: () => Promise<{ defs: string; body: s
   // Pictures are written in once they're read (an async step), so each is
   // a placeholder until then.
   const pending: { index: number; pic: Picture; attrs: string }[] = []
+  // The font families its text is in, for the fonts the app carries to be
+  // written into the file (see markup).
+  const families = new Set<string>()
   let ids = 0
   let shadowDefined = false
   const attrs = (p: Paint) => {
@@ -250,6 +255,7 @@ function svgPainter(): Painter & { markup: () => Promise<{ defs: string; body: s
     },
     text(s, x, y, font, color, align, underline) {
       const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'
+      families.add(font.family)
       body.push(`<text x="${num(x)}" y="${num(y)}" font-family="${esc(font.family)}" font-size="${num(font.size)}"${font.bold ? ' font-weight="bold"' : ''}${font.italic ? ' font-style="italic"' : ''}${underline ? ' text-decoration="underline"' : ''} fill="${esc(color)}" text-anchor="${anchor}" xml:space="preserve">${esc(s)}</text>`)
     },
     light(cx, cy, r, color, alpha) {
@@ -259,7 +265,23 @@ function svgPainter(): Painter & { markup: () => Promise<{ defs: string; body: s
     },
     async markup() {
       for (const p of pending) body[p.index] = `<image href="${esc(await p.pic.href())}" ${p.attrs}/>`
-      return { defs: defs.join(''), body: body.join('') }
+      // A font the app carries (Montserrat, Inter, Caveat...) is the app's
+      // alone: the file only named it, so anywhere else its text fell back to
+      // whatever font was at hand. Each one the text uses is written in, whole,
+      // as an @font-face; a font of the system's (Arial, Georgia) stays a name.
+      const faces = await Promise.all([...families].map(async family => {
+        const url = customFontUrl(family)
+        if (!url) return ''
+        try {
+          const file = await (await fetch(url)).blob()
+          const type = /\.woff2$/i.test(url) ? 'font/woff2' : /\.woff$/i.test(url) ? 'font/woff' : /\.otf$/i.test(url) ? 'font/otf' : 'font/ttf'
+          return `@font-face{font-family:'${family}';src:url(${await readAsDataUrl(new Blob([file], { type }))})}`
+        } catch {
+          return ''
+        }
+      }))
+      const fonts = faces.join('')
+      return { defs: (fonts ? `<style>${fonts}</style>` : '') + defs.join(''), body: body.join('') }
     },
   }
 }
@@ -331,9 +353,22 @@ async function sheetPicture(trace: Trace, density: number): Promise<Picture | nu
   if (!data) return null
   const { width, height } = baseSizeOf(trace)
   const markup = data.kind === 'chart'
-    ? chartSvg(data, width, height, density, currentLanguage())
+    ? chartSvg(data, width, height, density, currentLanguage(), atriumChartLook(trace.fillColor, trace.textColor))
     : sheetSvg(data, 0, sheetRows(data), { width: width * density, height: height * density })
   return pictureOf(new Blob([markup], { type: 'image/svg+xml' }))
+}
+
+// A deck's first slide, drawn `density` pixels to a unit, its pictures written in.
+async function deckPicture(trace: Trace, density: number): Promise<Picture | null> {
+  const deck = trace.mediaUrl ? await deckFile(trace.mediaUrl) : null
+  if (!deck) return null
+  const srcs = new Map<string, string>()
+  await Promise.all(slidePictures(deck, 0).map(async src => {
+    const blob = await fetchMedia(src).catch(() => null)
+    if (blob) srcs.set(src, await readAsDataUrl(blob))
+  }))
+  const { width, height } = baseSizeOf(trace)
+  return pictureOf(new Blob([deckSvg(deck, 0, src => srcs.get(src), { width: width * density, height: height * density })], { type: 'image/svg+xml' }))
 }
 
 // What an embed or a video looks like, for one with no preview kept: a
@@ -515,12 +550,19 @@ function drawShape(p: Painter, trace: Trace) {
 }
 
 // Text, as the canvas lays it out: once at the trace's own size -- its font,
-// 6 of padding, line height 1.3, wrapped as pre-wrap break-words -- centred
-// down the box, and scaled to the box as a whole.
+// 6 of padding, line height 1.3, wrapped as pre-wrap break-words -- up, down
+// or in the middle of the box as it's set, and scaled to the box as a whole.
+// Fitted to its box (textFit), at the box's own size, in the font that fills
+// it, as the canvas has it.
 function drawText(p: Painter, trace: Trace, bw: number, bh: number, measure: CanvasRenderingContext2D) {
   const t = storedTransformOf(trace)
-  const scale = (trace.textScaleWithBox ?? true) ? (Math.sqrt(Math.max(0, t.scaleX * t.scaleY)) || 1) : 1
-  const font: Font = { family: resolveFontFamilyCss(trace.fontFamily ?? 'sans'), size: fontPxOf(trace.fontSize ?? 'medium'), bold: !!trace.textBold, italic: !!trace.textItalic }
+  const fitted = trace.textFit === true
+  const scale = fitted ? 1 : (trace.textScaleWithBox ?? true) ? (Math.sqrt(Math.max(0, t.scaleX * t.scaleY)) || 1) : 1
+  const family = resolveFontFamilyCss(trace.fontFamily ?? 'sans')
+  const size = fitted
+    ? fitFontSize(trace.content ?? '', bw, bh, { family, bold: trace.textBold, italic: trace.textItalic })
+    : fontPxOf(trace.fontSize ?? 'medium')
+  const font: Font = { family, size, bold: !!trace.textBold, italic: !!trace.textItalic }
   const lw = bw / scale - 12, lh = bh / scale - 12
   measure.font = cssFont(font)
   const lines = wrapLines(measure, trace.content ?? '', lw)
@@ -528,7 +570,9 @@ function drawText(p: Painter, trace: Trace, bw: number, bh: number, measure: Can
   const metrics = measure.measureText('Mg')
   const ascent = metrics.fontBoundingBoxAscent ?? font.size * 0.8
   const descent = metrics.fontBoundingBoxDescent ?? font.size * 0.2
-  const first = 6 + (lh - lines.length * lineHeight) / 2 + (lineHeight - (ascent + descent)) / 2 + ascent
+  const room = lh - lines.length * lineHeight
+  const above = trace.textValign === 'top' ? 0 : trace.textValign === 'bottom' ? room : room / 2
+  const first = 6 + above + (lineHeight - (ascent + descent)) / 2 + ascent
   const align = trace.textAlign === 'right' ? 'right' : trace.textAlign === 'center' || !trace.textAlign ? 'center' : 'left'
   const x = align === 'center' ? 6 + lw / 2 : align === 'right' ? 6 + lw : 6
   p.push([scale, 0, 0, scale, 0, 0])
@@ -661,6 +705,8 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       picture = await loadPicture((trace.mediaUrl || trace.imageUrl)!)
     } else if (trace.type === 'sheet' || trace.type === 'chart') {
       picture = await sheetPicture(trace, options.scale * Math.max(Math.abs(t.scaleX), Math.abs(t.scaleY)))
+    } else if (trace.type === 'document' && isDeckFile(trace.mediaUrl)) {
+      picture = await deckPicture(trace, options.scale * Math.max(Math.abs(t.scaleX), Math.abs(t.scaleY)))
     } else if (trace.type === 'embed' || trace.type === 'video') {
       // A preview it keeps, where it has one; else one found for it.
       picture = (trace.imageUrl ? await loadPicture(trace.imageUrl) : null) ?? await mediaPicture(trace)

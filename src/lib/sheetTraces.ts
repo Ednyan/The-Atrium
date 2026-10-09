@@ -22,13 +22,15 @@ import { readSpreadsheet, type ChartData, type SheetData } from './spreadsheet'
 import { keepSheetFile, sheetSize } from './sheetDraw'
 import { currentLanguage, t } from './i18n'
 import type { TraceMaker } from './pdfTraces'
+import { followFile } from './liveFiles'
 
 const CHART_SIZE = { width: 600, height: 400 }
 const GAP = 48
 
 // The spreadsheet in `file`, placed centred on `at`. How many traces it made;
-// thrown when it can't be read, or has nothing in it.
-export async function importSpreadsheet(file: File, at: { x: number; y: number }, who: TraceMaker): Promise<number> {
+// thrown when it can't be read, or has nothing in it. With `path`, where the
+// file is on disk, its traces follow it (lib/liveFiles).
+export async function importSpreadsheet(file: File, at: { x: number; y: number }, who: TraceMaker, path?: string | null): Promise<number> {
   const { sheets, charts } = await readSpreadsheet(file, currentLanguage())
   const parts: (SheetData | ChartData)[] = [...sheets, ...charts]
   if (parts.length === 0) throw new Error(t('atrium.sheet.empty'))
@@ -93,6 +95,12 @@ export async function importSpreadsheet(file: File, at: { x: number; y: number }
     if (error) throw new Error(error.message)
     for (const row of data ?? []) useGameStore.getState().addTrace(mapRowToTrace(row))
     window.dispatchEvent(new Event('atrium:layers-changed'))
+    if (path) {
+      void followFile(path, (data ?? []).flatMap((row: any) => {
+        const i = urls.indexOf(row.media_url)
+        return i < 0 ? [] : [{ id: row.id as string, kind: parts[i].kind, index: i < sheets.length ? i : i - sheets.length }]
+      }))
+    }
     return parts.length
   }))
 }

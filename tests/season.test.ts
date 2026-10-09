@@ -2,7 +2,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { inSeason, isMonthDay, seasonalTheme } from '../src/lib/season.ts'
+import { inSeason, isMonthDay, seasonalTheme, shownOn } from '../src/lib/season.ts'
 
 const day = (month: number, date: number) => new Date(2026, month - 1, date, 12)
 const spooky = { name: 'spooky', startsOn: '10-15', endsOn: '11-01' }
@@ -36,4 +36,14 @@ test('of several in season, the one begun most recently', () => {
 test('only real months and days count', () => {
   assert.equal(isMonthDay('10-15'), true)
   for (const bad of ['13-01', '00-10', '10-32', '1-5', '2026-10-15', 5]) assert.equal(isMonthDay(bad), false)
+})
+
+test('people see a theme in its window or all year, and never while it is hidden', () => {
+  const always = { name: 'always', startsOn: null, endsOn: null }
+  const hidden = { ...spooky, name: 'hidden', hidden: true }
+  const all = [spooky, always, hidden, { ...always, name: 'hidden always', hidden: true }]
+  assert.deepEqual(shownOn(all, day(10, 9)).map(s => s.name), ['always'])
+  assert.deepEqual(shownOn(all, day(10, 20)).map(s => s.name), ['spooky', 'always'])
+  assert.equal(seasonalTheme([hidden, always], day(10, 20)), null)
+  assert.equal(inSeason(always, day(10, 20)), false)
 })

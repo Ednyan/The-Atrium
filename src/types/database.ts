@@ -137,6 +137,11 @@ export interface Trace {
   // resizing the trace resizes the text. When false the font size is fixed
   // and resizing only changes how much room the text has to reflow in.
   textScaleWithBox?: boolean
+  // The text as large as its box allows, fitted to it (lib/textFit
+  // fitFontSize) -- new text traces are; unset, the font size is its own.
+  textFit?: boolean
+  // Where the text sits in its box, up and down. Unset: the middle.
+  textValign?: 'top' | 'middle' | 'bottom'
   // Soft ambient drop shadow under the trace frame. Default true; turning it
   // off leaves the trace flat against the canvas.
   showShadow?: boolean

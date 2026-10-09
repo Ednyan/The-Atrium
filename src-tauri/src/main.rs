@@ -790,6 +790,78 @@ fn read_binary_file(path: String) -> Result<tauri::ipc::Response, String> {
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+// Live files: a trace made from a spreadsheet follows the file it came from,
+// so a sheet edited and saved in Excel changes in the atrium too. The page
+// watches when the file was last saved (file_modified) and reads it again
+// (read_binary_file) when that changes.
+//
+// What it needs first is where the file is, and a drop in the webview never
+// says -- Tauri's own drop handling, which would, is off (dragDropEnabled
+// false). WebView2 tells it one way: the page posts the dropped File objects
+// with chrome.webview.postMessageWithAdditionalObjects, and here they are
+// CoreWebView2File, which knows its path. The message is
+// "atrium-dropped-paths:<id>"; the paths go back as the event of that name,
+// in the order the files were posted, null for any that isn't a file.
+//
+// WebView2 gives the message to every handler, Tauri's IPC too, which takes
+// it for a malformed call and logs it to the console. Harmless.
+#[cfg(windows)]
+fn listen_for_dropped_paths(app: &tauri::App) {
+    use tauri::Emitter;
+    use webview2_com::{
+        take_pwstr,
+        Microsoft::Web::WebView2::Win32::{ICoreWebView2File, ICoreWebView2WebMessageReceivedEventArgs2},
+        WebMessageReceivedEventHandler,
+    };
+    use windows_core::{Interface, PWSTR};
+
+    let Some(window) = app.get_webview_window("main") else { return };
+    let handle = app.handle().clone();
+    let registered = window.with_webview(move |webview| unsafe {
+        let Ok(core) = webview.controller().CoreWebView2() else { return };
+        let handler = WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut message = PWSTR::null();
+            if args.TryGetWebMessageAsString(&mut message).is_err() {
+                return Ok(());
+            }
+            let message = take_pwstr(message);
+            let Some(id) = message.strip_prefix("atrium-dropped-paths:") else { return Ok(()) };
+            let mut paths: Vec<Option<String>> = Vec::new();
+            if let Ok(objects) = args.cast::<ICoreWebView2WebMessageReceivedEventArgs2>().and_then(|a| a.AdditionalObjects()) {
+                let mut count = 0u32;
+                objects.Count(&mut count)?;
+                for i in 0..count {
+                    let path = objects.GetValueAtIndex(i).and_then(|o| o.cast::<ICoreWebView2File>()).and_then(|file| {
+                        let mut path = PWSTR::null();
+                        file.Path(&mut path)?;
+                        Ok(take_pwstr(path))
+                    });
+                    paths.push(path.ok());
+                }
+            }
+            let _ = handle.emit("atrium-dropped-paths", serde_json::json!({ "id": id, "paths": paths }));
+            Ok(())
+        }));
+        let mut token = 0i64;
+        if let Err(e) = core.add_WebMessageReceived(&handler, &mut token) {
+            log_startup(&format!("live files: could not listen for dropped paths: {}", e));
+        }
+    });
+    if let Err(e) = registered {
+        log_startup(&format!("live files: no webview to listen on: {}", e));
+    }
+}
+
+// When the file at `path` was last saved, in milliseconds.
+#[tauri::command]
+fn file_modified(path: String) -> Result<u64, String> {
+    let modified = fs::metadata(extended_path(PathBuf::from(path)))
+        .and_then(|m| m.modified())
+        .map_err(|e| e.to_string())?;
+    Ok(modified.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0))
+}
+
 #[tauri::command]
 fn copy_file_to_path(source_path: String, destination_path: String) -> Result<(), String> {
     let source = extended_path(PathBuf::from(source_path));
@@ -1424,6 +1496,8 @@ fn main() {
                 }
                 Err(e) => eprintln!("[vault] could not resolve the vault path for the asset scope: {}", e),
             }
+            #[cfg(windows)]
+            listen_for_dropped_paths(app);
             Ok(())
         })
         .on_page_load(|webview, payload| {
@@ -1451,6 +1525,7 @@ fn main() {
             append_binary_stream,
             close_binary_stream,
             read_binary_file,
+            file_modified,
             copy_file_to_path,
             move_path,
             remove_path,

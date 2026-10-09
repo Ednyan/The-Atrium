@@ -27,7 +27,7 @@ const DEFAULTS: Partial<Record<keyof Trace, unknown>> = {
   showBackground: true, fillColor: null, fillOpacity: 0.95, borderRadius: 0, showShadow: true,
   showFilename: true, showDescription: false,
   fontFamily: 'sans', fontSize: 16, textColor: '#ffffff', textBold: false, textItalic: false,
-  textUnderline: false, textAlign: 'center', textScaleWithBox: true,
+  textUnderline: false, textAlign: 'center', textScaleWithBox: true, textFit: false, textValign: 'middle',
   illuminate: false, lightColor: '#ffffff', lightIntensity: 1, lightRadius: 200, lightPulse: false, lightPulseSpeed: 2, lightEmit: 'center',
 }
 

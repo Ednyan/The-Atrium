@@ -172,6 +172,8 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             text_bold: trace.text_bold,
             text_italic: trace.text_italic,
             text_scale_with_box: trace.text_scale_with_box,
+            text_fit: trace.text_fit ?? undefined,
+            text_valign: trace.text_valign ?? undefined,
             show_shadow: trace.show_shadow,
             text_underline: trace.text_underline,
             text_align: trace.text_align,

@@ -12,6 +12,8 @@ import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
 import { startingAtriumTheme } from '../lib/atriumThemePresets'
+import { themeOf } from '../lib/customThemes'
+import { defaultPresetFor } from '../lib/tracePresets'
 import { seasonalThemeNow } from '../lib/specialThemes'
 import { resolveThemeNow } from '../lib/useLandingTheme'
 import { openContributors } from '../lib/contributorsRoute'
@@ -443,8 +445,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       // otherwise a bright room for somebody working in a bright interface,
       // and a dark one otherwise. Only the starting point -- the theme is
       // editable from inside the atrium, and this decides nothing that cannot
-      // be changed.
-      const startingTheme = (await seasonalThemeNow())?.values ?? startingAtriumTheme(resolveThemeNow() === 'light')
+      // be changed. The preset as the developer has it, if they've made it over.
+      const light = resolveThemeNow() === 'light'
+      const startingTheme = (await seasonalThemeNow())?.values
+        ?? themeOf(`preset:${defaultPresetFor(light).id}`, null, []) ?? startingAtriumTheme(light)
 
       const { data, error } = await (supabase!
         .from('lobbies') as any)
@@ -1236,7 +1240,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         </div>
       </div>
 
-      {/* Manage Atrium (access/password, without entering) */}
+      {/* Atrium settings, without going in */}
       {managingLobbyId && (() => {
         const ownedMatch = userLobbies.find(l => l.id === managingLobbyId)
         const managedLobby = ownedMatch ?? adminLobbies.find(l => l.id === managingLobbyId)

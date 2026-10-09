@@ -152,3 +152,40 @@ export function fontPxOf(fontSize: 'small' | 'medium' | 'large' | number | undef
 export function fittedTextBox(trace: { content?: string | null; fontSize?: 'small' | 'medium' | 'large' | number; fontFamily?: string }): { width: number; height: number } {
   return computeAutoFitTextSize(trace.content ?? '', fontPxOf(trace.fontSize), { fontFamily: resolveFontFamilyCss(trace.fontFamily ?? 'sans') })
 }
+
+// The font size, in the box's own units, at which `content` fills a `width` x
+// `height` text box as far as it can, Miro's way: one letter in a big box is
+// big, a paragraph small enough to fit. The largest size whose wrapped lines
+// fit both ways, inside the box's 6px padding, found by halving. Remembered:
+// a text is drawn again on every frame of a zoom. An empty box is sized as
+// one letter would be, so typing the first one doesn't jump.
+const FIT_PADDING = 6
+const fitCache = new Map<string, number>()
+export function fitFontSize(content: string, width: number, height: number, font: { family: string; bold?: boolean; italic?: boolean }): number {
+  const key = [content, Math.round(width), Math.round(height), font.family, font.bold ? 1 : 0, font.italic ? 1 : 0].join('\u0001')
+  const known = fitCache.get(key)
+  if (known !== undefined) return known
+  const ctx = getMeasureContext()
+  const innerW = Math.max(1, width - FIT_PADDING * 2), innerH = Math.max(1, height - FIT_PADDING * 2)
+  if (!ctx) return Math.max(4, innerH / LINE_HEIGHT_RATIO / 2)
+  const text = content.trim() ? content : 'M'
+  // Words whole: a size that would break one across lines is too big (a word
+  // is broken only where even the smallest size can't fit it).
+  const words = text.split(/\s+/).filter(Boolean)
+  const fits = (size: number) => {
+    ctx.font = `${font.italic ? 'italic ' : ''}${font.bold ? 'bold ' : ''}${size}px ${font.family}`
+    if (words.some(word => ctx.measureText(word).width > innerW)) return false
+    const lines = wrapLines(ctx, text, innerW)
+    if (lines.length * size * LINE_HEIGHT_RATIO > innerH) return false
+    return lines.every(line => ctx.measureText(line.trimEnd()).width <= innerW + 0.5)
+  }
+  let low = 2, high = Math.max(2, innerH / LINE_HEIGHT_RATIO)
+  for (let i = 0; i < 16 && high - low > 0.25; i++) {
+    const middle = (low + high) / 2
+    if (fits(middle)) low = middle
+    else high = middle
+  }
+  if (fitCache.size > 400) fitCache.delete(fitCache.keys().next().value!)
+  fitCache.set(key, low)
+  return low
+}

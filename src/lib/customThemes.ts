@@ -18,7 +18,7 @@ import { useSyncExternalStore } from 'react'
 import { supabase, isDesktop } from './supabase'
 import { ATRIUM_THEMES } from './atriumThemePresets'
 import { TRACE_PRESETS, defaultPresetFor } from './tracePresets'
-import { specialThemesNow } from './specialThemes'
+import { presetRowNow, specialThemesNow } from './specialThemes'
 import type { ThemeSettings } from '../types/database'
 
 export type ThemeMode = 'light' | 'dark'
@@ -49,25 +49,36 @@ export function modeOf(values: ThemeSettings | null | undefined): ThemeMode {
 export type ThemeRef = 'atrium' | `preset:${string}` | `special:${string}` | `custom:${string}`
 
 export const PRESETS = TRACE_PRESETS.map((preset, i) => ({
+  id: preset.id,
   ref: `preset:${preset.id}` as ThemeRef,
   nameKey: ATRIUM_THEMES[i].nameKey,
   descKey: ATRIUM_THEMES[i].descKey,
   values: ATRIUM_THEMES[i].values as ThemeSettings,
 }))
 
-// A ref's theme. Null when it names nothing -- one of a person's own themes,
-// or a special theme, deleted.
+// The presets as they are now: each as the developer has made it, where they
+// have (lib/specialThemes), else as the code has it -- and whether it's hidden
+// from the presets list. Hidden, it's still what light and dark fall back to.
+export const presetsNow = () => PRESETS.map(p => {
+  const row = presetRowNow(p.id)
+  return { ...p, values: row?.values ?? p.values, mode: row?.mode ?? modeOf(p.values), hidden: !!row?.hidden }
+})
+
+// A ref's theme. Null when it names nothing -- one of a person's own themes
+// deleted, or a special theme deleted, hidden, or out of its window.
 export function themeOf(ref: ThemeRef, atrium: ThemeSettings | null | undefined, customs: CustomTheme[]): ThemeSettings | null | undefined {
   if (ref === 'atrium') return atrium
-  if (ref.startsWith('preset:')) return PRESETS.find(p => p.ref === ref)?.values ?? null
+  if (ref.startsWith('preset:')) return presetsNow().find(p => p.ref === ref)?.values ?? null
   if (ref.startsWith('special:')) return specialThemesNow().find(s => `special:${s.id}` === ref)?.values ?? null
   return customs.find(c => `custom:${c.id}` === ref)?.values ?? null
 }
 
-// Marked light or dark, a person's own or a special theme; any other by its floor.
+// Marked light or dark, a person's own, a special theme, or a preset the
+// developer has made over; any other by its floor.
 const markedMode = (ref: string, customs: CustomTheme[]) =>
   (ref.startsWith('custom:') ? customs.find(c => `custom:${c.id}` === ref)
-    : ref.startsWith('special:') ? specialThemesNow().find(s => `special:${s.id}` === ref) : null)?.mode
+    : ref.startsWith('special:') ? specialThemesNow().find(s => `special:${s.id}` === ref)
+    : ref.startsWith('preset:') ? presetRowNow(ref.slice(7)) : null)?.mode
 
 export function themeModeOf(ref: ThemeRef, atrium: ThemeSettings | null | undefined, customs: CustomTheme[]): ThemeMode {
   return markedMode(ref, customs) ?? modeOf(themeOf(ref, atrium, customs))

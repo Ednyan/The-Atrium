@@ -289,7 +289,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         <Switch testId="auto-save" label={t('atrium.profile.autoSave')} hint={t('atrium.profile.autoSaveHint')} on={autoSave} onChange={setAutoSave} />
         {autoSave && (
           <Slider
-            label={t('atrium.profile.autoSaveEvery', { value: autoSaveMinutes })}
+            label={autoSaveMinutes === 0 ? t('atrium.profile.autoSaveConstant') : t('atrium.profile.autoSaveEvery', { value: autoSaveMinutes })}
             hint={t('atrium.profile.autoSaveEveryHint')}
             min={AUTO_SAVE_MINUTES.min} max={AUTO_SAVE_MINUTES.max} step={1} value={autoSaveMinutes}
             onChange={setAutoSaveMinutes}

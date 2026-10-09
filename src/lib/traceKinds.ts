@@ -60,7 +60,7 @@ export function kindOf(trace: Kinded): TraceKind {
 export const SETTING_FIELDS: Record<Exclude<Setting, 'link' | 'strokes'>, readonly (keyof Trace)[]> = {
   frame: ['showBorder', 'borderColor', 'borderOpacity', 'borderWidth', 'strokeStyle', 'showBackground', 'fillColor', 'fillOpacity', 'borderRadius', 'showShadow'],
   captions: ['showFilename', 'showDescription'],
-  font: ['fontFamily', 'fontSize', 'textColor', 'textBold', 'textItalic', 'textUnderline', 'textAlign', 'textScaleWithBox'],
+  font: ['fontFamily', 'fontSize', 'textColor', 'textBold', 'textItalic', 'textUnderline', 'textAlign', 'textScaleWithBox', 'textFit', 'textValign'],
   shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'cornerRadius'],
   line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
   light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed', 'lightEmit'],

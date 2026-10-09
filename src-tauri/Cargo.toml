@@ -27,6 +27,13 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "c
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Live files (listen_for_dropped_paths): WebView2's own interfaces, for the
+# path of a dropped file. The versions Tauri itself is built on, already in
+# the tree.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
+
 # Tuned so the release build fits in this machine's available commit rather
 # than for maximum optimization. Compiling the final binary at the stock
 # release profile repeatedly aborted with "memory allocation of 19592 bytes

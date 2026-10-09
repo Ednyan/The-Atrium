@@ -77,6 +77,12 @@
 }
 
 
+/* A destructive action's button (leave without saving, delete): white on red
+   in either theme. The theme's strong text turns dark on paper, and dark on
+   this red can't be read. */
+.danger-fill { background-color: rgb(127 29 29); color: #fff; }
+.danger-fill:hover { background-color: rgb(185 28 28); }
+
 /* Nier:Automata Inspired Theme */
 /* Colour as roles rather than as names.
  *

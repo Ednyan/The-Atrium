@@ -1,6 +1,6 @@
 // Spreadsheets, read: an .xlsx, .ods or .csv file as its sheets -- each a
-// table of the text its cells show -- and, from an .xlsx, its charts, each as
-// what it plots. Read in the browser with what browsers have: either kind of
+// table of the text its cells show -- and, from an .xlsx or an .ods, its
+// charts, each as what it plots. Read in the browser with what browsers have: either kind of
 // file is a zip of XML, inflated by DecompressionStream and read by DOMParser,
 // so there's no library to keep up to date. A chart is read from the values
 // the file keeps cached with it -- no formula is ever evaluated.
@@ -73,8 +73,9 @@ const ROW_HEIGHT = 22
 // ---- Zip ------------------------------------------------------------------------------
 
 // The files in a zip, by name: read through its central directory, each
-// inflated when it's asked for.
-async function unzip(buffer: ArrayBuffer): Promise<(name: string) => Promise<string | null>> {
+// inflated when it's asked for -- as text, or (`bytes`) as it is.
+export type Zip = ((name: string) => Promise<string | null>) & { bytes: (name: string) => Promise<Uint8Array | null> }
+export async function unzip(buffer: ArrayBuffer): Promise<Zip> {
   const bytes = new Uint8Array(buffer)
   const view = new DataView(buffer)
   // The end-of-central-directory record, searched for from the end.
@@ -99,24 +100,29 @@ async function unzip(buffer: ArrayBuffer): Promise<(name: string) => Promise<str
     entries.set(name, { method, size, offset })
     at += 46 + nameLength + extraLength + commentLength
   }
-  return async (name: string) => {
+  const raw = async (name: string) => {
     const entry = entries.get(name)
     if (!entry) return null
     const local = entry.offset
     const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true)
     const data = bytes.subarray(start, start + entry.size)
-    if (entry.method === 0) return decoder.decode(data)
+    if (entry.method === 0) return data
     if (entry.method !== 8) throw new Error(`unsupported compression in ${name}`)
     const stream = new Blob([data as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
-    return await new Response(stream).text()
+    return new Uint8Array(await new Response(stream).arrayBuffer())
   }
+  const text = async (name: string) => {
+    const data = await raw(name)
+    return data ? decoder.decode(data) : null
+  }
+  return Object.assign(text, { bytes: raw })
 }
 
-const xml = (text: string) => new DOMParser().parseFromString(text, 'application/xml')
+export const xml = (text: string) => new DOMParser().parseFromString(text, 'application/xml')
 // Elements by local name, whatever their namespace prefix.
-const all = (root: Element | Document, local: string) => Array.from(root.getElementsByTagNameNS('*', local))
-const first = (root: Element | Document, local: string) => root.getElementsByTagNameNS('*', local)[0] as Element | undefined
-const children = (el: Element, local: string) => Array.from(el.children).filter(c => c.localName === local)
+export const all = (root: Element | Document, local: string) => Array.from(root.getElementsByTagNameNS('*', local))
+export const first = (root: Element | Document, local: string) => root.getElementsByTagNameNS('*', local)[0] as Element | undefined
+export const children = (el: Element, local: string) => Array.from(el.children).filter(c => c.localName === local)
 
 // ---- Numbers, as a format shows them ------------------------------------------------------
 
@@ -215,7 +221,7 @@ function resolve(from: string, target: string): string {
   return parts.join('/')
 }
 
-async function relsOf(read: (name: string) => Promise<string | null>, part: string): Promise<Map<string, string>> {
+export async function relsOf(read: (name: string) => Promise<string | null>, part: string): Promise<Map<string, string>> {
   const folder = part.split('/').slice(0, -1).join('/')
   const name = part.split('/').pop()
   const text = await read(`${folder ? folder + '/' : ''}_rels/${name}.rels`)
@@ -227,8 +233,9 @@ async function relsOf(read: (name: string) => Promise<string | null>, part: stri
 
 const textOf = (el: Element | undefined) => (el ? all(el, 't').map(t => t.textContent ?? '').join('') : '')
 
-// A theme's colours by name: dk1, lt1, dk2, lt2, accent1 to accent6.
-type Theme = Record<string, string>
+// A theme's colours by name: dk1, lt1, dk2, lt2, accent1 to accent6 -- and,
+// where a deck's master maps them (lib/deck), tx1, bg1, tx2, bg2.
+export type Theme = Record<string, string>
 const SCHEME_ALIAS: Record<string, string> = { tx1: 'dk1', bg1: 'lt1', tx2: 'dk2', bg2: 'lt2' }
 const OFFICE_THEME: Theme = {
   dk1: '#000000', lt1: '#ffffff', dk2: '#44546a', lt2: '#e7e6e6',
@@ -255,12 +262,13 @@ function rgb(h: number, s: number, l: number): [number, number, number] {
 
 // The colour an element holding one (a solidFill, a gradient stop) holds: as
 // written, the system's, or the theme's, with its tints and shades applied.
-function colourOf(holder: Element | undefined, theme: Theme): string | undefined {
+export function colourOf(holder: Element | undefined, theme: Theme): string | undefined {
   const c = holder?.firstElementChild
   if (!c) return undefined
-  const base = c.localName === 'srgbClr' ? `#${c.getAttribute('val')}`
+  const name = c.getAttribute('val') ?? ''
+  const base = c.localName === 'srgbClr' ? `#${name}`
     : c.localName === 'sysClr' ? `#${c.getAttribute('lastClr') ?? '000000'}`
-    : c.localName === 'schemeClr' ? theme[SCHEME_ALIAS[c.getAttribute('val') ?? ''] ?? c.getAttribute('val') ?? '']
+    : c.localName === 'schemeClr' ? theme[name] ?? theme[SCHEME_ALIAS[name] ?? name]
     : undefined
   if (!base || !/^#[0-9a-f]{6}$/i.test(base)) return undefined
   let [r, g, b] = [1, 3, 5].map(i => parseInt(base.slice(i, i + 2), 16) / 255)
@@ -274,6 +282,17 @@ function colourOf(holder: Element | undefined, theme: Theme): string | undefined
     }
   }
   return `#${[r, g, b].map(x => Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16).padStart(2, '0')).join('')}`
+}
+
+// A theme part's colours (Office's own where it has none).
+export function themeOf(text: string | null): Theme {
+  const theme: Theme = { ...OFFICE_THEME }
+  const scheme = text ? first(xml(text), 'clrScheme') : undefined
+  for (const el of scheme ? Array.from(scheme.children) : []) {
+    const colour = colourOf(el, theme)
+    if (colour) theme[el.localName] = colour
+  }
+  return theme
 }
 
 // A shape's fill (spPr's own solidFill) or its line's colour; none when it says noFill.
@@ -301,7 +320,7 @@ function cached(el: Element | undefined): { values: (string | null)[]; format?: 
   return { values, format: first(cache, 'formatCode')?.textContent ?? undefined }
 }
 
-function readChart(doc: Document, theme: Theme): ChartData | null {
+export function readChart(doc: Document, theme: Theme): ChartData | null {
   const plot = first(doc, 'plotArea')
   if (!plot) return null
   const kinds: Record<string, ChartType> = {
@@ -423,13 +442,7 @@ async function readXlsx(read: (name: string) => Promise<string | null>, lang?: s
   }
 
   // The theme's colours, for those a chart names by them.
-  const themeText = await read('xl/theme/theme1.xml')
-  const theme: Theme = { ...OFFICE_THEME }
-  const scheme = themeText ? first(xml(themeText), 'clrScheme') : undefined
-  for (const el of scheme ? Array.from(scheme.children) : []) {
-    const colour = colourOf(el, theme)
-    if (colour) theme[el.localName] = colour
-  }
+  const theme = themeOf(await read('xl/theme/theme1.xml'))
 
   const sheets: SheetData[] = []
   const charts: ChartData[] = []
@@ -550,7 +563,123 @@ async function readOds(read: (name: string) => Promise<string | null>, lang?: st
     const made = sheetOf(name, grid, widths)
     if (made) sheets.push(made)
   }
-  return { sheets, charts: [] }
+  // Its charts: each an object of its own in the file, "Object 1/content.xml".
+  const charts: ChartData[] = []
+  for (const object of all(doc, 'object')) {
+    const href = (object.getAttributeNS(XLINK, 'href') ?? '').replace(/^\.\//, '').replace(/\/$/, '')
+    const part = href ? await read(`${href}/content.xml`) : null
+    const chart = part ? odsChart(xml(part)) : null
+    if (chart) charts.push(chart)
+  }
+  return { sheets, charts }
+}
+
+const XLINK = 'http://www.w3.org/1999/xlink'
+const ODS_CHART = 'urn:oasis:names:tc:opendocument:xmlns:chart:1.0'
+const ODS_DRAW = 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0'
+const ODS_SVG = 'urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0'
+const ODS_FO = 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0'
+const ODS_CHART_TYPES: Record<string, ChartType> = {
+  'chart:bar': 'column', 'chart:line': 'line', 'chart:area': 'area', 'chart:scatter': 'scatter',
+  'chart:circle': 'pie', 'chart:ring': 'doughnut',
+  // What has no drawing of its own, drawn as the nearest that has.
+  'chart:radar': 'line', 'chart:filled-radar': 'area', 'chart:bubble': 'scatter', 'chart:stock': 'line',
+}
+
+// A LibreOffice chart, from its own part: what it plots is the table it keeps
+// with it (local-table) -- series across, categories down, its first column
+// the categories (a scatter's x values in its first data column) -- in its
+// own colours, titles and legend. Null for one with nothing to plot.
+function odsChart(doc: Document): ChartData | null {
+  const ns = (el: Element | undefined, space: string, name: string) => el?.getAttributeNS(space, name) ?? null
+  const chartEl = doc.getElementsByTagNameNS(ODS_CHART, 'chart')[0]
+  if (!chartEl) return null
+  const base = ODS_CHART_TYPES[ns(chartEl, ODS_CHART, 'class') ?? '']
+  if (!base) return null
+  // Its styles, by name: colours and how it's drawn.
+  const styles = new Map<string, Element>()
+  for (const style of all(doc, 'style')) styles.set(ns(style, ODS_STYLE, 'name') ?? '', style)
+  const prop = (styleName: string | null, part: string, space: string, name: string) => {
+    const style = styleName ? styles.get(styleName) : undefined
+    return style ? ns(first(style, part), space, name) : null
+  }
+  const plotArea = first(chartEl, 'plot-area')
+  const plotStyle = ns(plotArea, ODS_CHART, 'style-name')
+  const horizontal = prop(plotStyle, 'chart-properties', ODS_CHART, 'vertical') === 'true'
+  const stacked = prop(plotStyle, 'chart-properties', ODS_CHART, 'stacked') === 'true' || prop(plotStyle, 'chart-properties', ODS_CHART, 'percentage') === 'true'
+  const type: ChartType = base === 'column' && horizontal ? 'bar' : base
+
+  // The table it plots: a header row of series names, then a row a category.
+  const table = all(doc, 'table').find(t => ns(t, ODS_TABLE, 'name') === 'local-table')
+  if (!table) return null
+  const rowsOf = (holder: Element | undefined) => holder ? all(holder, 'table-row') : []
+  const headerRows = rowsOf(first(table, 'table-header-rows'))
+  const bodyRows = rowsOf(first(table, 'table-rows'))
+  const cellsOf = (row: Element) => Array.from(row.children).filter(c => c.localName === 'table-cell')
+  const textOfCell = (cell: Element | undefined) => (cell ? all(cell, 'p').map(p => p.textContent ?? '').join(' ').trim() : '')
+  const numberOfCell = (cell: Element | undefined): number | null => {
+    if (!cell) return null
+    const value = ns(cell, ODS_OFFICE, 'value')
+    const n = value !== null ? Number(value) : Number(textOfCell(cell).replace(',', '.'))
+    return Number.isFinite(n) && (value !== null || textOfCell(cell) !== '') ? n : null
+  }
+  const names = headerRows[0] ? cellsOf(headerRows[0]).slice(1).map(textOfCell) : []
+  const columns = Math.max(names.length, ...bodyRows.map(r => cellsOf(r).length - 1), 0)
+  if (bodyRows.length === 0 || columns === 0) return null
+  const column = (i: number) => bodyRows.map(r => numberOfCell(cellsOf(r)[i + 1]))
+  const categories = bodyRows.map(r => textOfCell(cellsOf(r)[0]))
+
+  // Its series, in order; those whose data isn't in the table left out.
+  const seriesEls = plotArea ? Array.from(plotArea.children).filter(c => c.localName === 'series') : []
+  const scatter = type === 'scatter'
+  const x = scatter ? column(0) : undefined
+  const firstData = scatter ? 1 : 0
+  const series: ChartSeries[] = []
+  for (let i = firstData; i < columns; i++) {
+    const el = seriesEls[i - firstData]
+    const style = ns(el, ODS_CHART, 'style-name')
+    const values = column(i)
+    if (values.every(v => v === null)) continue
+    const lineLike = type === 'line' || scatter
+    const color = (lineLike ? prop(style, 'graphic-properties', ODS_SVG, 'stroke-color') : null)
+      ?? prop(style, 'graphic-properties', ODS_DRAW, 'fill-color')
+      ?? prop(style, 'graphic-properties', ODS_SVG, 'stroke-color')
+      ?? DEFAULT_PALETTE[series.length % DEFAULT_PALETTE.length]
+    const symbol = prop(style, 'chart-properties', ODS_CHART, 'symbol-type') ?? prop(plotStyle, 'chart-properties', ODS_CHART, 'symbol-type')
+    series.push({
+      name: names[i] || `${series.length + 1}`,
+      color: /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_PALETTE[series.length % DEFAULT_PALETTE.length],
+      values,
+      ...(x ? { x } : {}),
+      ...(lineLike && symbol && symbol !== 'none' ? { markers: true } : {}),
+      ...(scatter && prop(plotStyle, 'chart-properties', ODS_CHART, 'lines') !== 'true' ? { markersOnly: true } : {}),
+    })
+  }
+  if (series.length === 0) return null
+
+  const titleOf = (holder: Element | undefined) => {
+    const title = holder && Array.from(holder.children).find(c => c.localName === 'title')
+    return title ? all(title, 'p').map(p => p.textContent ?? '').join(' ').trim() || undefined : undefined
+  }
+  const axis = (dimension: string) => plotArea ? Array.from(plotArea.children).find(c => c.localName === 'axis' && ns(c, ODS_CHART, 'dimension') === dimension) : undefined
+  const chartStyle = ns(chartEl, ODS_CHART, 'style-name')
+  const fill = prop(chartStyle, 'graphic-properties', ODS_DRAW, 'fill')
+  const background = fill === 'none' ? undefined : prop(chartStyle, 'graphic-properties', ODS_DRAW, 'fill-color') ?? '#ffffff'
+  const legendEl = Array.from(chartEl.children).find(c => c.localName === 'legend')
+  const position = ns(legendEl, ODS_CHART, 'legend-position')
+  const textColour = all(doc, 'text-properties').map(t => ns(t, ODS_FO, 'color')).find(c => !!c && /^#[0-9a-f]{6}$/i.test(c))
+  return {
+    v: 1, kind: 'chart', type,
+    title: titleOf(chartEl),
+    xTitle: titleOf(axis('x')),
+    yTitle: titleOf(axis('y')),
+    stacked,
+    ...(scatter ? {} : { categories }),
+    ...(background && /^#[0-9a-f]{6}$/i.test(background) ? { background: background.toLowerCase() } : {}),
+    text: textColour?.toLowerCase() ?? '#595959',
+    legend: !legendEl ? null : position === 'bottom' ? 'b' : position === 'top' ? 't' : 'r',
+    series,
+  }
 }
 
 // ---- .csv --------------------------------------------------------------------------------

@@ -91,6 +91,8 @@ export function mapRowToTrace(row: any): Trace {
     textBold: row.text_bold ?? false,
     textItalic: row.text_italic ?? false,
     textScaleWithBox: row.text_scale_with_box ?? true,
+    textFit: row.text_fit ?? undefined,
+    textValign: row.text_valign === 'top' || row.text_valign === 'bottom' || row.text_valign === 'middle' ? row.text_valign : undefined,
     showShadow: row.show_shadow ?? true,
     textUnderline: row.text_underline ?? false,
     textAlign: row.text_align ?? 'center',

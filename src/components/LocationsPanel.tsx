@@ -314,7 +314,7 @@ export default function LocationsPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={() => { if (dialogTargetId) onDelete(dialogTargetId); setDialogMode(null) }}
-                    className="flex-1 bg-red-900 hover:bg-red-700 text-nier-strong py-1.5 text-xs tracking-wider uppercase transition-colors"
+                    className="flex-1 danger-fill py-1.5 text-xs tracking-wider uppercase transition-colors"
                   >
                     {t('common.delete')}
                   </button>

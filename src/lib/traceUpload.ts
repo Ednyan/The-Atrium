@@ -7,6 +7,7 @@
 import { supabase, isDesktop } from './supabase'
 import { showToast } from './toast'
 import { t } from './i18n'
+import { setVaultWriteProgress, trackVaultWrite } from './vaultWrites'
 
 export const inferFileExtension = (file: File) => {
   const fromName = file.name.split('.').pop()?.trim().toLowerCase()
@@ -63,7 +64,14 @@ export async function uploadTraceFile(file: File, lobbyId: string, userId: strin
     // is cached in memory, and "Missing file" the next time the atrium was
     // opened. Nothing anywhere said a word. A background write may be
     // invisible while it works; it must not be invisible when it does not.
-    void supabase.storage.from('traces').upload(storagePath, file)
+    //
+    // Tracked (lib/vaultWrites): a read of the file waits for it to be whole,
+    // and the trace shows how far along it is.
+    const write = supabase.storage.from('traces').upload(storagePath, file, {
+      onProgress: (fraction: number) => setVaultWriteProgress(localUrl, fraction),
+    })
+    trackVaultWrite(localUrl, write)
+    void write
       .then(({ error }: { error: any }) => {
         if (error) {
           console.error('[vault] failed to write media file:', storagePath, error)

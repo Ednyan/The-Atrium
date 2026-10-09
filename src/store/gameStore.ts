@@ -9,7 +9,11 @@ import type { TraceLink } from '../lib/traceLinks'
 // How often auto-save may write, in minutes: on the web no more than every
 // ten, as each save is a round of database writes; on the desktop, where it's
 // the vault on disk, every two. An hour at most on both.
-export const AUTO_SAVE_MINUTES = { min: isDesktop ? 2 : 10, max: 60 }
+// On the desktop the far left is 0: constantly -- moments after each change
+// (AUTO_SAVE_CONSTANT_MS). New there it starts at 2.
+export const AUTO_SAVE_MINUTES = { min: isDesktop ? 0 : 10, max: 60 }
+const AUTO_SAVE_DEFAULT = isDesktop ? 2 : 10
+export const AUTO_SAVE_CONSTANT_MS = 2000
 const clampAutoSave = (minutes: number) => Math.min(AUTO_SAVE_MINUTES.max, Math.max(AUTO_SAVE_MINUTES.min, Math.round(minutes)))
 
 export type CursorState = 'default' | 'pointer' | 'grab' | 'grabbing' | 'not-allowed'
@@ -219,8 +223,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   spatialSound: localStorage.getItem('spatialSound') === 'true',
   autoSave: localStorage.getItem('autoSave') === 'true',
   autoSaveMinutes: (() => {
-    const stored = Number(localStorage.getItem('autoSaveMinutes'))
-    return stored ? clampAutoSave(stored) : AUTO_SAVE_MINUTES.min
+    // Read as set, 0 included: 0 is a choice (constantly), not "unset".
+    const stored = localStorage.getItem('autoSaveMinutes')
+    return stored !== null && Number.isFinite(Number(stored)) ? clampAutoSave(Number(stored)) : AUTO_SAVE_DEFAULT
   })(),
   quickBarOrder: (() => {
     try {

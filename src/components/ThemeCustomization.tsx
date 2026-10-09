@@ -17,9 +17,9 @@ import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import { useGameStore } from '../store/gameStore'
 import { firstFreeName } from '../lib/traceNames'
-import { CUSTOM_THEME_LIMIT, PRESETS, gridStyleOf, modeOf, rememberLast, setCustomThemes, themeModeOf, themeOf, useCustomThemes, type CustomTheme, type ThemeMode, type ThemeRef } from '../lib/customThemes'
+import { CUSTOM_THEME_LIMIT, presetsNow, gridStyleOf, modeOf, rememberLast, setCustomThemes, themeModeOf, themeOf, useCustomThemes, type CustomTheme, type ThemeMode, type ThemeRef } from '../lib/customThemes'
 import { useLandingTheme } from '../lib/useLandingTheme'
-import { useSpecialThemes } from '../lib/specialThemes'
+import { shownSpecialThemes, useSpecialThemes } from '../lib/specialThemes'
 import { CustomizationPanel, Section } from './Customization'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { Check, ColourField, Slider } from './ShapeStyleControls'
@@ -295,19 +295,21 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
       <Section id="presets" title={t('atrium.theme.presets')}>
         <div className="grid grid-cols-2 gap-2">
           <ThemeTile testId="atrium" name={t('atrium.theme.atriumOwn')} values={atrium ?? {}} mode={modeOf(atrium)} selected={viewRef === 'atrium'} onPick={() => onPick('atrium')} />
-          {PRESETS.map(preset => (
+          {/* The presets and special themes shown today (lib/specialThemes):
+              none hidden, and a special theme only in its window. */}
+          {presetsNow().filter(preset => !preset.hidden).map(preset => (
             <ThemeTile
               key={preset.ref}
               testId={preset.ref}
               name={t(preset.nameKey as TranslationKey)}
               about={t(preset.descKey as TranslationKey)}
               values={preset.values}
-              mode={modeOf(preset.values)}
+              mode={preset.mode}
               selected={viewRef === preset.ref}
               onPick={() => onPick(preset.ref)}
             />
           ))}
-          {specials.map(special => (
+          {shownSpecialThemes(specials).map(special => (
             <ThemeTile
               key={special.id}
               testId={`special:${special.id}`}

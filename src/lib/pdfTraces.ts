@@ -58,6 +58,47 @@ export async function createPdfTrace(file: File, at: { x: number; y: number }, w
   }, message => showToast(t('atrium.error.traceSaveFailed', { message })))
 }
 
+// A PowerPoint deck as a document trace at `at`, paged as a PDF is: its
+// slides read (lib/deck) and kept as the trace's file, its pictures as files
+// of their own. With `path`, where the file is on disk, it follows the file
+// (lib/liveFiles). Thrown when it isn't a deck that reads.
+export async function createDeckTrace(file: File, at: { x: number; y: number }, who: TraceMaker, path?: string | null): Promise<Trace> {
+  const { readDeck } = await import('./deck')
+  const { keepDeckFile } = await import('./deckDraw')
+  const deck = await readDeck(file, picture => uploadTraceFile(picture, who.lobbyId, who.userId))
+  if (deck.slides.length === 0) throw new Error(t('atrium.deck.empty'))
+  const size = scaleToDisplayBox({ width: deck.width, height: deck.height }, 600)
+  const url = await uploadTraceFile(new File([JSON.stringify(deck)], 'deck.json', { type: 'application/json' }), who.lobbyId, who.userId)
+  keepDeckFile(url, deck)
+  const preset = currentTracePreset(who.lobbyId)
+  const { traces, layers } = useGameStore.getState()
+  const trace = await insertTrace({
+    user_id: who.userId,
+    username: who.username,
+    type: 'document',
+    border_color: preset.border,
+    fill_color: preset.fill,
+    show_border: true,
+    show_background: true,
+    font_family: 'mono',
+    content: fileTitle(file.name) || deck.name || 'Deck',
+    position_x: at.x,
+    position_y: at.y,
+    media_url: url,
+    scale: who.scale ?? 1.0,
+    rotation: 0.0,
+    border_radius: 0,
+    lobby_id: who.lobbyId,
+    show_description: false,
+    show_filename: false,
+    width: size.width,
+    height: size.height,
+    ...newTraceOrderFields(traces, layers)[0],
+  }, message => showToast(t('atrium.error.traceSaveFailed', { message })))
+  if (path) void (await import('./liveFiles')).followFile(path, [{ id: trace.id, kind: 'deck', index: 0 }])
+  return trace
+}
+
 // Pages as picture rows, ready to insert: in reading order, `columns` across,
 // centred on `at`, each no longer than `edge` along its longest side, their
 // files saved. `extra` adds to each row (its group, its place in the stack).

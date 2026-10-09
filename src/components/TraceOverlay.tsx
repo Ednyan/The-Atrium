@@ -5,7 +5,7 @@
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
 import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
@@ -20,7 +20,7 @@ import { resolveLocalStreamUrl } from '../lib/localMedia'
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss } from '../lib/textFit'
+import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss, fitFontSize } from '../lib/textFit'
 import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
@@ -43,7 +43,11 @@ import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceS
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
-import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, traceKindLabel } from './Customization'
+import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, Switch, traceKindLabel } from './Customization'
+import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
+import DeckSlide from './DeckSlide'
+import { isDeckFile } from '../lib/deckDraw'
+import { fileName, followed, stopFollowing, watchFollowing } from '../lib/liveFiles'
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, rasterizeDrawings, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
@@ -65,61 +69,8 @@ import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
 import SheetTrace from './SheetTrace'
-
-// Custom fonts: drop a font file -- or a whole Google-Fonts-style family
-// folder -- into src/assets/fonts. Each family becomes ONE Font Family
-// dropdown entry, named after its folder (or the filename for a bare file),
-// using the family's variable font when present (else its Regular weight).
-// Bundled at build time via import.meta.glob, so there's no runtime directory
-// listing (works on any host).
-//
-// Two patterns, both only ONE level deep: bare files directly in fonts/, and
-// files at the ROOT of a family folder. Deliberately NOT recursive -- a Google
-// Fonts download nests every individual weight under a static/ subfolder (54
-// files for Roboto alone, 72 for Datatype), and bundling all of those would
-// bloat the app for no benefit since the root-level variable font already
-// covers every weight.
-const CUSTOM_FONT_URL_MAP = import.meta.glob(
-  [
-    '../assets/fonts/*.{ttf,otf,woff,woff2,TTF,OTF,WOFF,WOFF2}',
-    '../assets/fonts/*/*.{ttf,otf,woff,woff2,TTF,OTF,WOFF,WOFF2}',
-    // Exclude italic files -- we only surface one (roman) entry per family, so
-    // an eager glob would otherwise still emit every family's italic variable
-    // font as a bundled asset for nothing. Italic text still works via the
-    // textItalic toggle (browser-synthesized slant).
-    '!../assets/fonts/**/*[Ii]talic*',
-  ],
-  { eager: true, query: '?url', import: 'default' }
-) as Record<string, string>
-
-// One entry per family. The name (dropdown label + @font-face family) is the
-// family-folder name (or the bare filename), sanitized to alphanumerics/_/-.
-const CUSTOM_FONTS: { name: string; url: string }[] = (() => {
-  const byFamily: Record<string, { file: string; url: string }[]> = {}
-  for (const [path, url] of Object.entries(CUSTOM_FONT_URL_MAP)) {
-    const rest = path.split('assets/fonts/')[1] ?? path
-    const seg0 = rest.split('/')[0]
-    const isBareFile = seg0.includes('.')
-    const rawName = isBareFile ? seg0.replace(/\.[^.]+$/, '') : seg0
-    const name = rawName.replace(/[^a-zA-Z0-9_-]/g, '_')
-    const file = path.split('/').pop() || path
-    ;(byFamily[name] ??= []).push({ file, url })
-  }
-  const isVariable = (f: string) => /variablefont|\[.*\]/i.test(f)
-  const isItalic = (f: string) => /italic/i.test(f)
-  const isRegular = (f: string) => /-regular\.|(^|[^a-z])regular\b/i.test(f)
-  return Object.entries(byFamily)
-    .map(([name, files]) => {
-      const chosen =
-        files.find(f => isVariable(f.file) && !isItalic(f.file)) ||
-        files.find(f => isVariable(f.file)) ||
-        files.find(f => isRegular(f.file) && !isItalic(f.file)) ||
-        files.find(f => !isItalic(f.file)) ||
-        files[0]
-      return { name, url: chosen.url }
-    })
-    .sort((a, b) => a.name.localeCompare(b.name))
-})()
+import { CUSTOM_FONTS } from '../lib/customFonts'
+import { vaultWriteProgress, watchVaultWrites } from '../lib/vaultWrites'
 
 // The Font Family dropdown's full option list: the built-in generic fonts
 // plus every custom family, all sorted together alphabetically by label
@@ -437,6 +388,34 @@ function parseTraceClipboardPayload(rawValue: string): TraceClipboardPayload | n
   } catch {
     return null
   }
+}
+
+// A trace's file being written into the vault (lib/vaultWrites): how far, as a
+// bar along its foot and the percent. Its own component, listening for itself,
+// so a write's progress re-renders the bar and not the trace (TraceSlot).
+// Light on dark in either theme, over whatever the trace shows.
+function VaultWriteBar({ url }: { url: string }) {
+  const fraction = useSyncExternalStore(watchVaultWrites, () => vaultWriteProgress(url))
+  if (fraction === null) return null
+  const percent = Math.round(fraction * 100)
+  return (
+    <div
+      data-vault-write=""
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent}
+      className="absolute inset-x-0 bottom-0 pointer-events-none"
+      style={{ zIndex: 3 }}
+    >
+      <div className="flex justify-end px-1.5 pb-1">
+        <span className="font-mono text-[10px] tracking-[0.12em] tabular-nums text-white/90 bg-black/60 px-1.5 py-0.5">{percent}%</span>
+      </div>
+      <div className="h-1.5 bg-black/55">
+        <div className="h-full bg-white/85 transition-[width] duration-200" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  )
 }
 
 // Your own cursor. A component of its own, subscribed on its own: its look
@@ -757,6 +736,11 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // close over a stale count.
   const documentPageCountRef = useRef<Record<string, number>>({})
   useEffect(() => { documentPageCountRef.current = documentPageCount }, [documentPageCount])
+  // A deck (a document trace whose file is its slides: lib/deck) says how
+  // many it has once it's read (DeckSlide).
+  const countSlides = useCallback((id: string, count: number) => {
+    setDocumentPageCount(prev => (prev[id] === count ? prev : { ...prev, [id]: count }))
+  }, [])
   // Rendered pages held at once, across every PDF trace in the atrium. Enough
   // that paging back and forth stays instant, small enough that a long
   // document can't fill memory with full-resolution bitmaps.
@@ -838,7 +822,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     if (!isDesktop) return
 
     for (const trace of traces) {
-      if (trace.type !== 'document' || !trace.mediaUrl) continue
+      if (trace.type !== 'document' || !trace.mediaUrl || isDeckFile(trace.mediaUrl)) continue
       const page = documentPage[trace.id] ?? 1
       const key = `${trace.id}:${page}`
       if (documentPages[key] || documentRenderingRef.current.has(key)) continue
@@ -936,6 +920,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
             return next
           })
         } catch (err) {
+          // Only ever a whole file: a read waits for a file still being written
+          // (readLocalFileBytes, lib/vaultWrites), so this is a PDF that is
+          // broken, not one that hadn't finished landing.
           console.error('PDF page render failed:', err)
           // The real message, not a generic one -- "could not read this PDF"
           // told nobody anything when this went wrong.
@@ -1403,6 +1390,14 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const [inlineEditingTraceId, setInlineEditingTraceId] = useState<string | null>(null) // Track which text trace is being inline edited
   const copiedTraceClipboardRef = useRef<TraceClipboardPayload | null>(null)
   const [inlineEditText, setInlineEditText] = useState<string>('') // Track the text being edited
+  // A sheet's cell being edited: which sheet, and where it was double-clicked
+  // (SheetTrace finds the cell).
+  const [sheetEditAt, setSheetEditAt] = useState<{ traceId: string; fx: number; fy: number } | null>(null)
+  // Traces that follow the file they came from (lib/liveFiles), and the one
+  // being asked about: stop following it -- and, when that's to edit it
+  // here, then the edit.
+  const following = useSyncExternalStore(watchFollowing, followed)
+  const [unfollowAsk, setUnfollowAsk] = useState<{ traceId: string; then?: () => void } | null>(null)
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set()) // Track multi-selected traces
   const [showBatchEditPanel, setShowBatchEditPanel] = useState(false) // Batch-edit shared properties across multiSelectedIds
   // Opening a customize panel clears the ones around it (onCustomizeOpen), so
@@ -3178,7 +3173,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       for (const trace of targets) {
         const patch = stylePatchFor(trace, style)
         if (Object.keys(patch).length === 0) continue
-        const refit = trace.type === 'text' && ('fontFamily' in patch || 'fontSize' in patch)
+        // A text filling its box keeps the box; its text refits to it.
+        const refit = trace.type === 'text' && !(patch.textFit ?? trace.textFit) && ('fontFamily' in patch || 'fontSize' in patch)
         updateTraceCustomization(trace.id, refit ? { ...patch, ...fittedTextBox({ ...trace, ...patch }) } : patch)
         changed.add(trace.id)
       }
@@ -3449,9 +3445,22 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // size, and grows from it only once the text outgrows it. Any other box
     // fits its text from the usual size.
     const start = textEditStartRef.current
+    // A text filling its box keeps the box: its font fits the text instead.
+    if (trace.textFit) {
+      updateTraceCustomization(trace.id, { content }, { skipUndo: true })
+      return
+    }
     const drawn = drawnTextIdRef.current === trace.id && !!start.width && !!start.height
     const size = computeAutoFitTextSize(content, fontSize, drawn ? { fontFamily, baseWidth: start.width, baseHeight: start.height } : { fontFamily })
     updateTraceCustomization(trace.id, { content, width: size.width, height: size.height }, { skipUndo: true })
+  }
+  // A sheet's cell changed (SheetTrace): a new file of the sheet with it
+  // changed (lib/sheetEdit), the trace pointed at it -- a step of undo.
+  const commitSheetCell = async (trace: Trace, row: number, col: number, text: string) => {
+    if (!trace.mediaUrl || !lobbyId || !userId) return
+    const { editSheetCell } = await import('../lib/sheetEdit')
+    const url = await editSheetCell(trace.mediaUrl, row, col, text, lobbyId, userId)
+    if (url) updateTraceCustomization(trace.id, { mediaUrl: url })
   }
   // cancel puts the text and box back as they were (Escape).
   const endTextEdit = (traceId: string, cancel = false) => {
@@ -5946,7 +5955,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // always the latest version. TraceSlot can keep a trace's drawing -- handlers
   // and all -- for many renders, and a plain handler would act on the state of
   // the render it was made in.
-  const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization, renameFrame })
+  const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization, renameFrame, commitSheetCell, countSlides })
 
   // Everything renderTrace reads while drawing `trace`, narrowed to this trace
   // wherever it only ever asks about this one: while none of it changes, the
@@ -5973,6 +5982,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       // The selected trace's frame, and crop mode, which only it shows.
       selected, multiSelectedIds.has(id), inWholeGroup.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
       editingTrace?.id === id ? editingTrace : null, editing, editing ? inlineEditText : null,
+      sheetEditAt?.traceId === id ? sheetEditAt : null,
       pressedClickableId === id, pendingLinkTraceId === id,
       documentError[id], page, documentPageCount[id], documentPages[`${id}:${page}`],
     ]
@@ -6334,6 +6344,23 @@ return (
           setInlineEditText(trace.content ?? '')
           return
         }
+        // A sheet edits the cell double-clicked (SheetTrace): where, as
+        // fractions across and down it, in its own frame -- turned back by
+        // its rotation from the middle of the box on screen.
+        if (trace.type === 'sheet' && canEdit && !isLockedTrace(trace)) {
+          const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
+          const angle = ((transform as any).rotation ?? 0) * Math.PI / 180
+          const dx = e.clientX - (box.left + box.width / 2), dy = e.clientY - (box.top + box.height / 2)
+          const lx = dx * Math.cos(angle) + dy * Math.sin(angle), ly = -dx * Math.sin(angle) + dy * Math.cos(angle)
+          const editCell = () => {
+            setSelectedTraceId(trace.id)
+            setSheetEditAt({ traceId: trace.id, fx: Math.min(1, Math.max(0, lx / borderWidth + 0.5)), fy: Math.min(1, Math.max(0, ly / borderHeight + 0.5)) })
+          }
+          // One that follows its file stops first, if it's to be edited here.
+          if (followed()[trace.id]) setUnfollowAsk({ traceId: trace.id, then: editCell })
+          else editCell()
+          return
+        }
         setModalTrace(trace)
       }}
       onContextMenu={(e) => {
@@ -6614,6 +6641,7 @@ return (
               {getTraceTypeLabel(trace.type)}
             </div>
           )}
+          {trace.mediaUrl?.startsWith('local://') && <VaultWriteBar url={trace.mediaUrl} />}
           {showBorder && !isFrame(trace) && (
             <>
               <span className="absolute top-0 left-0 w-2 h-2 border-l border-t pointer-events-none" style={{ borderColor: isSelected ? 'rgba(203, 203, 203,0.9)' : 'rgba(143, 143, 143,0.75)' }} />
@@ -6960,7 +6988,14 @@ return (
 
 
       {/* A spreadsheet's sheet or chart, drawn from its file. */}
-      {(trace.type === 'sheet' || trace.type === 'chart') && <SheetTrace trace={trace} />}
+      {(trace.type === 'sheet' || trace.type === 'chart') && (
+        <SheetTrace
+          trace={trace}
+          editAt={sheetEditAt?.traceId === trace.id ? sheetEditAt : null}
+          onCell={(row, col, text) => { void on.commitSheetCell(trace, row, col, text) }}
+          onEditEnd={() => setSheetEditAt(null)}
+        />
+      )}
 
       {/* Paged PDF. The page image is rendered on demand and cached
           per trace+page (see documentPages), so only the page being
@@ -6974,7 +7009,9 @@ return (
           // fraction of the page however large the trace is drawn.
           style={{ containerType: 'size' }}
         >
-          {documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
+          {isDeckFile(trace.mediaUrl) ? (
+            <DeckSlide url={trace.mediaUrl!} page={documentPage[trace.id] ?? 1} onCount={count => on.countSlides(trace.id, count)} />
+          ) : documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
             <img
               src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
               alt=""
@@ -7015,7 +7052,7 @@ return (
             >
               <button
                 type="button"
-                className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                className="text-white/80 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
                 style={{
                   fontSize: '2.6cqh',
                   padding: '0.4cqh 1.2cqh',
@@ -7029,15 +7066,17 @@ return (
               >
                 ◀
               </button>
+              {/* Light text, as the bar is dark in either theme: the theme's
+                  own text went dark on paper, on this dark bar. */}
               <span
-                className="text-nier-bg/80 uppercase tabular-nums leading-none whitespace-nowrap"
+                className="text-white/80 uppercase tabular-nums leading-none whitespace-nowrap"
                 style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
               >
                 {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
               </span>
               <button
                 type="button"
-                className="text-nier-bg/80 hover:text-nier-bg disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
+                className="text-white/80 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
                 style={{
                   fontSize: '2.6cqh',
                   padding: '0.4cqh 1.2cqh',
@@ -7232,9 +7271,20 @@ return (
         // sizes, so a zoomed-out box fitted more words to a line than a
         // zoomed-in one. Now only the picture scales; where the lines break is
         // decided once, the same way textFit measures it.
-        const textScale = traceScale * zoom
+        //
+        // Fitted to its box (textFit, new text traces): laid out in the box's
+        // own size in the atrium, at the largest font the text fits at -- the
+        // text typed so far, while it's being typed, so it shrinks as it grows.
+        const editingText = inlineEditingTraceId === trace.id
+        const fitted = trace.textFit === true
+        const textScale = fitted ? zoom : traceScale * zoom
+        const shownFontSize = fitted
+          ? fitFontSize(editingText ? inlineEditText : trace.content ?? '', borderWidth / zoom, borderHeight / zoom, { family: resolveFontFamilyCss(fontFamily), bold: trace.textBold, italic: trace.textItalic })
+          : baseFontSize
+        // Where it sits up and down: the middle unless chosen.
+        const valign = trace.textValign ?? 'middle'
         const textStyles = {
-          fontSize: `${baseFontSize}px`,
+          fontSize: `${shownFontSize}px`,
           fontFamily: resolveFontFamilyCss(fontFamily),
           lineHeight: '1.3',
           fontWeight: (trace.textBold ? 'bold' : 'normal') as React.CSSProperties['fontWeight'],
@@ -7251,7 +7301,7 @@ return (
           }}
         >
         <div
-          className="flex flex-col items-center justify-center"
+          className={`flex flex-col items-center ${valign === 'top' ? 'justify-start' : valign === 'bottom' ? 'justify-end' : 'justify-center'}`}
           style={{
             width: `${100 / textScale}%`,
             height: `${100 / textScale}%`,
@@ -7261,13 +7311,34 @@ return (
           }}
         >
           {inlineEditingTraceId === trace.id ? (
-            /* Inline editing textarea */
-            <textarea
-              autoFocus
-              value={inlineEditText}
-              onChange={(e) => {
-                setInlineEditText(e.target.value)
-                on.fitTextLive(trace, e.target.value, baseFontSize, textStyles.fontFamily)
+            /* Inline editing: the very paragraph the text is shown in (below),
+               made editable -- the same element, classes and styles, in the
+               same place in its box -- so it sits, wraps and sizes exactly as
+               it will once applied. It was a textarea filling the box, its
+               text at the top, that jumped to the middle when applied. Filled
+               once as it mounts, and left to the browser while typed in:
+               setting its text again each keystroke would put the caret back
+               at the start. */
+            <div
+              ref={el => {
+                if (!el || el.dataset.filled) return
+                el.dataset.filled = '1'
+                el.innerText = inlineEditText
+                el.focus()
+                const range = document.createRange()
+                range.selectNodeContents(el)
+                range.collapse(false)
+                const selection = window.getSelection()
+                selection?.removeAllRanges()
+                selection?.addRange(range)
+              }}
+              contentEditable="plaintext-only"
+              suppressContentEditableWarning
+              data-text-editor=""
+              onInput={(e) => {
+                const text = (e.currentTarget as HTMLElement).innerText
+                setInlineEditText(text)
+                on.fitTextLive(trace, text, baseFontSize, textStyles.fontFamily)
               }}
               onBlur={() => {
                 on.endTextEdit(trace.id)
@@ -7289,14 +7360,10 @@ return (
               }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              // The same box as the text once it's applied: no border, padding
-              // or scrollbar of its own. The box is fitted to that text as it's
-              // typed, so a textarea's border and padding left it a few pixels
-              // short -- lines wrapped early, the last was cut and a scrollbar
-              // appeared. The frame is an outline instead, drawn in the
-              // padding around it and taking no room from the text.
-              className="block w-full h-full p-0 border-0 bg-transparent resize-none overflow-hidden outline outline-2 outline-offset-2 outline-white focus:outline-gray-400"
-              style={textStyles}
+              // The frame an outline, drawn outside it, taking no room from
+              // the text; a line high even when empty, so the caret shows.
+              className="w-full min-w-0 break-words whitespace-pre-wrap overflow-hidden cursor-text outline outline-2 outline-offset-2 outline-white focus:outline-gray-400"
+              style={{ ...textStyles, minHeight: '1.3em' }}
             />
           ) : (
             /* Normal display - text wraps and conforms to box.
@@ -8456,7 +8523,7 @@ return (
                 a group where it was (lib/pdfTraces extractPages). */}
             {(() => {
               const trace = traces.find(t => t.id === contextMenu.traceId)
-              if (!canEdit || !trace || trace.type !== 'document' || !trace.mediaUrl || !lobbyId || !userId) return null
+              if (!canEdit || !trace || trace.type !== 'document' || !trace.mediaUrl || isDeckFile(trace.mediaUrl) || !lobbyId || !userId) return null
               if (editingWholeSelection && !(multiSelectedIds.size === 1 && multiSelectedIds.has(trace.id))) return null
               return (
                 <button
@@ -9032,7 +9099,8 @@ return (
         const shapeLike = has(editingTrace, 'shape') || has(editingTrace, 'line')
         const isPathTrace = editingTrace.shapeType === 'path'
         const framed = has(editingTrace, 'frame')
-        const hasContent = editingTrace.type === 'text' || editingTrace.type === 'embed' || has(editingTrace, 'link') || has(editingTrace, 'captions')
+        const follows = following[editingTrace.id]
+        const hasContent = editingTrace.type === 'text' || editingTrace.type === 'embed' || has(editingTrace, 'link') || has(editingTrace, 'captions') || !!follows
         // What a trace holds. A text trace's is what it's for, so it comes first
         // there; for the rest it keeps its place in the order.
         const contentSection = hasContent && (
@@ -9078,6 +9146,17 @@ return (
                   </div>
 
                 </>
+              )}
+              {/* Following the file it came from: only ever turned off,
+                  and asked first (lib/liveFiles). */}
+              {follows && (
+                <Switch
+                  testId="live-file"
+                  label={t('atrium.live.switch')}
+                  hint={t('atrium.live.hint', { name: fileName(follows.path) })}
+                  on
+                  onChange={() => setUnfollowAsk({ traceId: editingTrace.id })}
+                />
               )}
               {/* Clickable -- text, embed and shape only. Image, audio and
                   video already do something of their own on click (open the
@@ -9541,7 +9620,7 @@ return (
                     </select>
                   </div>
 
-                  <div>
+                  {!editingTrace.textFit && <div>
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontSize')}</label>
                     <FontSizeField
                       min={8}
@@ -9558,7 +9637,7 @@ return (
                       }}
                       placeholder={t('atrium.customize.fontSizeHint')}
                     />
-                  </div>
+                  </div>}
 
                   {/* Text Sizing -- whether the font follows the trace's own
                       scale, or stays fixed and lets the box only control
@@ -9567,18 +9646,19 @@ return (
                     <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
                     <div className="flex gap-2">
                       {([
-                        { value: true, label: t('atrium.controls.scalesWithBox') },
-                        { value: false, label: t('atrium.controls.fixedSize') },
-                      ] as const).map(({ value, label }) => (
+                        { key: 'fill', patch: { textFit: true }, label: t('atrium.controls.fillsBox') },
+                        { key: 'scale', patch: { textFit: false, textScaleWithBox: true }, label: t('atrium.controls.scalesWithBox') },
+                        { key: 'fixed', patch: { textFit: false, textScaleWithBox: false }, label: t('atrium.controls.fixedSize') },
+                      ] as const).map(({ key, patch, label }) => (
                         <button
-                          key={String(value)}
+                          key={key}
+                          data-text-sizing={key}
                           onClick={() => {
-                            const updated = { ...editingTrace, textScaleWithBox: value };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { textScaleWithBox: value });
+                            setEditingTrace({ ...editingTrace, ...patch });
+                            updateTraceCustomization(editingTrace.id, patch);
                           }}
                           className={`flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
-                            (editingTrace.textScaleWithBox ?? true) === value
+                            (editingTrace.textFit ? 'fill' : (editingTrace.textScaleWithBox ?? true) ? 'scale' : 'fixed') === key
                               ? 'bg-nier-bg text-nier-black border-nier-bg'
                               : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
                           }`}
@@ -9663,6 +9743,33 @@ return (
                           {align === 'center' && '◆'}
                           {align === 'right' && '▶'}
                           {align === 'justify' && '▣'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Up and down in the box: the middle unless chosen. */}
+                  <div>
+                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.verticalAlignment')}</label>
+                    <div className="flex gap-2">
+                      {(['top', 'middle', 'bottom'] as const).map(valign => (
+                        <button
+                          key={valign}
+                          data-text-valign={valign}
+                          title={t(valign === 'top' ? 'atrium.customize.alignTop' : valign === 'bottom' ? 'atrium.customize.alignBottom' : 'atrium.customize.alignCenter')}
+                          aria-label={t(valign === 'top' ? 'atrium.customize.alignTop' : valign === 'bottom' ? 'atrium.customize.alignBottom' : 'atrium.customize.alignCenter')}
+                          aria-pressed={(editingTrace.textValign ?? 'middle') === valign}
+                          onClick={() => {
+                            setEditingTrace({ ...editingTrace, textValign: valign })
+                            updateTraceCustomization(editingTrace.id, { textValign: valign })
+                          }}
+                          className={`flex-1 px-2 py-2 text-xs border transition-colors ${
+                            (editingTrace.textValign ?? 'middle') === valign
+                              ? 'bg-nier-bg text-nier-black border-nier-bg'
+                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+                          }`}
+                        >
+                          {valign === 'top' ? '▲' : valign === 'bottom' ? '▼' : '◆'}
                         </button>
                       ))}
                     </div>
@@ -9997,8 +10104,9 @@ return (
           // Each fitted to its own text again: auto-fit depends on the words.
           onFont={(ids, family) => inOneStep(() => {
             for (const trace of traces.filter(tr => ids.includes(tr.id))) {
-              const size = fittedTextBox({ ...trace, fontFamily: family })
-              updateTraceCustomization(trace.id, { fontFamily: family, width: size.width, height: size.height })
+              // One filling its box keeps the box; its text refits to it.
+              const size = trace.textFit ? null : fittedTextBox({ ...trace, fontFamily: family })
+              updateTraceCustomization(trace.id, size ? { fontFamily: family, width: size.width, height: size.height } : { fontFamily: family })
             }
           })}
           onDone={() => {
@@ -10117,7 +10225,16 @@ return (
                       className="bg-white flex items-center justify-center"
                       style={{ maxHeight, minHeight: 240, minWidth: 240 }}
                     >
-                      {src ? (
+                      {isDeckFile(modalTrace.mediaUrl) ? (() => {
+                        // A deck's slide, as large as fits, in its own shape.
+                        const aspect = (modalTrace.width || 16) / (modalTrace.height || 9)
+                        const height = Math.min(maxHeight, (modalViewportSize.width * 0.9) / aspect)
+                        return (
+                          <div className="relative" style={{ width: height * aspect, height }}>
+                            <DeckSlide url={modalTrace.mediaUrl!} page={page} onCount={count => countSlides(modalTrace.id, count)} />
+                          </div>
+                        )
+                      })() : src ? (
                         <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9 }} />
                       ) : (
                         <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
@@ -10426,36 +10543,11 @@ return (
       )}
 
       {deleteConfirmDialog && (
-        <div
-          className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
-          onClick={() => setDeleteConfirmDialog(null)}
+        <ConfirmBox
+          testId="delete"
+          title={deleteConfirmDialog.traceIds.length > 1 ? t('atrium.menu.deleteSelected', { count: deleteConfirmDialog.traceIds.length }) : t('atrium.layers.deleteTrace')}
+          onCancel={() => setDeleteConfirmDialog(null)}
         >
-          {/* Scanline overlay */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
-            style={{
-              backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
-            }}
-          />
-          
-          {/* The theme's own panel: it was a fixed dark grey under the
-              theme's ink, so on a light theme its words were dark on dark. */}
-          <div
-            data-delete-confirm=""
-            className="bg-nier-blackLight border border-red-500/40 p-6 max-w-md w-full mx-4 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-red-500/60" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-red-500/60" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-red-500/60" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-red-500/60" />
-            
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1.5 h-1.5 rotate-45 border border-red-500/60" />
-              <h2 className="text-lg text-red-400 tracking-[0.15em] uppercase">
-                {deleteConfirmDialog.traceIds.length > 1 ? t('atrium.menu.deleteSelected', { count: deleteConfirmDialog.traceIds.length }) : t('atrium.layers.deleteTrace')}
-              </h2>
-            </div>
             <p className="text-nier-strong mb-6 text-sm tracking-wide">
               {deleteConfirmDialog.traceIds.length > 1
                 ? t('atrium.customize.deleteConfirmMany', { count: deleteConfirmDialog.traceIds.length })
@@ -10473,22 +10565,31 @@ return (
               />
             </div>
 
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-3 border border-nier-border/60 text-nier-bg/60 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border hover:text-nier-strong transition-colors"
-                onClick={() => setDeleteConfirmDialog(null)}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                className="flex-1 py-3 border border-red-500/60 bg-red-500/20 text-nier-strong text-[10px] tracking-[0.15em] uppercase hover:bg-red-500/30 transition-colors"
-                onClick={() => executeDelete(deleteConfirmDialog.traceIds, deleteConfirmDialog.linkIds)}
-              >
-                {t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
+            <ConfirmButtons
+              cancel={t('common.cancel')}
+              confirm={t('common.delete')}
+              onCancel={() => setDeleteConfirmDialog(null)}
+              onConfirm={() => executeDelete(deleteConfirmDialog.traceIds, deleteConfirmDialog.linkIds)}
+            />
+        </ConfirmBox>
+      )}
+
+      {unfollowAsk && following[unfollowAsk.traceId] && (
+        <ConfirmBox testId="unfollow" title={t('atrium.live.stopTitle')} onCancel={() => setUnfollowAsk(null)}>
+          <p className="text-nier-strong mb-6 text-sm tracking-wide">
+            {t(unfollowAsk.then ? 'atrium.live.stopToEdit' : 'atrium.live.stopBody', { name: fileName(following[unfollowAsk.traceId].path) })}
+          </p>
+          <ConfirmButtons
+            cancel={t('common.cancel')}
+            confirm={t('atrium.live.stop')}
+            onCancel={() => setUnfollowAsk(null)}
+            onConfirm={() => {
+              stopFollowing(unfollowAsk.traceId)
+              setUnfollowAsk(null)
+              unfollowAsk.then?.()
+            }}
+          />
+        </ConfirmBox>
       )}
 
     </div>

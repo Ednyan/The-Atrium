@@ -7,6 +7,9 @@ import { asSheetFile, DEFAULT_PALETTE, formatNumber, isDateFormat, type ChartDat
 import { tCount } from './i18n'
 
 const FONT = 'Calibri, Carlito, Arial, sans-serif'
+// The font the drawing in hand measures and writes in: a sheet's, or a chart's
+// in the Atrium's look (chartSvg) -- set for the length of one drawing.
+let font = FONT
 const CELL_FONT = 13
 const INK = '#1f1f1f'
 const GRID = '#e1e1e1'
@@ -18,7 +21,7 @@ let measurer: CanvasRenderingContext2D | null = null
 function widthOf(text: string, size: number, bold = false): number {
   measurer ??= document.createElement('canvas').getContext('2d')
   if (!measurer) return text.length * size * 0.55
-  measurer.font = `${bold ? 'bold ' : ''}${size}px ${FONT}`
+  measurer.font = `${bold ? 'bold ' : ''}${size}px ${font}`
   return measurer.measureText(text).width
 }
 
@@ -37,7 +40,7 @@ function fitted(text: string, room: number, size: number, bold = false): string 
 
 // An SVG of the region x, y, w, h, `outW` by `outH` pixels.
 const svgOpen = (x: number, y: number, w: number, h: number, outW: number, outH: number, extra = '') =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n(x)} ${n(y)} ${n(w)} ${n(h)}" width="${n(outW)}" height="${n(outH)}" font-family="${esc(FONT)}"${extra}>`
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n(x)} ${n(y)} ${n(w)} ${n(h)}" width="${n(outW)}" height="${n(outH)}" font-family="${esc(font)}"${extra}>`
 
 // ---- Sheets ------------------------------------------------------------------------------
 
@@ -125,7 +128,40 @@ function valueRange(values: number[], fromZero: boolean): [number, number] {
 
 let gradients = 0
 
-export function chartSvg(c: ChartData, W: number, H: number, scale = 1, lang?: string): string {
+// A chart in the Atrium's own look: what it plots, drawn in the trace's
+// colours -- on its own fill, no Office white; text and lines in its text
+// colour -- with the Atrium's palette and its monospace, not the file's.
+export interface ChartLook { ink: string; surface?: string; palette: readonly string[] }
+export const ATRIUM_CHART_PALETTE = ['#d9823b', '#6d9bb5', '#c7b27c', '#87a874', '#b5655f', '#9886b8', '#5c958f', '#a39d90'] as const
+const ATRIUM_FONT = "Consolas, Monaco, 'Lucida Console', 'Liberation Mono', monospace"
+
+// The look for a trace of this fill and text colour: its text colour, or ink
+// that reads on its fill.
+export function atriumChartLook(fill: string | null | undefined, text: string | null | undefined): ChartLook {
+  const m = /^#?([0-9a-f]{6})$/i.exec(fill ?? '')
+  const n = m ? parseInt(m[1], 16) : 0x191919
+  const light = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.55
+  const ink = /^#[0-9a-f]{6}$/i.test(text ?? '') ? text! : light ? '#2b2722' : '#e6e1d3'
+  return { ink, surface: m ? `#${m[1]}` : undefined, palette: ATRIUM_CHART_PALETTE }
+}
+
+export function chartSvg(c: ChartData, W: number, H: number, scale = 1, lang?: string, look?: ChartLook): string {
+  font = look ? ATRIUM_FONT : FONT
+  try {
+    return drawChart(look ? inLook(c, look) : c, W, H, scale, lang, look?.palette ?? DEFAULT_PALETTE, look ? look.surface : undefined)
+  } finally {
+    font = FONT
+  }
+}
+
+// The chart as the look draws it: no background of its own, its text and its
+// series in the look's colours.
+const inLook = (c: ChartData, look: ChartLook): ChartData => ({
+  ...c, background: undefined, background2: undefined, text: look.ink,
+  series: c.series.map((s, i) => ({ ...s, color: look.palette[i % look.palette.length], ...(s.trend ? { trend: look.ink } : {}) })),
+})
+
+function drawChart(c: ChartData, W: number, H: number, scale: number, lang: string | undefined, palette: readonly string[], surface: string | undefined): string {
   const ink = c.text
   const out: string[] = [svgOpen(0, 0, W, H, W * scale, H * scale)]
   if (c.background) {
@@ -145,7 +181,7 @@ export function chartSvg(c: ChartData, W: number, H: number, scale = 1, lang?: s
   const pie = c.type === 'pie' || c.type === 'doughnut'
   // The legend: categories for a pie, series for anything else.
   const entries = pie
-    ? (c.categories ?? c.series[0].values.map((_, i) => String(i + 1))).map((name, i) => ({ name, color: DEFAULT_PALETTE[i % DEFAULT_PALETTE.length], line: false }))
+    ? (c.categories ?? c.series[0].values.map((_, i) => String(i + 1))).map((name, i) => ({ name, color: palette[i % palette.length], line: false }))
     : c.series.map(s => ({ name: s.name, color: s.color, line: (c.type === 'line' || c.type === 'scatter') && !s.markersOnly }))
   if (c.legend && entries.length > 0) {
     const swatch = (e: { color: string; line: boolean }, x: number, y: number) => e.line
@@ -184,7 +220,7 @@ export function chartSvg(c: ChartData, W: number, H: number, scale = 1, lang?: s
         : inner
           ? `M${p(r, angle)}A${r} ${r} 0 ${big} 1 ${p(r, a1)}L${p(inner, a1)}A${inner} ${inner} 0 ${big} 0 ${p(inner, angle)}Z`
           : `M${cx} ${cy}L${p(r, angle)}A${r} ${r} 0 ${big} 1 ${p(r, a1)}Z`
-      out.push(`<path d="${d}" fill="${DEFAULT_PALETTE[i % DEFAULT_PALETTE.length]}" fill-rule="evenodd" stroke="${c.background ?? '#ffffff'}" stroke-width="1.5"/>`)
+      out.push(`<path d="${d}" fill="${palette[i % palette.length]}" fill-rule="evenodd" stroke="${c.background ?? surface ?? '#ffffff'}" stroke-width="1.5"/>`)
       angle = a1
     })
     out.push('</svg>')

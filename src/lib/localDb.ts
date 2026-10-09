@@ -10,6 +10,7 @@ import { carryLinks } from './traceLinks'
 import { carriedFrameId, freshIds } from './frames'
 import { flattenLegacyOrder } from './order'
 import { placeholderNames } from './traceNames'
+import { vaultWriteDone } from './vaultWrites'
 
 let db: Database | null = null
 let mediaBasePath: string = ''
@@ -219,7 +220,7 @@ const WRITE_CHUNK_BYTES = 1024 * 1024
 //
 // Returns false if a worker could not be started at all, so the caller can
 // fall back to reading on this thread rather than failing the import.
-async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> {
+async function streamBlobViaWorker(token: string, blob: Blob, onProgress?: (fraction: number) => void): Promise<boolean> {
   let worker: Worker
   try {
     worker = new Worker(new URL('./vaultWriter.worker.ts', import.meta.url), { type: 'module' })
@@ -228,6 +229,7 @@ async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> 
     return false
   }
 
+  let written = 0
   try {
     await new Promise<void>((resolve, reject) => {
       worker.onerror = event => reject(new Error(event.message || 'vault writer worker failed'))
@@ -240,6 +242,8 @@ async function streamBlobViaWorker(token: string, blob: Blob): Promise<boolean> 
         if (message?.type !== 'chunk') return
         try {
             await invoke('append_binary_stream', streamPayload(token, new Uint8Array(message.buffer)))
+          written += message.buffer.byteLength
+          onProgress?.(written / blob.size)
           if (message.last) {
             resolve()
             return
@@ -303,10 +307,13 @@ function startWriteProbe(blob: Blob) {
   }
 }
 
-async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
+// `onProgress` hears how far along it is, 0-1, after every chunk
+// (lib/vaultWrites, for the trace's progress bar).
+async function writeBlobToFile(path: string, blob: Blob, onProgress?: (fraction: number) => void): Promise<void> {
   const finishProbe = startWriteProbe(blob)
   if (blob.size <= WRITE_CHUNK_BYTES) {
     await writeBinaryFile(path, new Uint8Array(await blob.arrayBuffer()))
+    onProgress?.(1)
     finishProbe('single write', 1)
     return
   }
@@ -331,7 +338,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
     // Preferred path: the bytes are read on a worker thread and only handed
     // through this one.
     try {
-      if (await streamBlobViaWorker(token, blob)) {
+      if (await streamBlobViaWorker(token, blob, onProgress)) {
         await invoke('close_binary_stream', { token })
         finishProbe('worker', Math.ceil(blob.size / WRITE_CHUNK_BYTES))
         return
@@ -348,6 +355,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
       for (let at = 0; at < blob.size; at += WRITE_CHUNK_BYTES) {
         const bytes = new Uint8Array(await blob.slice(at, at + WRITE_CHUNK_BYTES).arrayBuffer())
         await invoke('append_binary_stream', streamPayload(token, bytes))
+        onProgress?.(Math.min(1, (at + WRITE_CHUNK_BYTES) / blob.size))
         if (at + WRITE_CHUNK_BYTES < blob.size) {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         }
@@ -383,6 +391,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
       }
     }
     offset += WRITE_CHUNK_BYTES
+    onProgress?.(Math.min(1, offset / blob.size))
 
     // Hand a frame back between chunks.
     //
@@ -403,7 +412,7 @@ async function writeBlobToFile(path: string, blob: Blob): Promise<void> {
   finishProbe('main-thread append', Math.ceil(blob.size / WRITE_CHUNK_BYTES))
 }
 
-async function readBinaryFile(path: string): Promise<Uint8Array> {
+export async function readBinaryFile(path: string): Promise<Uint8Array> {
   // The Rust side now answers with raw bytes over Tauri's binary channel
   // (see read_binary_file), which arrive as an ArrayBuffer. It used to return
   // a Vec<u8>, which Tauri serialises as a JSON array with one number per
@@ -1206,6 +1215,8 @@ export async function initLocalDb(): Promise<void> {
       text_align TEXT DEFAULT 'center',
       text_color TEXT DEFAULT '#ffffff',
       text_scale_with_box INTEGER DEFAULT 1,
+      text_fit INTEGER,
+      text_valign TEXT,
       show_shadow INTEGER DEFAULT 1,
       is_locked INTEGER DEFAULT 0,
       is_clickable INTEGER DEFAULT 0,
@@ -1522,6 +1533,14 @@ export async function initLocalDb(): Promise<void> {
     await db.execute('ALTER TABLE traces ADD COLUMN text_scale_with_box INTEGER DEFAULT 1')
   } catch {
     // Column already exists — ignore
+  }
+  // Text fitted to its box, and where it sits up and down (add_text_fit.sql).
+  for (const column of ['text_fit INTEGER', 'text_valign TEXT']) {
+    try {
+      await db.execute(`ALTER TABLE traces ADD COLUMN ${column}`)
+    } catch {
+      // Column already exists
+    }
   }
   try {
     // Defaults to 1 so existing traces keep their shadow.
@@ -2078,7 +2097,7 @@ const BOOL_COLUMNS: Record<string, string[]> = {
   traces: ['show_border', 'show_background', 'show_description', 'show_filename',
     'text_bold', 'text_italic', 'text_underline', 'is_locked', 'is_clickable', 'illuminate',
     'light_pulse', 'enable_interaction', 'ignore_clicks', 'shape_outline_only', 'shape_no_fill',
-    'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow'],
+    'flip_horizontal', 'flip_vertical', 'text_scale_with_box', 'show_shadow', 'text_fit'],
   lobbies: ['is_public', 'autosave_enabled'],
   layers: ['is_group'],
   profiles: [],
@@ -2163,7 +2182,7 @@ function convertRowToSql(table: string, row: any): any {
 class LocalStorage {
   from(bucket: string) {
     return {
-      async upload(path: string, fileData: Blob | File | Uint8Array, _options?: { contentType?: string }): Promise<{ data: any; error: any }> {
+      async upload(path: string, fileData: Blob | File | Uint8Array, options?: { contentType?: string; onProgress?: (fraction: number) => void }): Promise<{ data: any; error: any }> {
         try {
           let filePath: string
           if (bucket === 'traces') {
@@ -2195,7 +2214,7 @@ class LocalStorage {
           // converted embed) is written in one go, because it is already the
           // thing streaming exists to avoid.
           if (fileData instanceof Blob || fileData instanceof File) {
-            await writeBlobToFile(filePath, fileData)
+            await writeBlobToFile(filePath, fileData, options?.onProgress)
           } else {
             await writeBinaryFile(filePath, fileData)
           }
@@ -2914,6 +2933,9 @@ export async function restoreAtriumFromMirror(snapshotPath: string): Promise<Res
 // yet" apart from "unreadable" and retry.
 export async function readLocalFileBytes(url: string): Promise<Uint8Array | null> {
   if (!url.startsWith('local://')) return null
+  // Still being written (a file just dropped): read once it's whole, never
+  // half of it (lib/vaultWrites).
+  await vaultWriteDone(url)
   try {
     const filePath = await resolveLocalMediaFilePath(url)
     if (!filePath || !(await vaultPathExists(filePath))) return null
