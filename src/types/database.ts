@@ -251,6 +251,7 @@ export interface ThemeSettings {
   // its opacity, its size a share of its own, following the view by a share
   // of how the world moves (0 fixed to the screen, 1 with the canvas).
   backgroundImage?: string
+  backgroundImageEnabled?: boolean
   backgroundImageOpacity?: number
   backgroundImageScale?: number
   backgroundParallax?: number

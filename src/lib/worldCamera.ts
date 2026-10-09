@@ -26,10 +26,9 @@
 // a pan; a single inherited CSS variable would be one write, but has the
 // browser restyle the whole layer every frame, and was slower by far.
 //
-// While it's on the compositor the layer carries data-camera-moving. It is an
-// isolated group then, so anything whose look depends on what's behind the
-// layer -- a blend mode, a backdrop filter -- can't see it, and uses that to
-// draw itself another way (see [data-blends-with-ground] in index.css).
+// While it's on the compositor the layer carries data-camera-moving. Its
+// wrapper (TraceOverlay) keeps it an isolated group at rest too, so a blend
+// mode inside it -- a light's screen -- looks the same moving or not.
 
 // screen = world * zoom + (x, y)
 export interface View {

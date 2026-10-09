@@ -419,15 +419,16 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
               onChange={backgroundImage => setValue({ backgroundImage })}
             />
             {shown.backgroundImage && (
+              <Check checked={shown.backgroundImageEnabled ?? true} label={t('atrium.theme.backdropOn')} onChange={on => setValue({ backgroundImageEnabled: on })} />
+            )}
+            {shown.backgroundImage && (shown.backgroundImageEnabled ?? true) && (
               <>
                 <Slider label={t('atrium.theme.backdropOpacity', { value: Math.round((shown.backgroundImageOpacity ?? 1) * 100) })} min={0.05} max={1} step={0.05} value={shown.backgroundImageOpacity ?? 1} onChange={v => setValue({ backgroundImageOpacity: v })} />
                 <Slider label={t('atrium.theme.backdropSize', { value: Math.round((shown.backgroundImageScale ?? 1) * 100) })} min={0.1} max={4} step={0.05} value={shown.backgroundImageScale ?? 1} onChange={v => setValue({ backgroundImageScale: v })} />
                 <Check checked={shown.backgroundImageFill ?? false} label={t('atrium.theme.backdropFill')} hint={t('atrium.theme.backdropFillHint')} onChange={on => setValue({ backgroundImageFill: on })} />
-                {!shown.backgroundImageFill && (
-                  <Check checked={shown.backgroundParallaxEnabled ?? true} label={t('atrium.theme.backdropParallaxOn')} hint={t('atrium.theme.backdropParallaxOnHint')} onChange={on => setValue({ backgroundParallaxEnabled: on })} />
-                )}
-                {!shown.backgroundImageFill && (shown.backgroundParallaxEnabled ?? true) && (
-                  <Slider label={t('atrium.theme.backdropParallax', { value: Math.round((shown.backgroundParallax ?? 0.3) * 100) })} hint={t('atrium.theme.backdropParallaxHint')} min={0} max={1} step={0.05} value={shown.backgroundParallax ?? 0.3} onChange={v => setValue({ backgroundParallax: v })} />
+                <Check checked={shown.backgroundParallaxEnabled ?? true} label={t('atrium.theme.backdropParallaxOn')} hint={t('atrium.theme.backdropParallaxOnHint')} onChange={on => setValue({ backgroundParallaxEnabled: on })} />
+                {(shown.backgroundParallaxEnabled ?? true) && (
+                  <Slider label={t('atrium.theme.backdropParallax', { value: Math.round((shown.backgroundParallax ?? 0.3) * 100) })} hint={t(shown.backgroundImageFill ? 'atrium.theme.backdropParallaxFillHint' : 'atrium.theme.backdropParallaxHint')} min={0} max={1} step={0.05} value={shown.backgroundParallax ?? 0.3} onChange={v => setValue({ backgroundParallax: v })} />
                 )}
               </>
             )}

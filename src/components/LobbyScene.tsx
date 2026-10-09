@@ -448,11 +448,11 @@ function refreshGround(theme: ThemeSettings | null | undefined) {
 // through while there is one (the room's colour is the element behind both).
 // Repeated, and moved with the view by its parallax share of the world's
 // movement (none, staying still, with parallax off) -- or, as `fill`, one
-// picture where the world is (see drawGrid); placed in drawGrid, which
-// `version` tells to place it again.
+// picture always covering the view (see drawGrid); placed in drawGrid, which
+// `version` tells to place it again. Switched off, it keeps its picture.
 const backdrop = { el: null as HTMLDivElement | null, url: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0 }
 function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Application | null, placeAgain: () => void) {
-  const url = theme?.backgroundImage ?? ''
+  const url = theme?.backgroundImageEnabled === false ? '' : theme?.backgroundImage ?? ''
   backdrop.scale = theme?.backgroundImageScale ?? 1
   backdrop.parallax = theme?.backgroundParallaxEnabled === false ? 0 : theme?.backgroundParallax ?? 0.3
   backdrop.fill = !!theme?.backgroundImageFill
@@ -3087,18 +3087,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         ground.tilePosition.set(worldContainer.x, worldContainer.y)
         ground.tileScale.set(zoomRef.current / GROUND_PX)
         // The room's picture, by its share of the view's moves and zoom; or,
-        // as one picture, centred on the world's middle and big enough there
-        // to cover the screen at the furthest zoom out, then zoomed and
-        // panned with everything else.
+        // as one picture, covering the view whatever it does: larger than it
+        // by a margin, and moved within that margin as the view moves -- the
+        // more the further the world's middle is from the screen's, easing
+        // toward the margin's edge (tanh) however far that goes, as the
+        // landing page's layers follow the pointer -- and grown a little as
+        // the view zooms in. No margin, and still, with parallax off.
         if (backdrop.el && backdrop.url && backdrop.w) {
-          // ponytail: sized to this screen, so a collaborator's other screen size sees it a little larger or smaller
-          const k = backdrop.fill
-            ? Math.max(Math.max(window.screen.width, width) / backdrop.w, Math.max(window.screen.height, height) / backdrop.h) / MIN_ZOOM * backdrop.scale * zoomRef.current
-            : backdrop.scale * Math.pow(zoomRef.current, backdrop.parallax)
-          const w = backdrop.w * k, h = backdrop.h * k
-          const [x, y] = backdrop.fill
-            ? [worldContainer.x - w / 2, worldContainer.y - h / 2]
-            : [worldContainer.x * backdrop.parallax, worldContainer.y * backdrop.parallax]
+          let w: number, h: number, x: number, y: number
+          if (backdrop.fill) {
+            const margin = 0.1 * backdrop.parallax
+            const k = Math.max(width / backdrop.w, height / backdrop.h) * (1 + 2 * margin) * Math.max(1, backdrop.scale)
+              * Math.pow(zoomRef.current / MIN_ZOOM, 0.1 * backdrop.parallax)
+            w = backdrop.w * k
+            h = backdrop.h * k
+            x = (width - w) / 2 + Math.tanh((worldContainer.x - width / 2) / width) * margin * width
+            y = (height - h) / 2 + Math.tanh((worldContainer.y - height / 2) / height) * margin * height
+          } else {
+            const k = backdrop.scale * Math.pow(zoomRef.current, backdrop.parallax)
+            w = backdrop.w * k
+            h = backdrop.h * k
+            x = worldContainer.x * backdrop.parallax
+            y = worldContainer.y * backdrop.parallax
+          }
           backdrop.el.style.backgroundSize = `${w}px ${h}px`
           backdrop.el.style.backgroundPosition = `${x}px ${y}px`
         }

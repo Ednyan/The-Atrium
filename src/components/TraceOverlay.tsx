@@ -3,7 +3,7 @@
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
-import { dashProps, dashedBorderImage } from '../lib/strokeStyle'
+import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import type { Trace } from '../types/database'
@@ -310,16 +310,7 @@ function hexToRgb(hex: string) {
     : { r: 255, g: 255, b: 255 }
 }
 
-// What `light`, screen-blended onto an atrium of colour `ground`, looks like:
-// the colour to draw plainly where screen can't reach the ground (see
-// [data-blends-with-ground] in index.css). The same at any opacity -- a colour
-// at alpha a over the ground is (1 - a) * ground + a * colour, blend or none.
-// As the channels "r g b", for rgb(var(...) / alpha).
-function screenOver(ground: string | undefined, light: string) {
-  const g = hexToRgb(ground || '#0a0a0f'), l = hexToRgb(light)
-  const screen = (a: number, b: number) => Math.round(255 - ((255 - a) * (255 - b)) / 255)
-  return `${screen(g.r, l.r)} ${screen(g.g, l.g)} ${screen(g.b, l.b)}`
-}
+// A colour as the channels "r g b", for rgb(var(...) / alpha).
 const rgbChannels = (hex: string) => { const c = hexToRgb(hex); return `${c.r} ${c.g} ${c.b}` }
 
 // A light's falloff from its middle: a disc blurred by a third of its radius,
@@ -2648,13 +2639,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         // point of the body is, and turned with it.
         const light = document.querySelector<HTMLElement>(`[data-light-for="${CSS.escape(b.id)}"]`)
         if (light) {
+          // Every light is centred by its margins, so it turns about its own
+          // middle, and only that point need be carried.
           const lx = parseFloat(light.style.left) - gx, ly = parseFloat(light.style.top) - gy
-          // A light drawn back half its size (translate(-50%, -50%): from a
-          // shape or border) turns about its box's centre, as a trace does;
-          // the same extra translate undoes it. A light from the middle is
-          // centred by its margins, and turns about its own middle already.
-          const hx = light.style.transform ? -light.offsetWidth / 2 : 0, hy = light.style.transform ? -light.offsetHeight / 2 : 0
-          light.style.translate = `${hx - (hx * cos - hy * sin) + lx * cos - ly * sin - lx + ox}px ${hy - (hx * sin + hy * cos) + lx * sin + ly * cos - ly + oy}px`
+          light.style.translate = `${lx * cos - ly * sin - lx + ox}px ${lx * sin + ly * cos - ly + oy}px`
           light.style.rotate = `${lean}rad`
           moved.add(light)
         }
@@ -6157,14 +6145,17 @@ return (
       // Where it comes from (lightEmit): a point at the trace's middle, as it
       // always has -- or all of its shape, or its border, each glowing out
       // around it as far as its radius, in the trace's own shape and turn.
-      // Drawn without filters (LIGHT_FALLOFF); its colour in --light-rgb, which
-      // the moving camera swaps for how it looks over the ground (index.css).
+      // Drawn without filters (LIGHT_FALLOFF), in its colour, --light-rgb.
+      // Screened onto the traces under it, never the ground: the world layer
+      // is an isolated group (see its wrapper), at rest and moving alike, so
+      // a light looks the same in both. It used to take, while the view
+      // moved, the colour it would have screened onto the ground -- nearly
+      // white on a light atrium, where it seemed to vanish.
       const emit = trace.lightEmit ?? 'center'
       const reach = (trace.lightRadius ?? 200) * zoom
       const pulse = trace.lightPulse ? `pulse ${trace.lightPulseSpeed ?? 2}s ease-in-out infinite` : ''
       const common: React.CSSProperties = {
         ['--light-rgb' as any]: rgbChannels(trace.lightColor ?? '#ffffff'),
-        ['--over-ground-rgb' as any]: screenOver(atriumBackground, trace.lightColor ?? '#ffffff'),
         ['--pulse-opacity' as any]: (trace.lightIntensity ?? 1.0) * 0.8,
         zIndex: zOf(trace) - 1,
         opacity: (trace.lightIntensity ?? 1.0) * 0.8,
@@ -6178,7 +6169,6 @@ return (
         const outer = reach * 1.6
         return (
           <div
-            data-blends-with-ground=""
             data-light-for={trace.id}
             className="absolute pointer-events-none"
             style={{
@@ -6201,7 +6191,6 @@ return (
       const glow = `0 0 ${reach * 0.6}px ${reach * 0.25}px rgb(var(--light-rgb))`
       return (
         <div
-          data-blends-with-ground=""
           data-light-for={trace.id}
           data-light-emit={emit}
           className="absolute pointer-events-none"
@@ -6211,7 +6200,12 @@ return (
             top: `${screenY + boxOffset.y}px`,
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            transform: `translate(-50%, -50%) rotate(${transform.rotation}deg)`,
+            // Centred by its margins, as a light from the middle is: a
+            // translate(-50%, -50%) here was replaced by the pulse's scale,
+            // and the light jumped half its size down and right.
+            marginLeft: `${-borderWidth / 2}px`,
+            marginTop: `${-borderHeight / 2}px`,
+            transform: `rotate(${transform.rotation}deg)`,
             borderRadius: round,
             ...(emit === 'shape'
               ? { background: 'rgb(var(--light-rgb))', boxShadow: glow }
@@ -6543,24 +6537,29 @@ return (
         /* Border container for non-shape traces - fixed size, doesn't scale with content */
         <>
         {(() => {
-        // The border's colour, at its opacity unless selected; a dashed or
-        // dotted one is drawn as a picture over its transparent border
-        // (dashedBorderImage), so its dashes follow the zoom.
+        // The border's colour, at its opacity unless selected. A dashed or
+        // dotted one is drawn over the trace, centred on it, where its own
+        // border is kept but unseen: CSS draws dashes its own way, and rounds a
+        // border to whole pixels, so they changed as the zoom did. Drawn here,
+        // everything in it is in the atrium's units times the zoom.
         const lineWidth = displayTrace.borderWidth ?? 2
+        const line = lineWidth * zoom
+        const radius = (displayTrace.borderRadius ?? 0) * zoom
         const lineColour = isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac'
           : trace.borderOpacity !== undefined && trace.borderOpacity < 1 ? `rgb(${rgbChannels(borderColor)} / ${trace.borderOpacity})` : borderColor
-        const dashedBorder = showBorder ? dashedBorderImage(displayTrace.strokeStyle, lineColour,
-          borderWidth + 2 * lineWidth * zoom, borderHeight + 2 * lineWidth * zoom, displayTrace.borderRadius ?? 0, lineWidth, zoom) : undefined
+        const dash = showBorder ? dashProps(displayTrace.strokeStyle, lineWidth, zoom) : {}
+        const dashed = !!dash.strokeDasharray
+        const outerW = borderWidth + 2 * line, outerH = borderHeight + 2 * line
         return (
+        <>
         <div
           className="trace-frame-nier relative cursor-pointer transition-shadow"
           style={{
             boxSizing: 'content-box',
             width: `${borderWidth}px`,
             height: `${borderHeight}px`,
-            border: showBorder ? `${lineWidth * zoom}px solid ${dashedBorder ? 'transparent' : lineColour}` : 'none',
-            ...(dashedBorder ? { backgroundImage: dashedBorder, backgroundOrigin: 'border-box', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' } : {}),
-            borderRadius: `${displayTrace.borderRadius ?? 0}px`,
+            border: showBorder ? `${line}px solid ${dashed ? 'transparent' : lineColour}` : 'none',
+            borderRadius: `${radius}px`,
             backgroundColor: showBackground ? (() => {
               const fc = displayTrace.fillColor || '#191919';
               const fo = displayTrace.fillOpacity ?? 0.95;
@@ -7314,6 +7313,19 @@ return (
 
           </div>
         </div>
+        {dashed && (
+          <svg
+            aria-hidden="true"
+            className="absolute pointer-events-none overflow-visible"
+            width={outerW}
+            height={outerH}
+            style={{ left: '50%', top: '50%', marginLeft: -outerW / 2, marginTop: -outerH / 2 }}
+          >
+            <rect x={line / 2} y={line / 2} width={Math.max(0, outerW - line)} height={Math.max(0, outerH - line)} rx={Math.max(0, radius - line / 2)}
+              fill="none" stroke={lineColour} strokeWidth={line} {...dash} />
+          </svg>
+        )}
+        </>
         )
         })()}
         </>

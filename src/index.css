@@ -76,19 +76,6 @@
   mask-composite: intersect;
 }
 
-/* While lib/worldCamera moves the world layer on the compositor, the layer is
-   an isolated group: a blend mode inside it blends with the layer alone, not
-   with the atrium behind it. A trace's light, screened onto the ground, came
-   out at full strength on a light atrium for as long as the view moved, and
-   went back when it stopped. So what blends with the ground carries what it
-   would look like over it, --over-ground-rgb, and takes that as its colour
-   (--light-rgb) while the layer moves -- drawn plainly, over the ground the
-   very same pixels. Lights draw no filter (TraceOverlay LIGHT_FALLOFF): one
-   vanished for every move in the desktop app's webview. */
-[data-camera-moving] [data-blends-with-ground] {
-  mix-blend-mode: normal !important;
-  --light-rgb: var(--over-ground-rgb) !important;
-}
 
 /* Nier:Automata Inspired Theme */
 /* Colour as roles rather than as names.
@@ -212,14 +199,16 @@
   --welcome-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 }
 
+/* The individual `scale`, not transform: a light from a shape or border is
+   turned by its transform, which a scale here replaced. */
 @keyframes pulse {
   0%, 100% {
     opacity: calc(var(--pulse-opacity) * 0.6);
-    transform: scale(1);
+    scale: 1;
   }
   50% {
     opacity: var(--pulse-opacity);
-    transform: scale(1.1);
+    scale: 1.1;
   }
 }
 
