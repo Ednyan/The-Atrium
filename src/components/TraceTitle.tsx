@@ -104,6 +104,7 @@ export default function TraceTitle({ className = '' }: { className?: string }) {
   return (
     <h1
       ref={rootRef}
+      translate="no"
       data-phase={phase}
       className={`trace-title relative font-light leading-[0.86] tracking-[-0.02em] ${className}`}
       style={{ containerType: 'inline-size' }}

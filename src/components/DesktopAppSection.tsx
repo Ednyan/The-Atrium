@@ -56,27 +56,11 @@ const BUILDS: Build[] = [
   },
 ]
 
-// Web vs desktop, drawn from what the code actually enforces rather than
-// marketing: the atrium cap and size limit are both gated on !isDesktop, and
-// Pinterest/Google sign-in are web-only because their OAuth needs a redirect
-// the desktop shell can't receive.
-// Keys rather than words, like the build list above it. `id` names the row
-// so the three keys that make it up stay legible as a set.
-const COMPARISON: Array<{ id: string; favours: 'web' | 'desktop' | 'both' }> = [
-  { id: 'where', favours: 'both' },
-  { id: 'count', favours: 'desktop' },
-  { id: 'size', favours: 'desktop' },
-  { id: 'images', favours: 'desktop' },
-  { id: 'offline', favours: 'desktop' },
-  { id: 'others', favours: 'web' },
-  { id: 'types', favours: 'desktop' },
-]
-
 // Downloads for the desktop build, with the link resolved from the latest
 // GitHub release at runtime so it never points at a stale version. Falls back
 // to the releases page if the API is unreachable or rate-limited, which is
 // still a working route to the download.
-export default function DesktopAppSection() {
+export function DesktopDownloads() {
   const { t } = useTranslation()
   const [version, setVersion] = useState<string | null>(null)
   const [assets, setAssets] = useState<Record<string, string>>({})
@@ -158,25 +142,7 @@ export default function DesktopAppSection() {
   }, [near])
 
   return (
-    <div ref={sectionRef} className="max-w-3xl w-full mx-auto" data-reveal>
-      <div className="flex items-center gap-3 mb-10">
-        <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-silver) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-silver) / 0.27)` }} />
-        <h2 className="text-3xl md:text-4xl font-extralight tracking-[0.15em] uppercase text-nier-strong">
-          {t('desktop.title')}
-        </h2>
-        <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-      </div>
-
-      <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed mb-3">
-        {t('desktop.lead')}
-      </p>
-      <p className="text-nier-bg/75 text-base leading-relaxed mb-3">
-        {t('desktop.fit')}
-      </p>
-      <p className="text-nier-bg/70 text-sm leading-relaxed mb-8 italic">
-        <RichText text={t('desktop.soloNote')} className="text-nier-bg" />
-      </p>
-
+    <div ref={sectionRef}>
       {/* Downloads */}
       <div className="grid sm:grid-cols-3 gap-3 mb-3">
         {BUILDS.map(build => {
@@ -255,7 +221,7 @@ export default function DesktopAppSection() {
         </div>
       </div>
 
-      <p className="text-nier-bg/70 text-xs tracking-wider mb-10">
+      <p className="text-nier-bg/70 text-xs tracking-wider leading-relaxed">
         {version ? `${t('desktop.latestRelease', { version })} · ` : ''}
         {downloads !== null && (
           <>
@@ -274,32 +240,6 @@ export default function DesktopAppSection() {
         {' · '}{t('desktop.selfUpdating')}
       </p>
 
-      {/* Comparison */}
-      <div className="border border-nier-border/25">
-        <div className="grid grid-cols-3 border-b border-nier-border/25 bg-nier-black/40">
-          <div className="p-3 text-nier-bg/70 text-xs tracking-[0.15em] uppercase" />
-          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-sky) / 0.8)` }}>{t('desktop.web')}</div>
-          <div className="p-3 text-xs tracking-[0.15em] uppercase text-center" style={{ color: `rgb(var(--c-emerald) / 0.8)` }}>{t('desktop.desktop')}</div>
-        </div>
-        {COMPARISON.map((row, i) => (
-          <div
-            key={row.id}
-            className={`grid grid-cols-3 text-sm ${i % 2 === 0 ? 'bg-nier-black/20' : ''}`}
-          >
-            <div className="p-3 text-nier-bg/80">{t(`compare.feature.${row.id}` as TranslationKey)}</div>
-            <div className={`p-3 text-center ${row.favours === 'web' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
-              {t(`compare.web.${row.id}` as TranslationKey)}
-            </div>
-            <div className={`p-3 text-center ${row.favours === 'desktop' ? 'text-nier-bg' : 'text-nier-bg/70'}`}>
-              {t(`compare.desktop.${row.id}` as TranslationKey)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-nier-bg/70 text-sm leading-relaxed mt-6">
-        {t('desktop.moveBetween')}
-      </p>
     </div>
   )
 }

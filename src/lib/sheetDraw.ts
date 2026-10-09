@@ -40,7 +40,7 @@ function fitted(text: string, room: number, size: number, bold = false): string 
 
 // An SVG of the region x, y, w, h, `outW` by `outH` pixels.
 const svgOpen = (x: number, y: number, w: number, h: number, outW: number, outH: number, extra = '') =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n(x)} ${n(y)} ${n(w)} ${n(h)}" width="${n(outW)}" height="${n(outH)}" font-family="${esc(font)}"${extra}>`
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n(x)} ${n(y)} ${n(w)} ${n(h)}" width="${n(outW)}" height="${n(outH)}" font-family="${esc(font)}" letter-spacing="normal"${extra}>`
 
 // ---- Sheets ------------------------------------------------------------------------------
 

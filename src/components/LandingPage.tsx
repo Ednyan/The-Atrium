@@ -1,7 +1,16 @@
+// The landing page: a hall with one light. The portal hangs at the top --
+// its orb the light, the bits it sheds settling as traces in the grid below
+// (components/PortalScene) -- and the page goes down into the atrium from
+// there: what one looks like inside, what can be brought in, what can be done
+// there, the two ways in, who made it, and how to keep the light on.
+//
+// NieR's language, kept: bone and ink, thin rules, diamonds and brackets. One
+// light source, warm, and nothing else coloured but the Donate button.
+
 import TraceTitle from './TraceTitle'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { isDesktop } from '../lib/supabase'
-import PortalLoop from './PortalLoop'
+import PortalScene from './PortalScene'
 import ContributePanel from './ContributePanel'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
@@ -9,14 +18,12 @@ import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
 import { contributionCountKey } from '../lib/monthlyGauge'
-import RichText from './RichText'
 import ConnectTiles from './ConnectTiles'
 import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
-import DesktopAppSection from './DesktopAppSection'
+import { DesktopDownloads } from './DesktopAppSection'
 import { openCodeHistory, preloadCodeHistory, watchCodeHistory } from '../lib/codeHistory'
-import { LivingAtriumScene, AtriumMapDiagram, PanZoomDemo, TraceCycleDemo, CreateTraceDemo, PopulateDemo, ExploreDemo } from './LandingDemos'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -25,32 +32,6 @@ interface LandingPageProps {
   section?: string
 }
 
-interface Section {
-  id: string
-  title: string
-  subtitle: string
-}
-
-// A small accent set, kept deliberately narrow. The app is otherwise
-// monochrome, so colour only earns its place where it marks something -- the
-// three ideas the product is built on, and the primary action. Silver leads
-// (an amber lead was tried and read as too yellow against the palette): it
-// stays in the NieR greyscale family while still sitting a step brighter
-// than nier-bg, so glows and the filled CTA read as light, not colour. The
-// two real hues only ever appear alongside it in the feature rows.
-// The same orange the top contribution tier is drawn in, so the button and the
-// traces it produces read as one idea across two pages.
-// Drop a demo reel at this path in public/ and the In Motion section below
-// the hero appears with it, no code change. The hero itself keeps the CSS
-// diorama permanently -- the two do different jobs (a living sketch of the
-// interactions vs. real footage) and both earned their place.
-const SHOWCASE_VIDEO_SRC = '/atrium-showcase.mp4'
-// 1200px, not glass_dome.png's 2780: shown a few hundred pixels across.
-const SHOWCASE_POSTER_SRC = '/glass_dome-poster.webp'
-
-// The product, framed like a window into an atrium. Deliberately the largest
-// element in the hero: the page could describe an atrium at length but never
-// showed one, which is the single thing copy is worst at conveying.
 // Every kind of trace, in outline, running slowly past under the title -- the
 // page's pulse. Each fills in under the pointer; the run pauses while it's
 // there. Twice over, so it loops without a seam. Still for reduced motion.
@@ -78,228 +59,96 @@ function TraceTicker() {
   )
 }
 
-function ShowcaseFrame() {
+// A section's name: a diamond the light fills as the section comes into view,
+// the title, and a rule drawn out from it (.lit-*, below).
+function SectionTitle({ children, center = false }: { children: ReactNode; center?: boolean }) {
   return (
-    <div className="relative mx-auto w-full">
-      {/* Corner brackets, matching the atrium's own HUD framing */}
-      <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 z-10 pointer-events-none" />
-      <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
-      <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
-      <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
-
-      <div
-        className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video"
-        style={{
-          boxShadow: '0 24px 60px rgb(var(--c-ground) / 0.55)',
-          // Lifts very slightly against the pointer, so the frame reads as
-          // sitting in front of the parallax layers rather than pasted on.
-          transform: 'translate3d(calc(var(--px, 0) * 6px), calc(var(--py, 0) * 6px), 0)',
-          transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
-        }}
-      >
-        <LivingAtriumScene />
-
-        {/* Scanline wash tying the frame to the app's own look */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.06]"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.5) 2px, rgb(var(--c-fg) / 0.5) 4px)',
-          }}
-        />
-        {/* Vignette so the frame's edges sink into the page instead of ending
-            on a hard rectangle */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ boxShadow: 'inset 0 0 90px 20px rgb(var(--c-ground) / 0.9)' }}
-        />
-      </div>
+    <div className={`flex items-center gap-4 mb-10 md:mb-14 ${center ? 'justify-center' : ''}`}>
+      {center && <span aria-hidden="true" className="lit-rule lit-rule-left h-px w-16 md:w-28" />}
+      <span aria-hidden="true" className="lit-diamond w-3 h-3 rotate-45 shrink-0" />
+      <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.1em] uppercase text-nier-strong leading-[1.05] text-balance">
+        {children}
+      </h2>
+      <span aria-hidden="true" className={`lit-rule h-px ${center ? 'w-16 md:w-28' : 'flex-1'}`} />
     </div>
   )
 }
 
-// The demo reel's own band, directly under the hero. Until the file exists
-// at public/atrium-showcase.mp4 (the <video> errors on the missing source),
-// the frame shows a deliberate "transmission incoming" placeholder -- the
-// slot is visible and styled, and swaps to the reel the day the file is
-// dropped in, with no code change. Deliberately has no entry in the
-// Sits directly below the reel, and says what the app costs to run.
-//
-// Deliberately not a plea. The pitch of this whole page is that your work lives
-// in a folder you own, and a page that then begs undercuts it -- so this states
-// what it costs, shows what the month has raised, and offers a door. Anyone who
-// reads it and moves on has lost nothing, which is the point.
-//
-// Kept out of `sections` for the same reason the reel is: it's an interlude,
-// not a stop, and adding it would shift every right-rail nav index below it.
-function ContributionsSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
+// Corner brackets, the atrium's own framing for anything set apart.
+function Brackets({ inset = '-0.5rem' }: { inset?: string }) {
+  const corner = 'absolute w-6 h-6 border-nier-border/60 pointer-events-none'
+  return (
+    <>
+      <span aria-hidden="true" className={`${corner} border-l border-t`} style={{ top: inset, left: inset }} />
+      <span aria-hidden="true" className={`${corner} border-r border-t`} style={{ top: inset, right: inset }} />
+      <span aria-hidden="true" className={`${corner} border-l border-b`} style={{ bottom: inset, left: inset }} />
+      <span aria-hidden="true" className={`${corner} border-r border-b`} style={{ bottom: inset, right: inset }} />
+    </>
+  )
+}
+
+// What the month has raised, and the two doors from it: Donate, and the wall
+// of the people who already did. Deliberately not a plea -- it says what it
+// costs and leaves it there.
+function SupportPanel() {
   const { t } = useTranslation()
   const [showContribute, setShowContribute] = useState(false)
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
-
   const month = data.month
-  const percent = month && month.goalCents > 0
-    ? Math.min(100, (month.totalCents / month.goalCents) * 100)
-    : 0
-
+  const percent = month && month.goalCents > 0 ? Math.min(100, (month.totalCents / month.goalCents) * 100) : 0
   return (
-    <section ref={sectionRef} className="flex items-center justify-center px-5 sm:px-12 pt-4 pb-24 relative">
-      <div className="max-w-4xl w-full mx-auto" data-reveal>
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-          <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            {t('landing.support.title')}
-          </h2>
-          <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-10 items-start">
-          <div className="space-y-4">
-            <p className="text-nier-bg/80 text-base leading-relaxed tracking-wide">{t('landing.support.body1')}</p>
-            <p className="text-nier-bg/70 text-base leading-relaxed tracking-wide">{t('landing.support.body2')}</p>
-          </div>
-
-          <div className="relative">
-            <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 pointer-events-none" />
-            <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 pointer-events-none" />
-            <div className="border border-nier-border/30 bg-nier-black/60 p-6">
-              {month && month.goalCents > 0 ? (
-                <>
-                  <div className="flex items-baseline justify-between mb-2">
-                    <span className="font-mono text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
-                    {/* Was "12 / 50 €". The section says what the thing costs
-                        in its own words above; the gauge only has to say how
-                        far through the month's costs it has got. */}
-                    <span className="font-mono text-sm tracking-wider text-nier-strong tabular-nums">
-                      {t('goal.funded', { percent: Math.round(percent) })}
-                    </span>
-                  </div>
-                  <div className="h-[4px] bg-nier-black border border-nier-border/30 overflow-hidden">
-                    <div
-                      className="h-full transition-all duration-700 ease-out"
-                      style={{ width: `${percent}%`, background: 'rgb(var(--c-accent))' }}
-                    />
-                  </div>
-                  {/* The zero-and-plural reasoning moved to
-                      contributionCountKey, now that three gauges need it
-                      rather than only this one. */}
-                  <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
-                    {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
-                  </p>
-                </>
-              ) : (
-                <p className="font-mono text-xs tracking-[0.15em] uppercase text-nier-bg/70">{t('landing.support.keptStanding')}</p>
-              )}
-
-              <div className="flex flex-col sm:flex-row gap-2 mt-6">
-                {/* The orange lives here rather than on the contributors
-                    page. This section has to earn attention among six others
-                    on a page people scroll past; the contributors page has
-                    nothing to compete with and shouldn't outshout the names
-                    it exists to show. */}
-                <DonateButton
-                  onClick={() => setShowContribute(true)}
-                  wrapperClassName="flex-1"
-                  className="w-full py-3"
-                />
-                <button
-                  type="button"
-                  onClick={() => openContributors('/')}
-                  className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                >
-                  {t('welcome.contributors')}
-                </button>
-              </div>
+    <div className="relative">
+      <Brackets />
+      <div className="border border-nier-border/30 p-6 sm:p-8" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}>
+        {month && month.goalCents > 0 ? (
+          <>
+            <div className="flex items-baseline justify-between mb-3">
+              <span className="text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
+              <span className="text-sm tracking-wider text-nier-strong tabular-nums">{t('goal.funded', { percent: Math.round(percent) })}</span>
             </div>
-          </div>
+            {/* The light's level: how much of the month is kept lit. */}
+            <div className="h-[3px] overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.12)' }}>
+              <div className="h-full transition-[width] duration-700 ease-out landing-light-fill" style={{ width: `${percent}%` }} />
+            </div>
+            <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
+              {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
+            </p>
+          </>
+        ) : (
+          <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70">{t('landing.support.keptStanding')}</p>
+        )}
+        <div className="flex flex-col sm:flex-row gap-2 mt-7">
+          <DonateButton onClick={() => setShowContribute(true)} wrapperClassName="flex-1" className="w-full py-3" />
+          <button
+            type="button"
+            onClick={() => openContributors('/')}
+            className="flex-1 py-3 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong active:translate-y-px transition-colors"
+          >
+            {t('welcome.contributors')}
+          </button>
         </div>
       </div>
-
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
-    </section>
+    </div>
   )
 }
 
-// It is the second stop on the page, and the first thing anybody should see:
-// a page describing a place is weaker than the place moving.
-function VideoShowcaseSection({ sectionRef }: { sectionRef: (el: HTMLElement | null) => void }) {
-  const { t } = useTranslation()
-  const [available, setAvailable] = useState(true)
-
-  return (
-    <section ref={sectionRef} className="flex items-center justify-center px-5 sm:px-12 pt-24 pb-10 relative">
-      <div className="max-w-4xl w-full mx-auto" data-reveal>
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-          <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-            {t('landing.nav.preview')}
-          </h2>
-          <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-        </div>
-
-        <div className="relative">
-          <div className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60 z-10 pointer-events-none" />
-          <div className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60 z-10 pointer-events-none" />
-          <div className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60 z-10 pointer-events-none" />
-          <div className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60 z-10 pointer-events-none" />
-          <div className="relative border border-nier-border/30 bg-nier-black overflow-hidden aspect-video" style={{ boxShadow: '0 24px 60px rgb(var(--c-ground) / 0.55)' }}>
-            {available ? (
-              <video
-                src={SHOWCASE_VIDEO_SRC}
-                poster={SHOWCASE_POSTER_SRC}
-                autoPlay
-                loop
-                muted
-                playsInline
-                controls
-                onError={() => setAvailable(false)}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              // The reel isn't recorded yet -- hold the slot with something
-              // that reads as intentional rather than broken.
-              <div
-                className="absolute inset-0 flex flex-col items-center justify-center gap-4"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(rgb(var(--c-fg) / 0.05) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.05) 1px, transparent 1px)',
-                  backgroundSize: '36px 36px',
-                }}
-              >
-                <div className="w-3 h-3 rotate-45 border animate-pulse" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 12px rgb(var(--c-accent) / 0.33)` }} />
-                <p className="font-mono text-sm tracking-[0.3em] uppercase text-nier-bg/80">{t('landing.preview.transmission')}</p>
-                <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70">{t('landing.preview.recording')}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// The running order, and the order the page is written in. Index is identity
-// here: it ties an entry to its ref in sectionRefs, so these two must move
-// together. Anything jumping to a section by name should go through
-// sectionIndex() rather than counting.
-//
-// Seeing the place comes before reading about it, which is why the reel is
-// second and the explanations are further down. The ask sits third, while
-// somebody has just watched what they would be paying for, rather than at the
-// bottom where only the already-convinced arrive.
-const sections: Section[] = [
-  { id: 'hero', title: 'The Digital Atrium', subtitle: 'A museum of references created by you' },
-  { id: 'preview', title: 'Preview', subtitle: 'A tour of the place' },
-  { id: 'support', title: 'Support Me', subtitle: 'What holds the atrium up' },
-  { id: 'creator', title: 'The Creator', subtitle: 'How this came to be' },
-  { id: 'about', title: 'About', subtitle: 'What an atrium actually is' },
-  { id: 'limitations', title: 'Limitations', subtitle: 'Where the free tier stops' },
-  { id: 'desktop', title: 'Desktop App', subtitle: 'Your atriums, stored locally' },
-  { id: 'navigation', title: 'Navigation', subtitle: 'Move, create, collaborate' },
+// What can be brought into an atrium: one cell each, the four with pictures
+// of the real thing (photographed in the app, public/landing) and the rest in
+// words. Laid out 4 across: pictures large, sheets wide.
+const TRACE_CELLS: { id: string; span: string; picture?: boolean; video?: boolean }[] = [
+  { id: 'pictures', span: 'sm:col-span-2 lg:row-span-2', picture: true },
+  { id: 'video', span: '', video: true },
+  { id: 'notes', span: '', picture: true },
+  { id: 'sound', span: '' },
+  { id: 'documents', span: '' },
+  { id: 'sheets', span: 'sm:col-span-2', picture: true },
+  { id: 'drawings', span: '', picture: true },
+  { id: 'links', span: '' },
 ]
 
-const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
+const TOOLS = ['move', 'arrange', 'connect', 'together', 'style', 'keep'] as const
 
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
 // against it, so it is written once.
@@ -402,7 +251,7 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
                 maskPosition: 'center',
               }}
             />
-            <span className="hidden sm:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
+            <span translate="no" className="hidden sm:inline text-nier-strong text-sm tracking-[0.22em] uppercase whitespace-nowrap">
               The Digital Atrium
             </span>
           </button>
@@ -528,62 +377,60 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
   )
 }
 
+// The running order, and the order the page is written in. Index is identity
+// here: it ties an entry to its ref in sectionRefs, so these must move
+// together. Anything jumping to a section by name goes through sectionIndex().
+// `desktop` is the one a route names (/desktop): its id stays.
+const sections = [
+  { id: 'hero', title: 'The Digital Atrium' },
+  { id: 'inside', title: 'Inside an atrium' },
+  { id: 'traces', title: 'Traces' },
+  { id: 'tools', title: 'What you can do' },
+  { id: 'desktop', title: 'Web & Desktop' },
+  { id: 'creator', title: 'The Creator' },
+  { id: 'support', title: 'Support' },
+]
+const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
+
 export default function LandingPage({ onGetStarted, isAuthenticated, section }: LandingPageProps) {
   const { t } = useTranslation()
   const theme = useLandingTheme()
+  const light = theme.resolved === 'light'
+  const shot = light ? 'light' : 'dark'
   const [showDonate, setShowDonate] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<(HTMLElement | null)[]>([])
+  const enter = isAuthenticated ? t('landing.continue') : t('landing.enter')
+  // A decorative loop stays still for anyone who asked for less motion.
+  const still = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, [])
 
-  // Memoize particle positions (fireflies)
-  const particles = useMemo(() => 
-    [...Array(20)].map((_, i) => ({
-      left: `${(i * 17 + 3) % 96}%`,
-      top: `${(i * 23 + 5) % 94}%`,
-      duration: 8 + (i * 1.5) % 6,
-      delay: i * 0.5,
-    })), []
-  )
-
-  // Memoize background rectangles (trace-like elements)
-  const backgroundRects = useMemo(() => 
-    [...Array(15)].map((_, i) => ({
-      left: `${(i * 19 + 7) % 90}%`,
-      top: `${(i * 31 + 12) % 85}%`,
-      width: 40 + (i * 17) % 120,
-      height: 20 + (i * 13) % 60,
-      rotation: (i * 7) % 15 - 7,
-      delay: i * 0.3,
-    })), []
-  )
+  // Dust in the light from above: motes drifting down through the middle of
+  // the page, never in step.
+  const motes = useMemo(() => [...Array(24)].map((_, i) => ({
+    left: `${28 + ((i * 37) % 44)}%`,
+    size: 1 + (i % 3) * 0.7,
+    duration: 18 + ((i * 7) % 13),
+    delay: -((i * 2.3) % 30),
+    drift: `${((i * 13) % 9) - 4}vw`,
+  })), [])
 
   // Pointer parallax, published as CSS custom properties instead of React
-  // state. This was a setState on every mousemove, which re-rendered the whole
-  // page continuously -- so the effect had to be kept almost invisible (0.01x)
-  // to stay affordable. Writing two variables on the container lets each layer
-  // pick its own depth, at a real magnitude, for no render cost.
-  //
-  // Coalesced into a single rAF so a burst of pointer events can't write style
-  // more than once a frame.
+  // state: each layer picks its own depth, for no render cost. Coalesced into
+  // one rAF so a burst of pointer events writes style once a frame.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-
     let frame = 0
     const handleMouseMove = (e: MouseEvent) => {
       if (frame) return
       frame = window.requestAnimationFrame(() => {
         frame = 0
-        // -1..1 from centre, so layers can shift either way.
-        const nx = (e.clientX / window.innerWidth) * 2 - 1
-        const ny = (e.clientY / window.innerHeight) * 2 - 1
-        el.style.setProperty('--px', nx.toFixed(4))
-        el.style.setProperty('--py', ny.toFixed(4))
+        el.style.setProperty('--px', ((e.clientX / window.innerWidth) * 2 - 1).toFixed(4))
+        el.style.setProperty('--py', ((e.clientY / window.innerHeight) * 2 - 1).toFixed(4))
       })
     }
-
     window.addEventListener('mousemove', handleMouseMove, { passive: true })
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
@@ -591,1029 +438,518 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
     }
   }, [])
 
-  // The code history slides in over this page and back (the band below).
+  // The code history slides in over this page and back (the strip below).
   useEffect(() => watchCodeHistory(), [])
 
-  // Reveals each section as it scrolls into view. A long page where everything
-  // is simply already there is the main reason it reads as static.
+  // Each section lit as it comes into view: its diamond fills, its rule
+  // draws out, its content rises. One-way -- re-hiding on the way back up
+  // distracts.
   useEffect(() => {
     const observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-revealed')
-            // One-way: re-hiding on scroll-up is distracting on a page people
-            // scroll back and forth through.
-            observer.unobserve(entry.target)
-          }
+          if (!entry.isIntersecting) continue
+          entry.target.classList.add('is-revealed')
+          observer.unobserve(entry.target)
         }
       },
-      { threshold: 0.15, rootMargin: '0px 0px -10% 0px' },
+      { threshold: 0.12, rootMargin: '0px 0px -8% 0px' },
     )
     document.querySelectorAll('[data-reveal]').forEach(n => observer.observe(n))
     return () => observer.disconnect()
   }, [])
 
+  // The section whose top has most recently passed under the bar, and how far
+  // down the page is.
   useEffect(() => {
-    const handleScroll = () => {
-      if (!containerRef.current) return
-      
-      const scrollTop = containerRef.current.scrollTop
-      const scrollHeight = containerRef.current.scrollHeight - containerRef.current.clientHeight
-      const progress = scrollTop / scrollHeight
-      setScrollProgress(progress)
-
-      // The section whose top edge has most recently passed under the bar.
-      //
-      // This used to be "the last section whose top is above the middle of the
-      // window", which breaks for any section shorter than half a screen:
-      // jumping to Support Me put its top at the bar and The Creator's top at
-      // 600px, both above the midpoint, so the bar lit The Creator and the
-      // page looked like it had scrolled straight past what you clicked.
-      let currentSection = 0
-      sectionRefs.current.forEach((ref, index) => {
-        if (ref && ref.getBoundingClientRect().top <= NAV_HEIGHT + 24) {
-          currentSection = index
-        }
-      })
-      setActiveSection(currentSection)
-    }
-
     const container = containerRef.current
-    container?.addEventListener('scroll', handleScroll)
-    return () => container?.removeEventListener('scroll', handleScroll)
+    if (!container) return
+    const handleScroll = () => {
+      const scrollHeight = container.scrollHeight - container.clientHeight
+      setScrollProgress(scrollHeight > 0 ? container.scrollTop / scrollHeight : 0)
+      let current = 0
+      sectionRefs.current.forEach((ref, index) => {
+        if (ref && ref.getBoundingClientRect().top <= NAV_HEIGHT + 24) current = index
+      })
+      setActiveSection(current)
+    }
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Indices stay tied to sectionRefs, so entries are filtered out AFTER
-  // indexing rather than removed -- dropping one would shift every section
-  // below it out of sync with its ref. (The old version filtered first and
-  // then let the bar count its own rows, which sent everything after Desktop
-  // App to the wrong section inside the desktop build.)
+  // Indices stay tied to sectionRefs, so entries are filtered out after
+  // indexing rather than removed. The desktop app has no Web & Desktop.
   const navItems = sections
-    .map((section, index) => ({ ...section, index }))
+    .map((entry, index) => ({ ...entry, index }))
     .filter(({ id }) => id !== 'hero' && !(isDesktop && id === 'desktop'))
 
-  // scrollIntoView puts the section's top edge at the container's top edge,
-  // which is underneath the sticky bar -- so every jump hid its own heading
-  // behind the thing you clicked. Scroll the container by hand instead, with
-  // the bar's height taken off.
+  // Scrolled by hand, the bar's height taken off: scrollIntoView put every
+  // heading under the bar.
   const scrollToSection = (index: number, behavior: ScrollBehavior = 'smooth') => {
     const target = sectionRefs.current[index]
     const container = containerRef.current
     if (!target || !container) return
-    const top =
-      target.getBoundingClientRect().top -
-      container.getBoundingClientRect().top +
-      container.scrollTop -
-      NAV_HEIGHT
+    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - NAV_HEIGHT
     container.scrollTo({ top: Math.max(0, top), behavior })
   }
 
-  // Opened at a section rather than at the top, when the route named one.
-  //
-  // Instant, not smooth: sliding through the whole page on load reads as the
-  // page having been scrolled by somebody else. Measured twice because the
-  // sections above carry images and a video, and the first measurement is
-  // taken before they have settled into their final heights.
+  // Opened at a section when the route named one: instantly, and measured
+  // twice, as pictures above it settle.
   useEffect(() => {
     if (!section) return
     const index = sectionIndex(section)
     if (index < 0) return
-
     const frame = requestAnimationFrame(() => scrollToSection(index, 'auto'))
     const correction = setTimeout(() => scrollToSection(index, 'auto'), 400)
     return () => { cancelAnimationFrame(frame); clearTimeout(correction) }
   }, [section])
 
-  // The bar's Donate opens the panel and moves the page under it.
-  //
-  // Somebody who closes the panel without paying -- or after paying -- is put
-  // down in front of the section that explains what the money is for, rather
-  // than back wherever they happened to be reading. The scroll happens behind
-  // the panel, so it costs them nothing either way.
-  //
-  // Only this one. The Donate at the foot of the page is already at the end of
-  // the argument, and throwing somebody back up the page from there would be
-  // taking them somewhere they had already been.
+  // The bar's Donate opens the panel, and puts the page under it at what the
+  // money is for.
   const handleBarDonate = () => {
     scrollToSection(sectionIndex('support'))
     setShowDonate(true)
   }
 
+  const controls: [TranslationKey, TranslationKey][] = [
+    ['landing.controls.dragKey', 'landing.controls.drag'],
+    ['landing.controls.scrollKey', 'landing.controls.scroll'],
+    ['landing.controls.numbersKey', 'landing.controls.numbers'],
+    ['landing.controls.dKey', 'landing.controls.d'],
+    ['landing.controls.tKeyKey', 'landing.controls.tKey'],
+  ]
+  const sectionClass = 'relative px-5 sm:px-10 lg:px-16 py-20 md:py-28'
+
   return (
-    <div 
+    <div
       ref={containerRef}
       data-landing-theme={theme.resolved}
       className="h-screen bg-nier-black text-nier-bg overflow-y-auto overflow-x-hidden scroll-smooth"
     >
-      <TopNav
-        items={navItems}
-        activeSection={activeSection}
-        onJump={scrollToSection}
-        onDonate={handleBarDonate}
-      />
+      {/* For keyboards: the first stop, past the bar straight to the page. */}
+      <a href="#landing-main" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:px-4 focus:py-2 focus:bg-nier-bg focus:text-nier-black text-xs tracking-[0.15em] uppercase">
+        {t('landing.skip')}
+      </a>
+
+      <TopNav items={navItems} activeSection={activeSection} onJump={scrollToSection} onDonate={handleBarDonate} />
 
       {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
 
-      {/* Fixed overlays */}
-      {/* Scanline overlay */}
-      <div className="fixed inset-0 pointer-events-none opacity-[0.02] z-50"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.1) 2px, rgb(var(--c-fg) / 0.1) 4px)',
-        }}
-      />
-
-      {/* Animated background grid -- the deepest parallax layer, so it moves
-          least. Scaled slightly past the viewport so the shift can't expose an
-          edge. */}
+      {/* Scanlines, faint, over everything. */}
       <div
-        className="fixed pointer-events-none opacity-[0.14]"
+        className="fixed inset-0 pointer-events-none opacity-[0.02] z-50"
+        style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.1) 2px, rgb(var(--c-fg) / 0.1) 4px)' }}
+      />
+      {/* The atrium's grid, the floor of the hall -- the deepest layer, so it
+          moves least with the pointer. */}
+      <div
+        className="fixed pointer-events-none opacity-[0.12]"
         style={{
           inset: '-40px',
-          backgroundImage: `
-            linear-gradient(rgb(var(--c-fg) / 0.2) 1px, transparent 1px),
-            linear-gradient(90deg, rgb(var(--c-fg) / 0.2) 1px, transparent 1px)
-          `,
+          backgroundImage: 'linear-gradient(rgb(var(--c-fg) / 0.2) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.2) 1px, transparent 1px)',
           backgroundSize: '60px 60px',
           transform: 'translate3d(calc(var(--px, 0) * 12px), calc(var(--py, 0) * 12px), 0)',
           transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       />
-
-      {/* Slow radial breath behind everything -- gives the page a pulse without
-          any element visibly "animating". */}
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle at 50% 45%, rgb(var(--c-fg) / 0.07), transparent 62%)',
-          animation: 'atriumBreathe 11s ease-in-out infinite',
-        }}
-      />
-
-      {/* Background rectangles (trace-like elements) -- mid parallax layer,
-          moving roughly twice the grid so the two separate in depth. */}
-      <div
-        className="fixed inset-0 pointer-events-none overflow-hidden"
-        style={{
-          transform: 'translate3d(calc(var(--px, 0) * -26px), calc(var(--py, 0) * -26px), 0)',
-          transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
-        }}
-      >
-        {backgroundRects.map((rect, i) => (
-          <div
+      {/* The light from above, over the whole hall, breathing slowly. */}
+      <div aria-hidden="true" className="landing-skylight fixed inset-0 pointer-events-none" />
+      {/* Dust in it. */}
+      <div aria-hidden="true" className="landing-dust fixed inset-0 pointer-events-none overflow-hidden">
+        {motes.map((mote, i) => (
+          <span
             key={i}
-            className="absolute border border-nier-border/[0.14] bg-nier-border/[0.04]"
-            style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-              transform: `rotate(${rect.rotation}deg)`,
-              animation: `rectFloat ${12 + i % 5}s ease-in-out infinite`,
-              animationDelay: `${rect.delay}s`,
-            }}
-          >
-            {/* Corner accents on some rectangles */}
-            {i % 3 === 0 && (
-              <>
-                <div className="absolute -top-px -left-px w-2 h-2 border-l border-t border-nier-border/20" />
-                <div className="absolute -bottom-px -right-px w-2 h-2 border-r border-b border-nier-border/20" />
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Floating particles (fireflies) */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {particles.map((particle, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-nier-border rounded-full opacity-0"
-            style={{
-              left: particle.left,
-              top: particle.top,
-              animation: `firefly ${particle.duration}s ease-in-out infinite`,
-              animationDelay: `${particle.delay}s`,
-            }}
+            className="landing-mote"
+            style={{ left: mote.left, width: mote.size, height: mote.size, animationDuration: `${mote.duration}s`, animationDelay: `${mote.delay}s`, '--drift': mote.drift } as React.CSSProperties}
           />
         ))}
       </div>
 
-      {/* Section indicators (Nier-style, on the right) */}
-      <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-end gap-6">
-        {/* Indices stay tied to sectionRefs, so the Desktop entry is filtered
-            out AFTER indexing rather than removed from the array -- dropping
-            it would shift every section below it out of sync with its ref. */}
+      {/* Where you are, down the right edge (NieR's own). */}
+      <nav aria-label={t('landing.sections')} className="fixed right-8 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-end gap-6">
         {sections
-          .map((section, index) => ({ section, index }))
-          .filter(({ section }) => !(isDesktop && section.id === 'desktop'))
-          .map(({ section, index }) => {
-          const isActive = activeSection === index
-          const distance = Math.abs(activeSection - index)
-
-          return (
-            <button
-              key={section.id}
-              onClick={() => scrollToSection(index)}
-              className="group relative flex items-center transition-all duration-300"
-            >
-              {/* The name, out of the flow and deaf to the pointer.
-                  
-                  It used to sit in the row as a sibling of the mark, which
-                  meant the button was as wide as the longest section name --
-                  so the label appeared when the pointer crossed the empty
-                  space where it would be, several centimetres from anything
-                  visible. Absolute and pointer-events-none leaves the button
-                  exactly the size of the mark, which is the only thing on
-                  screen to aim at. */}
-              <span 
-                className={`pointer-events-none absolute right-full mr-3 whitespace-nowrap text-xs tracking-[0.15em] uppercase transition-all duration-300 hidden sm:inline opacity-0 group-hover:opacity-100 ${
-                  isActive ? 'text-nier-strong' : 'text-nier-bg/75'
-                }`}
+          .map((entry, index) => ({ entry, index }))
+          .filter(({ entry }) => !(isDesktop && entry.id === 'desktop'))
+          .map(({ entry, index }) => {
+            const isActive = activeSection === index
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => scrollToSection(index)}
+                aria-label={t(`landing.nav.${entry.id}` as TranslationKey)}
+                aria-current={isActive ? 'true' : undefined}
+                className="group relative flex items-center"
               >
-                {t(`landing.nav.${section.id}` as TranslationKey)}
-              </span>
-              
-              {/* Indicator bracket */}
-              <div className={`relative transition-all duration-300 ${isActive ? 'scale-110' : 'scale-100'}`}>
-                {/* Outer brackets */}
-                <div className={`w-6 h-6 transition-all duration-300 ${
-                  isActive ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'
-                }`}>
-                  <div className="absolute top-0 left-0 w-2 h-2 border-l border-t border-nier-border/80" />
-                  <div className="absolute top-0 right-0 w-2 h-2 border-r border-t border-nier-border/80" />
-                  <div className="absolute bottom-0 left-0 w-2 h-2 border-l border-b border-nier-border/80" />
-                  <div className="absolute bottom-0 right-0 w-2 h-2 border-r border-b border-nier-border/80" />
-                </div>
-                
-                {/* Center diamond */}
-                {/* Accented only while active -- it marks where you are, which
-                    is exactly the kind of live state colour is good at. */}
-                <div
-                  className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 transition-all duration-300 ${
-                    isActive ? '' : 'bg-transparent border border-nier-border/60 group-hover:border-nier-border'
-                  }`}
-                  style={isActive ? { backgroundColor: 'rgb(var(--c-accent))', boxShadow: `0 0 10px rgb(var(--c-accent) / 0.67)` } : undefined}
-                />
-                
-                {/* Distance line (when not active) */}
-                {distance > 0 && (
-                  <div 
-                    className="absolute left-1/2 -translate-x-1/2 w-px bg-nier-border/20"
-                    style={{
-                      top: index < activeSection ? '-24px' : '100%',
-                      height: `${Math.min(distance * 8, 16)}px`,
-                    }}
-                  />
-                )}
-              </div>
-            </button>
-          )
-        })}
-        
-        {/* Progress indicator */}
+                <span className={`pointer-events-none absolute right-full mr-3 whitespace-nowrap text-xs tracking-[0.15em] uppercase transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isActive ? 'text-nier-strong' : 'text-nier-bg/75'}`}>
+                  {t(`landing.nav.${entry.id}` as TranslationKey)}
+                </span>
+                <span className={`relative block w-6 h-6 transition-[opacity,transform] duration-300 ${isActive ? 'opacity-100 scale-110' : 'opacity-40 group-hover:opacity-70'}`}>
+                  <span className="absolute top-0 left-0 w-2 h-2 border-l border-t border-nier-border/80" />
+                  <span className="absolute top-0 right-0 w-2 h-2 border-r border-t border-nier-border/80" />
+                  <span className="absolute bottom-0 left-0 w-2 h-2 border-l border-b border-nier-border/80" />
+                  <span className="absolute bottom-0 right-0 w-2 h-2 border-r border-b border-nier-border/80" />
+                  <span className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 ${isActive ? 'landing-lit' : 'border border-nier-border/60'}`} />
+                </span>
+              </button>
+            )
+          })}
         <div className="mt-4 flex flex-col items-end gap-1 pr-[11px]">
           <div className="w-px h-16 bg-nier-border/20 relative">
-            <div 
-              className="absolute top-0 left-0 w-full bg-nier-border/60 transition-all duration-300"
-              style={{ height: `${scrollProgress * 100}%` }}
-            />
+            <div className="absolute top-0 left-0 w-full bg-nier-border/60" style={{ height: `${scrollProgress * 100}%` }} />
           </div>
-          <span className="text-[11px] text-nier-bg/70 tracking-widest -mr-2">
-            {Math.round(scrollProgress * 100)}%
-          </span>
+          <span className="text-[11px] text-nier-bg/70 tracking-widest -mr-2 tabular-nums">{Math.round(scrollProgress * 100)}%</span>
         </div>
-      </div>
+      </nav>
 
-      {/* The page's content, its main landmark (screen readers jump to it):
-          everything between the top bar and the footer. */}
-      <main>
-      {/* SECTION 1: The Digital Atrium -- the title. The first screen, set from
-          the top of it rather than centred, with room to breathe above the
-          name, and closed at the foot by the code history's strip. */}
-      <section
-        ref={el => sectionRefs.current[0] = el}
-        className="flex flex-col px-5 sm:px-10 lg:px-16 pt-[clamp(2.5rem,8vh,5.5rem)] pb-14 relative overflow-hidden"
-        style={{ minHeight: 'calc(100vh - 3.5rem)' }}
-      >
-        {/* Corner brackets, at the top: the strip closes the foot. */}
-        <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-nier-border/30 pointer-events-none" />
-        <div className="absolute top-8 right-8 w-16 h-16 border-r-2 border-t-2 border-nier-border/30 pointer-events-none" />
-
-        {/* The portal as an emblem: scaled far past its natural size and sunk
-            to low opacity behind the type. Cropped by the section edge on
-            purpose -- a partially out-of-frame mark reads as monumental where
-            a neatly contained one reads as an icon. The luminance filter in
-            PortalLoop keeps its black genuinely transparent at any scale, and
-            its own parallax shift is slower than every foreground layer, which
-            is what makes it sit at the very back. */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: '-12%',
-            top: '50%',
-            opacity: 0.14,
-            transform: 'translateY(-50%) translate3d(calc(var(--px, 0) * -8px), calc(var(--py, 0) * -8px), 0)',
-            transition: 'transform 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
-          }}
+      <main id="landing-main" tabIndex={-1} className="outline-none">
+        {/* The hall: the portal, lit, hanging over the name. */}
+        <section
+          ref={el => { sectionRefs.current[0] = el }}
+          className="relative flex flex-col items-center px-5 sm:px-10 lg:px-16 pb-14 overflow-hidden"
+          style={{ minHeight: 'calc(100dvh - 3.5rem)' }}
         >
-          <PortalLoop className="h-[60vh] lg:h-[85vh] max-h-[820px]" playbackRate={0.5} ink={theme.resolved === 'light'} />
-        </div>
-
-        {/* Warm bloom anchored behind the headline. Gives the type something to
-            sit in front of, so the left column reads as lit rather than as text
-            floating on a flat panel. */}
-        <div
-          className="absolute pointer-events-none -z-0"
-          style={{
-            left: '-10%',
-            top: '20%',
-            width: '55vw',
-            height: '55vw',
-            maxWidth: 780,
-            maxHeight: 780,
-            background: `radial-gradient(circle, rgb(var(--c-accent) / 0.12), transparent 68%)`,
-            filter: 'blur(30px)',
-            transform: 'translate3d(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -18px), 0)',
-            transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
-          }}
-        />
-
-        {/* Asymmetric split. Everything used to be centred and evenly weighted,
-            so nothing led -- the eye had no entry point. Type anchors the left,
-            the product holds the right, and on narrow screens it stacks with
-            the product directly under the headline. */}
-        <div className="relative z-10 w-full max-w-[1400px] mx-auto mb-16 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-16 items-start">
-
-
-          {/* LEFT: type + actions */}
-          <div className="text-left">
-            {/* The name, made of traces: what the place is made of
-                (components/TraceTitle). */}
-            <TraceTitle className="mb-7" />
-
-            <p className="text-nier-bg/80 text-xl md:text-2xl font-light leading-relaxed max-w-lg mb-9">{t('landing.hero.sub2')}</p>
-
-            {/* Filled rather than outlined. Previously the call to action had
-                the same visual weight as every other bordered box on the page,
-                so the one thing a visitor should do didn't stand out. */}
-            <div className="flex flex-wrap items-center gap-4 mb-10">
-              <button
-                onClick={onGetStarted}
-                className="group relative px-8 py-4 text-base tracking-[0.18em] uppercase font-medium transition-all duration-300"
-                style={{
-                  clipPath: DONATE_CUT,
-                  backgroundColor: 'rgb(var(--c-accent))',
-                  // The ground, not black. The button is filled with the
-                  // strong neutral, which is bone on a dark page and ink on a
-                  // light one -- a fixed dark label works on the first and
-                  // disappears into the second.
-                  color: 'rgb(var(--c-ground))',
-                  boxShadow: `0 0 0 rgba(0,0,0,0)`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = `0 10px 40px rgb(var(--c-accent) / 0.33)`
-                  e.currentTarget.style.transform = 'translateY(-2px)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = '0 0 0 rgba(0,0,0,0)'
-                  e.currentTarget.style.transform = 'translateY(0)'
-                }}
-              >
-                {isAuthenticated ? t('landing.continue') : t('landing.enter')}
+          <div className="relative z-10 w-full max-w-[1100px] mx-auto flex flex-col items-center text-center">
+            <PortalScene ink={light} className="w-[min(94vw,860px)] h-[clamp(230px,44vh,540px)]" />
+            <TraceTitle className="w-[min(92vw,760px)] text-center -mt-[clamp(0.25rem,2.5vh,2rem)]" />
+            <p className="mt-7 text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[38rem] text-balance">
+              {t('landing.hero.sub2')}
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-x-9 gap-y-4">
+              <button type="button" onClick={onGetStarted} className="landing-cta px-9 py-4 text-sm md:text-base tracking-[0.2em] uppercase" style={{ clipPath: DONATE_CUT }}>
+                {enter}
               </button>
-
-              {/* Secondary path, inline with the primary one. Scrolls rather
-                  than downloading: the desktop section explains what actually
-                  differs and which platform to pick, which is worth reading
-                  before committing to a 20MB install. Web only -- inside the
-                  desktop build it would scroll to a section that isn't there. */}
               {!isDesktop && (
-                <>
-                  <span className="text-nier-bg/50 text-sm tracking-[0.2em] uppercase">{t('landing.or')}</span>
-                  <button
-                    onClick={() => scrollToSection(sectionIndex('desktop'))}
-                    className="group px-6 py-4 border-2 text-base tracking-[0.18em] uppercase transition-all duration-300"
-                    style={{ clipPath: DONATE_CUT, borderColor: 'rgb(var(--c-accent) / 0.33)', color: 'rgb(var(--c-accent) / 0.87)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'rgb(var(--c-accent))'
-                      e.currentTarget.style.backgroundColor = `rgb(var(--c-accent) / 0.06)`
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = `rgb(var(--c-accent) / 0.33)`
-                      e.currentTarget.style.backgroundColor = 'transparent'
-                    }}
-                  >
-                    ↓ {t('landing.hero.download')}
-                  </button>
-                </>
+                <button type="button" onClick={() => scrollToSection(sectionIndex('desktop'))} className="landing-link text-sm tracking-[0.18em] uppercase">
+                  {t('landing.hero.download')} <span aria-hidden="true">→</span>
+                </button>
               )}
             </div>
+          </div>
 
-            {/* Moved below the buttons rather than sitting beside them: with
-                two actions inline, a third inline item made the row read as
-                three peers. */}
-            {!isAuthenticated && (
-              <p className="text-nier-bg/70 text-sm tracking-wider mb-10 -mt-6">{t('landing.hero.free')}</p>
-            )}
+          {/* The code history (public/code-history), a page of its own: a
+              strip at the foot of the first screen, the finished graph printed
+              into it. It slides in beside this page (lib/codeHistory); hovering
+              loads it ahead. */}
+          <a
+            href="/code-history/"
+            onPointerEnter={preloadCodeHistory}
+            onFocus={preloadCodeHistory}
+            onClick={e => {
+              if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+              if (openCodeHistory()) e.preventDefault()
+            }}
+            className="code-history-strip group relative z-10 w-full max-w-[1400px] mx-auto mt-auto pt-14"
+          >
+            <span className="relative block">
+              <Brackets />
+              <span className="relative flex items-center gap-6 h-[clamp(68px,6.5vw,100px)] px-5 sm:px-8 overflow-hidden border border-nier-border/30">
+                <img src="/code-history/banner.webp" srcSet="/code-history/banner-800.webp 800w, /code-history/banner.webp 1774w" sizes="(min-width: 640px) 66vw, 100vw" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+                <span className="relative hidden sm:flex items-center gap-3 max-w-[46%] text-sm leading-snug text-nier-bg/75 font-light">
+                  <span className="byline-mark w-2 h-2 rotate-45 shrink-0" />
+                  {t('landing.codeHistory.what')}
+                </span>
+                <span className="byline-link relative ml-auto flex items-center gap-3 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80 whitespace-nowrap">
+                  {t('landing.codeHistory')}
+                  <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                </span>
+              </span>
+            </span>
+          </a>
+        </section>
 
+        {/* Every kind of trace, running past: the beat between the hall and
+            the rest. */}
+        <TraceTicker />
 
-            {/* Three pillars as a rule-separated row rather than floating chips,
-                so they read as one grounded line under the actions. Each marked
-                by a pulsing diamond, the three pulses a beat apart. */}
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-7 border-t border-nier-border/15 text-xs tracking-[0.16em] uppercase text-nier-bg/80">
-              {([
-                { key: 'landing.feature.canvas', color: 'rgb(var(--c-accent))' },
-                { key: 'landing.feature.atriums', color: 'rgb(var(--c-emerald))' },
-                { key: 'landing.feature.freedom', color: 'rgb(var(--c-sky))' },
-              ] as const).map(({ key, color }, i) => (
-                <div key={key} className="flex items-center gap-2 group/feat">
-                  <span className="relative flex h-1.5 w-1.5 transition-transform duration-300 group-hover/feat:scale-150">
-                    <span className="absolute inline-flex h-full w-full rotate-45 opacity-75 animate-ping" style={{ backgroundColor: color, animationDelay: `${i / 3}s` }} />
-                    <span className="relative inline-flex h-1.5 w-1.5 rotate-45" style={{ backgroundColor: color }} />
-                  </span>
-                  <span className="transition-colors duration-300 group-hover/feat:text-nier-bg">{t(key)}</span>
-                </div>
+        {/* Inside: an atrium as it is, photographed in the app. */}
+        <section ref={el => { sectionRefs.current[1] = el }} className={sectionClass}>
+          <div className="max-w-[1300px] mx-auto" data-reveal>
+            <SectionTitle>{t('landing.inside.title')}</SectionTitle>
+            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[40rem] mb-12 md:mb-16 text-pretty">{t('landing.inside.body')}</p>
+            <div className="relative" style={{ transform: 'translate3d(calc(var(--px, 0) * -5px), calc(var(--py, 0) * -5px), 0)', transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              <Brackets inset="-0.75rem" />
+              <div className="landing-window relative border border-nier-border/30 overflow-hidden">
+                <img
+                  src={`/landing/atrium-${shot}.webp`}
+                  srcSet={`/landing/atrium-${shot}-1000.webp 1000w, /landing/atrium-${shot}.webp 2000w`}
+                  sizes="(min-width: 1400px) 1300px, 92vw"
+                  width={2000}
+                  height={1250}
+                  loading="lazy"
+                  decoding="async"
+                  alt={t('landing.inside.alt')}
+                  className="block w-full h-auto"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* What can be brought in. */}
+        <section ref={el => { sectionRefs.current[2] = el }} className={sectionClass}>
+          <div className="max-w-[1300px] mx-auto" data-reveal>
+            <SectionTitle>{t('landing.traces.title')}</SectionTitle>
+            <div className="landing-bento grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px">
+              {TRACE_CELLS.map(cell => (
+                <article key={cell.id} className={`landing-cell group flex flex-col ${cell.span}`}>
+                  {(cell.picture || cell.video) && (
+                    <div className="relative flex-1 min-h-[10rem] overflow-hidden">
+                      {cell.picture ? (
+                        <img src={`/landing/close-${cell.id}-${shot}.webp`} alt="" width={1200} height={760} loading="lazy" decoding="async" className="landing-cell-picture absolute inset-0 w-full h-full object-cover" />
+                      ) : (
+                        // The portal itself, playing: light lines on black,
+                        // or -- inverted onto the paper -- ink.
+                        <video src="/idle-animation.mp4" muted loop autoPlay={!still} playsInline aria-hidden="true" className="landing-cell-picture landing-cell-video absolute inset-0 w-full h-full object-contain" />
+                      )}
+                    </div>
+                  )}
+                  <div className="p-6 md:p-7">
+                    <h3 className="text-sm md:text-base tracking-[0.14em] uppercase text-nier-strong">{t(`landing.traces.${cell.id}` as TranslationKey)}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-nier-bg/75 max-w-[34ch] text-pretty">{t(`landing.traces.${cell.id}Desc` as TranslationKey)}</p>
+                  </div>
+                </article>
               ))}
             </div>
           </div>
-
-          {/* RIGHT: the product, and whose it is.
-
-              The credit sits under the frame rather than under the buttons on
-              the left, where it was a line of small print among other lines
-              of small print. Here it reads the way a plate under a piece
-              does: the name is the loud part, "created by" is the quiet label
-              above it, and the whole block is the door to the rest of the
-              story. */}
-          <div className="relative">
-            <ShowcaseFrame />
-            <button
-              type="button"
-              onClick={() => scrollToSection(sectionIndex('creator'))}
-              // w-fit rather than the full column: the button was as wide as
-              // the row it sat in, so most of its hit area was empty space to
-              // the left of the words and the words themselves were only part
-              // of what answered. Now the target is exactly the lines that look
-              // like a target, and they respond to the hover together.
-              className="group w-fit ml-auto mt-8 lg:mt-10 flex flex-col items-end text-right cursor-pointer"
-            >
-              <span className="byline flex items-center gap-2.5 text-[11px] sm:text-xs tracking-[0.3em] uppercase">
-                <span className="byline-mark w-2 h-2 rotate-45" />
-                {t('landing.madeBy')}
-              </span>
-              <span className="mt-2.5 text-xl sm:text-2xl tracking-[0.12em] uppercase text-nier-strong leading-none transition-opacity duration-300 opacity-90 group-hover:opacity-100">
-                Eduardo Paranhos
-              </span>
-              {/* The rule draws itself in under the whole thing on hover, the
-                  way the name rule on the contributors wall does. */}
-              <span className="byline-rule mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
-            </button>
-          </div>
-        </div>
-
-        {/* The code history (public/code-history, a page of its own), seen at
-            once: a strip at the foot of the first screen, on the content's own
-            measure and framed the way the showcase is, the finished graph --
-            every file and connection the code has had -- printed into it
-            (.code-history-strip), what it is on the left and the way in on
-            the right. The code history is this page's neighbour to the right:
-            the two slide past each other (lib/codeHistory), and hovering the
-            strip loads it ahead. */}
-        <a
-          href="/code-history/"
-          onPointerEnter={preloadCodeHistory}
-          onFocus={preloadCodeHistory}
-          onClick={e => {
-            if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-            if (openCodeHistory()) e.preventDefault()
-          }}
-          className="code-history-strip group relative z-10 w-full max-w-[1400px] mx-auto mt-auto"
-        >
-          <span aria-hidden="true" className="absolute -top-2 -left-2 w-6 h-6 border-l border-t border-nier-border/60" />
-          <span aria-hidden="true" className="absolute -top-2 -right-2 w-6 h-6 border-r border-t border-nier-border/60" />
-          <span aria-hidden="true" className="absolute -bottom-2 -left-2 w-6 h-6 border-l border-b border-nier-border/60" />
-          <span aria-hidden="true" className="absolute -bottom-2 -right-2 w-6 h-6 border-r border-b border-nier-border/60" />
-          <span className="relative flex items-center gap-6 h-[clamp(76px,7.5vw,112px)] px-5 sm:px-8 overflow-hidden border border-nier-border/30">
-            <img src="/code-history/banner.webp" srcSet="/code-history/banner-800.webp 800w, /code-history/banner.webp 1774w" sizes="(min-width: 640px) 66vw, 100vw" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
-            <span className="relative hidden sm:flex items-center gap-3 max-w-[46%] text-sm leading-snug text-nier-bg/75 font-light">
-              <span className="byline-mark w-2 h-2 rotate-45 shrink-0" />
-              {t('landing.codeHistory.what')}
-            </span>
-            <span className="byline-link relative ml-auto flex items-center gap-3 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80 whitespace-nowrap">
-              {t('landing.codeHistory')}
-              <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
-            </span>
-          </span>
-        </a>
-      </section>
-
-      {/* What can be put down in an atrium, running past: the page's beat
-          between the title and the rest (TraceTicker). */}
-      <TraceTicker />
-
-      {/* SECTION 2: Preview -- the reel. Early, because a page about a place
-          is weaker than seeing the place. */}
-      <VideoShowcaseSection sectionRef={el => sectionRefs.current[1] = el} />
-      {/* SECTION 3: Support Me */}
-      <ContributionsSection sectionRef={el => sectionRefs.current[2] = el} />
-      {/* SECTION 4: The Creator */}
-      <section 
-        ref={el => sectionRefs.current[3] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              {t('landing.nav.creator')}
-            </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[100px]" />
-          </div>
-
-          {/* Placeholder for personal content */}
-          <div className="border border-nier-border/30 p-4 sm:p-6 md:p-10 bg-nier-black/30 mb-6">
-            <p className="text-nier-bg/75 text-base leading-relaxed mb-6 italic">{t('landing.creator.p1')}</p>
-
-            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
-
-            <p className="text-nier-bg/75 text-base leading-relaxed italic">{t('landing.creator.p2')}</p>
-          </div>
-
-          {/* Where else to find him.
-              
-              This was four dim words on one line, at the bottom of a long
-              page, reading as a footnote to a footnote. It is the end of the
-              creator's story and the only place on the site that points
-              anywhere else, so it is built like the rest of the page: a header
-              with rules, and tiles with the cut corner every other reachable
-              thing here wears. */}
-          <div className="max-w-3xl mx-auto w-full">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent" />
-              <span className="text-nier-strong text-xs sm:text-sm tracking-[0.3em] uppercase whitespace-nowrap">
-                {t('landing.connect')}
-              </span>
-              <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-            </div>
-
-            <ConnectTiles columns={4} />
-          </div>
-
-        </div>
-      </section>
-      {/* SECTION 5: About */}
-      <section 
-        ref={el => sectionRefs.current[4] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        {/* Wider than it was, because the three concept cards below now sit in
-            a row and 3xl gave each of them 245px to work with. 4xl is a width
-            the page already uses (the contributions panel), so this is not a
-            new measure, just the other one. */}
-        <div className="max-w-4xl w-full mx-auto" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              {t('landing.nav.about')}
-            </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-          </div>
-
-          {/* Two stacked blocks rather than two tall columns.
-
-              This was one 2-up grid: every paragraph plus the diagram down the
-              left, the three cards stacked down the right. It held together
-              only while the prose was long enough to reach the bottom of the
-              third card -- and once About lost a paragraph the left column
-              ended at the diagram while the right ran on for another card and
-              a half, bottoming out nowhere near each other.
-
-              It was also the wrong shape for what is being said. Traces,
-              Atriums and Sharing are three parallel ideas, and stacking them
-              in a column beside unrelated prose reads as a sidebar to that
-              prose rather than as three things of equal weight. A row of
-              three says what they are, and it cannot fall out of balance with
-              a paragraph again because it no longer stands next to one. */}
-          <div className="grid md:grid-cols-2 gap-8 md:gap-10 items-start mb-10">
-            <div className="space-y-4">
-              <p className="text-nier-bg/80 text-base md:text-lg leading-relaxed">
-                <RichText text={t('landing.about.lead')} className="text-nier-bg" />
-              </p>
-              <p className="text-nier-bg/80 text-base leading-relaxed">{t('landing.about.p2')}</p>
-            </div>
-
-            {/* An atrium from above: scattered traces, other visitors, and
-                the bracket viewport is you -- the concept the paragraphs
-                describe, drawn instead of described. It sits beside them now
-                rather than under them, which is where a picture of what the
-                text just said belongs. */}
-            <div>
-              <AtriumMapDiagram />
-              <p className="font-mono text-xs tracking-[0.18em] uppercase text-nier-bg/70 mt-2">{t('landing.about.diagram')}</p>
-            </div>
-          </div>
-
-          {/* Grid children stretch by default, so the three end up the height
-              of the tallest without being told to -- which matters because the
-              descriptions are different lengths in every language. */}
-          <div className="grid md:grid-cols-3 gap-4">
-            {[
-              { title: 'landing.about.traces', desc: 'landing.about.tracesDesc', ink: '--c-accent' },
-              { title: 'landing.about.atriums', desc: 'landing.about.atriumsDesc', ink: '--c-emerald' },
-              { title: 'landing.about.presence', desc: 'landing.about.presenceDesc', ink: '--c-sky' },
-            ].map(card => (
-              <div key={card.title} className="border border-nier-border/30 p-5 bg-nier-black/50">
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="w-2 h-2 rotate-45 shrink-0"
-                    style={{ backgroundColor: `rgb(var(${card.ink}))`, boxShadow: `0 0 8px rgb(var(${card.ink}) / 0.53)` }}
-                  />
-                  <span className="text-base tracking-[0.1em] uppercase text-nier-bg">{t(card.title as TranslationKey)}</span>
-                </div>
-                {/* Smaller only once the cards are in a row. A third of 4xl is
-                    288px, and 16px type in that measure breaks into ragged
-                    five-word lines -- the trade the Limitations cards already
-                    make at a similar width. Below md there is no row: each
-                    card is the full column, where 14px would run to nearly
-                    ninety characters a line, so it stays at 16 there. */}
-                <p className="text-nier-bg/75 text-base md:text-sm leading-relaxed">{t(card.desc as TranslationKey)}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-      {/* SECTION 6: Limitations */}
-      <section
-        ref={el => sectionRefs.current[5] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        <div className="max-w-2xl w-full mx-auto text-center" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center justify-center gap-3 mb-10">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/40 to-transparent max-w-[80px]" />
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              {t('landing.nav.limitations')}
-            </h2>
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent max-w-[80px]" />
-          </div>
-
-          <p className="text-nier-bg/80 text-lg md:text-xl font-light tracking-wide mb-8 italic">{t('landing.limits.question')}</p>
-
-          <div className="border border-nier-border/30 p-6 sm:p-8 md:p-10 bg-nier-black/30 mb-8 text-left">
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">
-              <RichText text={t('landing.limits.secret')} className="text-nier-strong" />
-            </p>
-
-            <div className="w-16 h-px bg-nier-border/30 mx-auto mb-6" />
-
-            <p className="text-nier-bg/80 text-base leading-relaxed mb-6">{t('landing.limits.freeTier')}</p>
-
-            <div className="grid sm:grid-cols-2 gap-4 mb-6">
-              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-base font-mono">3</span>
-                  </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">{t('landing.limits.perUser')}</span>
-                </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perUserDesc')}</p>
-              </div>
-
-              <div className="border border-nier-border/20 p-5 bg-nier-black/40">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-sm font-mono">10<span className="text-[11px]">MB</span></span>
-                  </div>
-                  <span className="text-nier-strong text-base tracking-wider uppercase">{t('landing.limits.perAtrium')}</span>
-                </div>
-                <p className="text-nier-bg/70 text-sm leading-relaxed">{t('landing.limits.perAtriumDesc')}</p>
-              </div>
-            </div>
-
-            {/* The way out of the limits, directly under them.
-
-                It used to sit above the two cards, which answered the
-                objection before the reader had it. Read in this order the
-                section states the cap, states the size, and then says where
-                neither applies -- and the phrase saying so is the way to that
-                section rather than an instruction to go looking for it.
-
-                Inside the desktop build the Desktop App section is not
-                rendered at all, so there is nothing to jump to; the phrase
-                stays emphasised there but stops being a control, which is
-                what omitting the handler does. */}
-            <p className="text-nier-bg/70 text-sm leading-relaxed italic mt-2">
-              <RichText
-                text={t('landing.limits.desktopNote')}
-                className={isDesktop ? 'text-nier-bg not-italic' : 'inline-jump not-italic'}
-                onEmphasisClick={isDesktop ? undefined : () => scrollToSection(sectionIndex('desktop'))}
-              />
-            </p>
-          </div>
-        </div>
-      </section>
-      {/* SECTION 7: Desktop App -- web only. Inside the desktop build this is
-          an advert for the thing you're already running, and its download
-          links would be nonsense there. */}
-      {!isDesktop && (
-        <section
-          ref={el => sectionRefs.current[6] = el}
-          className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-        >
-          <DesktopAppSection />
         </section>
-      )}
-      {/* SECTION 8: Navigation */}
-      <section 
-        ref={el => sectionRefs.current[7] = el}
-        className="min-h-screen flex items-center justify-center px-5 sm:px-12 py-20 relative"
-      >
-        <div className="max-w-3xl w-full mx-auto" data-reveal>
-          {/* Section header */}
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-3 h-3 rotate-45 border" style={{ borderColor: `rgb(var(--c-accent) / 0.67)`, boxShadow: `0 0 10px rgb(var(--c-accent) / 0.27)` }} />
-            <h2 className="text-3xl md:text-4xl font-normal tracking-[0.05em] uppercase text-nier-strong leading-none">
-              {t('landing.nav.navigation')}
-            </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/40 to-transparent" />
-          </div>
 
-          <div className="space-y-10">
-            {/* Controls */}
-            <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">01</span>
-                {t('landing.nav.controls')}
-              </h3>
-              {/* The two gestures, performed: the cursor drags and the world
-                  moves, then the scroll pulse zooms it. */}
-              <PanZoomDemo />
-              <div className="grid sm:grid-cols-3 gap-4">
-                {[
-                  { key: t('landing.controls.dragKey'), desc: t('landing.controls.drag') },
-                  { key: t('landing.controls.scrollKey'), desc: t('landing.controls.scroll') },
-                  { key: t('landing.controls.tKeyKey'), desc: t('landing.controls.tKey') },
-                ].map((control, i) => (
-                  <div key={i} className="border border-nier-border/20 p-3 sm:p-4 bg-nier-black/30">
-                    <div className="text-nier-strong text-base font-mono mb-2">{control.key}</div>
-                    <div className="text-nier-bg/75 text-sm">{control.desc}</div>
+        {/* What can be done there, and the keys for it. */}
+        <section ref={el => { sectionRefs.current[3] = el }} className={sectionClass}>
+          <div className="max-w-[1300px] mx-auto grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 lg:gap-20" data-reveal>
+            <div className="lg:sticky lg:top-28 self-start">
+              <SectionTitle>{t('landing.tools.title')}</SectionTitle>
+              <h3 className="text-xs tracking-[0.2em] uppercase text-nier-bg/70 mb-5">{t('landing.tools.keys')}</h3>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 items-baseline text-sm">
+                {controls.map(([key, desc]) => (
+                  <div key={key} className="contents">
+                    <dt><kbd className="landing-key">{t(key)}</kbd></dt>
+                    <dd className="text-nier-bg/80">{t(desc)}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </div>
+            <ol className="border-y border-nier-border/20 divide-y divide-nier-border/20">
+              {TOOLS.map(id => (
+                <li key={id} className="landing-tool py-7 md:py-9 grid sm:grid-cols-[minmax(0,15rem)_1fr] gap-x-10 gap-y-2 items-baseline">
+                  <span className="landing-tool-name text-2xl md:text-4xl font-extralight tracking-[0.06em] uppercase text-nier-strong">{t(`landing.tools.${id}` as TranslationKey)}</span>
+                  <p className="text-nier-bg/75 leading-relaxed text-pretty">{t(`landing.tools.${id}Desc` as TranslationKey)}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
 
-            {/* Creating traces */}
+        {/* Two ways in: the web, and your computer. The desktop app has no
+            need to be told about itself. */}
+        {!isDesktop && (
+          <section ref={el => { sectionRefs.current[4] = el }} className={sectionClass}>
+            <div className="max-w-[1300px] mx-auto" data-reveal>
+              <SectionTitle>{t('landing.ways.title')}</SectionTitle>
+              <div className="landing-bento grid md:grid-cols-2 gap-px">
+                <div className="landing-cell p-8 md:p-12 flex flex-col">
+                  <h3 className="text-xl md:text-2xl font-light tracking-[0.12em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
+                  <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.webDesc')}</p>
+                  <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.webLimits')}</p>
+                  <div className="mt-auto pt-10">
+                    <button type="button" onClick={onGetStarted} className="landing-link text-sm tracking-[0.18em] uppercase">
+                      {enter} <span aria-hidden="true">→</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="landing-cell p-8 md:p-12 flex flex-col">
+                  <h3 className="text-xl md:text-2xl font-light tracking-[0.12em] uppercase text-nier-strong">{t('landing.ways.desktop')}</h3>
+                  <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.desktopDesc')}</p>
+                  <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.desktopSolo')}</p>
+                  <div className="mt-10"><DesktopDownloads /></div>
+                </div>
+              </div>
+              <p className="mt-6 text-sm text-nier-bg/70 leading-relaxed max-w-[64ch] text-pretty">{t('desktop.moveBetween')}</p>
+            </div>
+          </section>
+        )}
+
+        {/* Who made it. */}
+        <section ref={el => { sectionRefs.current[5] = el }} className={sectionClass}>
+          <div className="max-w-[1150px] mx-auto grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 md:gap-16 items-center" data-reveal>
+            <figure className="relative max-w-[440px] w-full mx-auto md:mx-0">
+              <Brackets />
+              <div className="landing-portrait relative overflow-hidden border border-nier-border/30">
+                <img
+                  src="/landing/creator.webp"
+                  srcSet="/landing/creator-480.webp 480w, /landing/creator.webp 900w"
+                  sizes="(min-width: 768px) 440px, 90vw"
+                  width={900}
+                  height={900}
+                  loading="lazy"
+                  decoding="async"
+                  alt={t('landing.creator.alt')}
+                  className="block w-full h-auto"
+                />
+              </div>
+            </figure>
             <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">02</span>{t('landing.nav.leavingTraces')}</h3>
-              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30 sm:flex sm:items-center sm:gap-6">
-                <div className="flex-1">
-                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">{t('landing.nav.chooseBetween')}</p>
-                <div className="flex flex-wrap gap-4 sm:gap-6 text-base">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.text')}</span>{t('landing.nav.textDesc')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.embed')}</span>{t('landing.nav.embedDesc')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                    <span className="text-nier-bg/80"><span className="text-nier-bg">{t('landing.nav.shape')}</span>{t('landing.nav.shapeDesc')}</span>
-                  </div>
-                </div>
-                </div>
-                {/* the same card cycling through those three forms */}
-                <div className="hidden sm:block pb-4">
-                  <TraceCycleDemo />
-                </div>
-              </div>
-            </div>
-
-            {/* Storage recommendation */}
-            <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">03</span>{t('landing.nav.addingContent')}</h3>
-              <div className="border border-nier-border/30 p-4 sm:p-5 bg-nier-black/30">
-                <p className="text-nier-bg/80 text-base leading-relaxed mb-3">{t('landing.nav.contentDesc')}</p>
-                <div className="flex flex-wrap gap-4 text-base">
-                  {[
-                    { name: 'YouTube', desc: t('landing.platform.youtube') },
-                    { name: 'Pinterest', desc: t('landing.platform.pinterest') },
-                    { name: 'Imgur', desc: t('landing.platform.imgur') },
-                    { name: 'Instagram', desc: t('landing.platform.instagram') },
-                    { name: 'SoundCloud', desc: t('landing.platform.soundcloud') },
-                  ].map((platform, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rotate-45 bg-nier-border/60" />
-                      <span className="text-nier-bg/80"><span className="text-nier-strong">{platform.name}</span> — {platform.desc}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-nier-bg/70 text-sm mt-4 italic">{t('landing.nav.copyEmbed')}</p>
-              </div>
-            </div>
-
-            {/* The ecosystem */}
-            <div>
-              <h3 className="text-lg tracking-[0.1em] uppercase text-nier-strong mb-5 flex items-center gap-3">
-                <span className="text-nier-bg/70">04</span>{t('landing.nav.ecosystem')}</h3>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="text-center p-3 sm:p-6">
-                  <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-xl">1</span>
-                  </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.create')}</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.createDesc')}</p>
-                  <CreateTraceDemo />
-                </div>
-                <div className="text-center p-3 sm:p-6">
-                  <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-xl">2</span>
-                  </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.populate')}</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.populateDesc')}</p>
-                  <PopulateDemo />
-                </div>
-                <div className="text-center p-3 sm:p-6">
-                  <div className="w-12 h-12 mx-auto mb-4 border border-nier-border/40 rotate-45 flex items-center justify-center">
-                    <span className="text-nier-bg -rotate-45 text-xl">3</span>
-                  </div>
-                  <h4 className="text-nier-bg text-base tracking-wider uppercase mb-2">{t('landing.nav.explore')}</h4>
-                  <p className="text-nier-bg/75 text-sm leading-relaxed">{t('landing.nav.exploreDesc')}</p>
-                  <ExploreDemo />
-                </div>
-              </div>
+              <SectionTitle>{t('landing.creator.title')}</SectionTitle>
+              <p className="text-nier-bg/85 text-lg leading-relaxed text-pretty">{t('landing.creator.p1')}</p>
+              <p className="mt-5 text-nier-bg/75 leading-relaxed text-pretty">{t('landing.creator.p2')}</p>
+              <h3 className="mt-10 mb-4 text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.connect')}</h3>
+              <ConnectTiles columns={2} />
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-
-
-      {/* The end of the page, and the two things somebody might want when
-          they get there: the door in, and the way to keep it open.
-
-          These used to sit in the middle of The Creator, so a reader who kept
-          going scrolled past the closing handshake and carried on through
-          three more sections. Whatever is last on a page is what it leaves
-          people with, and this is what it should be. */}
-      <section className="px-5 sm:px-12 pt-10 pb-24 relative">
-        <div className="max-w-3xl mx-auto w-full text-center" data-reveal>
-          <div className="h-px bg-gradient-to-r from-transparent via-nier-border/30 to-transparent mb-12" />
-
-          <div className="flex items-center justify-center gap-3 mb-9">
-            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
-            <div className="w-3 h-3 rotate-45 border border-nier-border/60 bg-nier-blackLight" />
-            <div className="w-2 h-2 rotate-45 border border-nier-border/40" />
+        {/* What keeps it going. */}
+        <section ref={el => { sectionRefs.current[6] = el }} className={sectionClass}>
+          <div className="max-w-[1000px] mx-auto" data-reveal>
+            <SectionTitle center>{t('landing.support.title')}</SectionTitle>
+            <div className="grid md:grid-cols-2 gap-10 md:gap-14 items-center">
+              <div className="space-y-4">
+                <p className="text-nier-bg/85 leading-relaxed text-pretty">{t('landing.support.body1')}</p>
+                <p className="text-nier-bg/70 leading-relaxed text-pretty">{t('landing.support.body2')}</p>
+              </div>
+              <SupportPanel />
+            </div>
           </div>
+        </section>
 
-          {/* Filled rather than outlined. It was a transparent box with dim
-              type -- the quietest thing on the page, at the moment the page is
-              asking for the only decision it wants. The fill is the foreground
-              ink and the label is the page, so it inverts with the theme, the
-              way Enter does on every atrium in the browser. */}
-          <button
-            onClick={onGetStarted}
-            className="group relative px-12 py-4 bg-nier-bg text-nier-black hover:bg-nier-strong transition-colors duration-300"
-            style={{ clipPath: DONATE_CUT }}
-          >
-            <span className="text-base tracking-[0.2em] uppercase font-medium">
-              {isAuthenticated ? t('landing.continue') : t('landing.hero.beginJourney')}
-            </span>
-          </button>
-
-          {/* Two different asks, and they should not read as one block of
-              buttons. A hairline with a diamond on it separates them the way
-              the rest of the page separates anything from anything. */}
-          <div className="mt-14 mb-12 flex items-center justify-center gap-4" aria-hidden="true">
-            <div className="h-px w-16 sm:w-24 bg-gradient-to-l from-nier-border/35 to-transparent" />
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/50" />
-            <div className="h-px w-16 sm:w-24 bg-gradient-to-r from-nier-border/35 to-transparent" />
+        {/* The way in, again, at the end. */}
+        <section className="relative px-5 sm:px-12 pt-10 pb-32 text-center">
+          <div className="max-w-3xl mx-auto flex flex-col items-center" data-reveal>
+            <span aria-hidden="true" className="landing-orb w-5 h-5 rounded-full mb-10" />
+            <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.12em] uppercase text-nier-strong text-balance">{t('landing.closing.title')}</h2>
+            <button type="button" onClick={onGetStarted} className="landing-cta mt-10 px-12 py-4 text-sm md:text-base tracking-[0.2em] uppercase" style={{ clipPath: DONATE_CUT }}>
+              {enter}
+            </button>
           </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-            <p className="text-nier-bg/75 text-base leading-relaxed tracking-wide max-w-sm">{t('landing.closing.free')}</p>
-            <DonateButton onClick={() => setShowDonate(true)} className="px-7 py-3 text-sm" />
-          </div>
-        </div>
-      </section>
+        </section>
       </main>
 
-      {/* Footer */}
-      {/* The footer, in the page's own language rather than a grey line of
-          text: the mark, the name under a rule, and the small print beneath
-          it. Centred, because there is not enough here to justify a row of
-          columns pretending to be a site map. */}
-      <footer className="border-t border-nier-border/20 py-14">
+      {/* The mark, the name under a rule, and the small print. */}
+      <footer className="border-t border-nier-border/20 py-14 relative">
         <div className="max-w-4xl mx-auto px-6 flex flex-col items-center gap-7 text-center">
           <div className="flex items-center gap-3">
             <span
               aria-hidden="true"
               className="w-7 h-7 shrink-0 bg-nier-strong opacity-80"
               style={{
-                WebkitMaskImage: 'url(/atrium-mark.png)',
-                maskImage: 'url(/atrium-mark.png)',
-                WebkitMaskSize: 'contain',
-                maskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat',
-                maskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center',
-                maskPosition: 'center',
+                WebkitMaskImage: 'url(/atrium-mark.png)', maskImage: 'url(/atrium-mark.png)',
+                WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center', maskPosition: 'center',
               }}
             />
-            <span className="text-nier-strong text-sm tracking-[0.28em] uppercase">
-              The Digital Atrium
-            </span>
+            <span translate="no" className="text-nier-strong text-sm tracking-[0.28em] uppercase">The Digital Atrium</span>
           </div>
-
-          <div className="flex items-center gap-4 w-full max-w-sm" aria-hidden="true">
-            <div className="flex-1 h-px bg-gradient-to-l from-nier-border/30 to-transparent" />
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/50" />
-            <div className="flex-1 h-px bg-gradient-to-r from-nier-border/30 to-transparent" />
-          </div>
-
           {!isDesktop && (
             <div className="flex items-center gap-4">
-              <a
-                href="/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
-              >
-                {t('landing.privacy')}
-              </a>
-              <span className="text-nier-bg/40 text-xs">◇</span>
-              <a
-                href="/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors"
-              >
-                {t('landing.terms')}
-              </a>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors">{t('landing.privacy')}</a>
+              <span className="text-nier-bg/40 text-xs" aria-hidden="true">◇</span>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-nier-bg/70 hover:text-nier-strong text-xs tracking-[0.15em] uppercase transition-colors">{t('landing.terms')}</a>
             </div>
           )}
-
-          {/* Shown on desktop too -- the copyright covers the app itself, not
-              just the website. */}
           <div className="text-nier-bg/50 text-[0.7rem] tracking-[0.12em] uppercase">{t('landing.footer.copyright')}</div>
         </div>
       </footer>
 
-      {/* CSS for animations */}
       <style>{`
-        @keyframes firefly {
-          0% { opacity: 0; transform: translateY(0px) translateX(0px); }
-          10% { opacity: 0.15; }
-          30% { opacity: 0.3; transform: translateY(-20px) translateX(15px); }
-          50% { opacity: 0.25; transform: translateY(-50px) translateX(-10px); }
-          70% { opacity: 0.35; transform: translateY(-30px) translateX(25px); }
-          90% { opacity: 0.1; transform: translateY(-10px) translateX(5px); }
-          100% { opacity: 0; transform: translateY(0px) translateX(0px); }
+        /* The one light. Warm on the dark hall; on paper, a bloom of white
+           with the edges of the page a shade darker. */
+        [data-landing-theme] { --landing-light: 255 236 205; }
+        .landing-skylight {
+          background:
+            radial-gradient(ellipse 55% 60% at 50% -12%, rgb(var(--landing-light) / 0.11), transparent 70%),
+            radial-gradient(ellipse 30% 40% at 50% -6%, rgb(var(--landing-light) / 0.08), transparent 70%);
+          animation: landingBreathe 12s ease-in-out infinite;
         }
-        
-        @keyframes rectFloat {
-          0%, 100% {
-            opacity: 0.6;
-            transform: rotate(var(--rotation, 0deg)) translateY(0px);
-          }
-          50% {
-            opacity: 0.9;
-            transform: rotate(var(--rotation, 0deg)) translateY(-10px);
-          }
+        [data-landing-theme='light'] .landing-skylight {
+          background:
+            radial-gradient(ellipse 60% 65% at 50% -10%, rgb(255 255 255 / 0.85), transparent 72%),
+            radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgb(var(--c-fg) / 0.06));
         }
+        @keyframes landingBreathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 
-        /* Slow ambient pulse behind the whole page. Long and low-contrast on
-           purpose -- it should register as atmosphere, not as an animation. */
-        @keyframes atriumBreathe {
-          0%, 100% { opacity: 0.55; transform: scale(1); }
-          50%      { opacity: 1;    transform: scale(1.08); }
-        }
-
-        /* Scroll reveal. Sections start slightly low and transparent, and the
-           observer adds .is-revealed as each enters view. */
-        [data-reveal] {
+        .landing-mote {
+          position: absolute; top: 0; border-radius: 9999px;
+          background: rgb(var(--landing-light) / 0.75);
+          box-shadow: 0 0 6px rgb(var(--landing-light) / 0.5);
           opacity: 0;
-          transform: translateY(28px);
-          transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-                      transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-          will-change: opacity, transform;
+          animation: landingMote linear infinite;
         }
-        [data-reveal].is-revealed {
-          opacity: 1;
-          transform: translateY(0);
+        [data-landing-theme='light'] .landing-mote { background: rgb(var(--c-fg) / 0.5); box-shadow: none; }
+        @keyframes landingMote {
+          0% { transform: translate3d(0, -4vh, 0); opacity: 0; }
+          12% { opacity: 0.45; }
+          70% { opacity: 0.3; }
+          100% { transform: translate3d(var(--drift), 96vh, 0); opacity: 0; }
         }
 
+        /* A section lit as it comes into view. */
+        .lit-diamond { border: 1px solid rgb(var(--c-fg) / 0.5); transition: background-color 0.9s ease 0.3s, box-shadow 0.9s ease 0.3s, border-color 0.9s ease 0.3s; }
+        .lit-rule { background: linear-gradient(90deg, rgb(var(--c-fg) / 0.4), transparent); transform: scaleX(0); transform-origin: left; transition: transform 1.3s cubic-bezier(0.22, 1, 0.36, 1) 0.2s; }
+        .lit-rule-left { background: linear-gradient(270deg, rgb(var(--c-fg) / 0.4), transparent); transform-origin: right; }
+        .is-revealed .lit-rule { transform: scaleX(1); }
+        .is-revealed .lit-diamond, .landing-lit {
+          background-color: rgb(var(--landing-light));
+          border-color: rgb(var(--landing-light));
+          box-shadow: 0 0 14px rgb(var(--landing-light) / 0.7);
+        }
+        [data-landing-theme='light'] .is-revealed .lit-diamond, [data-landing-theme='light'] .landing-lit {
+          background-color: rgb(var(--c-strong)); border-color: rgb(var(--c-strong)); box-shadow: none;
+        }
+        [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+        [data-reveal].is-revealed { opacity: 1; transform: none; }
+
+        /* The way in: filled with the light, glowing a little under the
+           pointer, pressed on click. */
+        .landing-cta {
+          background: rgb(var(--c-strong)); color: rgb(var(--c-ground)); font-weight: 500;
+          transition: box-shadow 0.35s ease, transform 0.2s ease, background-color 0.3s ease;
+        }
+        .landing-cta:hover { box-shadow: 0 0 46px rgb(var(--landing-light) / 0.38); transform: translateY(-1px); }
+        .landing-cta:active { transform: translateY(1px); }
+        [data-landing-theme='light'] .landing-cta:hover { box-shadow: 0 10px 30px rgb(var(--c-fg) / 0.22); }
+        .landing-cta:focus-visible, .landing-link:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 4px; }
+        .landing-link { position: relative; color: rgb(var(--c-fg) / 0.85); transition: color 0.25s ease; padding: 0.4rem 0; }
+        .landing-link::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: currentColor; transform: scaleX(0.35); transform-origin: left; transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1); opacity: 0.6; }
+        .landing-link:hover { color: rgb(var(--c-strong)); }
+        .landing-link:hover::after { transform: scaleX(1); }
+
+        /* Cells with hairlines between them: the grid's own lines. */
+        .landing-bento { background: rgb(var(--c-fg) / 0.16); border: 1px solid rgb(var(--c-fg) / 0.16); }
+        .landing-cell { background: rgb(var(--c-ground)); position: relative; transition: background-color 0.4s ease; }
+        .landing-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--landing-light) / 0.8), transparent); opacity: 0; transition: opacity 0.5s ease; z-index: 1; }
+        [data-landing-theme='light'] .landing-cell::before { background: linear-gradient(90deg, transparent, rgb(var(--c-strong) / 0.6), transparent); }
+        .landing-cell:hover::before { opacity: 1; }
+        .landing-cell-picture { transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1); }
+        .landing-cell-video { background: #000; }
+        [data-landing-theme='light'] .landing-cell-video { background: transparent; filter: invert(1); mix-blend-mode: multiply; }
+        .landing-cell:hover .landing-cell-picture { transform: scale(1.035); }
+
+        .landing-window::after, .landing-portrait::after {
+          content: ''; position: absolute; inset: 0; pointer-events: none;
+          background: linear-gradient(180deg, rgb(var(--landing-light) / 0.1), transparent 35%);
+        }
+        [data-landing-theme='light'] .landing-window::after, [data-landing-theme='light'] .landing-portrait::after { background: none; }
+
+        .landing-key {
+          display: inline-block; min-width: 2.25rem; padding: 0.3rem 0.6rem; text-align: center;
+          border: 1px solid rgb(var(--c-fg) / 0.35); border-bottom-width: 2px;
+          font-size: 0.75rem; letter-spacing: 0.08em; color: rgb(var(--c-strong)); white-space: nowrap;
+        }
+        .landing-tool-name { transition: text-shadow 0.5s ease, color 0.3s ease; }
+        .landing-tool:hover .landing-tool-name { text-shadow: 0 0 24px rgb(var(--landing-light) / 0.55); }
+        [data-landing-theme='light'] .landing-tool:hover .landing-tool-name { text-shadow: none; }
+        .landing-light-fill { background: rgb(var(--landing-light)); box-shadow: 0 0 10px rgb(var(--landing-light) / 0.6); }
+        [data-landing-theme='light'] .landing-light-fill { background: rgb(var(--c-strong)); box-shadow: none; }
+        .landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
+        [data-landing-theme='light'] .landing-orb { background: rgb(var(--c-strong)); box-shadow: 0 0 30px 8px rgb(var(--c-fg) / 0.12); }
+
+        @media (prefers-reduced-motion: reduce) {
+          .landing-skylight { animation: none; }
+          .landing-dust { display: none; }
+          [data-reveal] { opacity: 1; transform: none; transition: none; }
+          .lit-rule { transform: scaleX(1); transition: none; }
+          .landing-cell-picture { transition: none; }
+        }
       `}</style>
     </div>
   )

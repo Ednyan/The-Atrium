@@ -172,7 +172,9 @@ export function deckSvg(d: DeckData, index: number, src: (url: string) => string
     ? `<defs>${[...colours].map(c => `<marker id="${arrowId(c)}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="${c}"/></marker>`).join('')}</defs>`
     : ''
   const backdrop = slide.picture && src(slide.picture.src)
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(d.width)} ${n(d.height)}" width="${n(size?.width ?? d.width)}" height="${n(size?.height ?? d.height)}" preserveAspectRatio="none">`
+  // letter-spacing: the slide's own, not the page's around it -- its lines
+  // are measured without any.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(d.width)} ${n(d.height)}" width="${n(size?.width ?? d.width)}" height="${n(size?.height ?? d.height)}" preserveAspectRatio="none" letter-spacing="normal">`
     + defs
     + `<rect width="${n(d.width)}" height="${n(d.height)}" fill="${slide.background}"/>`
     + (backdrop ? `<image href="${esc(backdrop)}" width="${n(d.width)}" height="${n(d.height)}" preserveAspectRatio="xMidYMid slice"/>` : '')

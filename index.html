@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/glass_dome_small_icon.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon-128.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- What a search engine and a link preview get.
@@ -13,11 +14,9 @@
          is concerned there is still one page, and everything below has to do
          the work for all of them.
 
-         og:image is og-card.png, built by scripts/make-og-image.mjs. It used
-         to be glass_dome.png, which is 2780x2503 and so arrived cropped to its
-         middle in every client that shows a large card. Replacing that file
-         with a 1200x630 screenshot of a full atrium would be better still and
-         needs no change here; see docs/BEING_FOUND.md.
+         og:image is og-card.png, built by scripts/make-og-image.mjs, 1200x630
+         so no client crops it. A screenshot of a full atrium would be better
+         still and needs no change here; see docs/BEING_FOUND.md.
 
          The description is kept near 155 characters, because that is roughly
          where Google truncates it and a sentence cut mid-clause reads as

@@ -7292,6 +7292,10 @@ return (
           textDecoration: trace.textUnderline ? 'underline' : 'none',
           textAlign: (trace.textAlign ?? 'center') as React.CSSProperties['textAlign'],
           color: trace.textColor ?? '#ffffff',
+          // The font's own spacing, not the interface's (body's 0.02em):
+          // the fit (lib/textFit) and the image export measure the text
+          // without it, and inherited it overflowed what they fitted.
+          letterSpacing: 'normal',
         }
         return (
         <div
