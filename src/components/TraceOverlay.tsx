@@ -9475,13 +9475,17 @@ return (
                   />
                 </div>
               )}
-              <StrokeStylePicker
-                value={editingTrace.strokeStyle}
-                onChange={strokeStyle => {
-                  setEditingTrace({ ...editingTrace, strokeStyle })
-                  updateTraceCustomization(editingTrace.id, { strokeStyle })
-                }}
-              />
+              {/* The border's own stroke style, with its thickness: a shape
+                  has its own, in its outline's settings (ShapeStyleControls). */}
+              {has(editingTrace, 'frame') && (editingTrace.showBorder ?? true) && (
+                <StrokeStylePicker
+                  value={editingTrace.strokeStyle}
+                  onChange={strokeStyle => {
+                    setEditingTrace({ ...editingTrace, strokeStyle })
+                    updateTraceCustomization(editingTrace.id, { strokeStyle })
+                  }}
+                />
+              )}
               {/* Border Radius Customization (for non-shape traces) */}
               {has(editingTrace, 'frame') && (
                 <div>

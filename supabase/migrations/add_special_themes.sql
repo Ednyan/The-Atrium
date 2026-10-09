@@ -52,9 +52,9 @@ grant insert, update, delete on public.special_themes to authenticated;
 
 -- The first: Spooky, for Halloween. A violet-black room, a pumpkin-orange dot
 -- grid, ember particles, fallen leaves, cracks and stardust in violet on the
--- ground, and a jack-o'-lantern over the whole view, faint, drifting with it
--- (public/themes/spooky-pumpkin.svg). Kept as it is if it's been changed
--- since (do nothing).
+-- ground, and a photo of pumpkins and candles at night over the whole view,
+-- faint, drifting with it (public/themes/spooky.webp, public domain). Kept as
+-- it is if it's been changed since (do nothing).
 insert into public.special_themes (id, name, mode, starts_on, ends_on, theme_settings)
 values (
   '5b0c7a1e-0000-4000-8000-000000000031',
@@ -83,10 +83,10 @@ values (
     "groundPattern": "random",
     "groundSpacing": 220,
     "groundRotation": 1,
-    "backgroundImage": "/themes/spooky-pumpkin.svg",
+    "backgroundImage": "/themes/spooky.webp",
     "backgroundImageEnabled": true,
     "backgroundImageFill": true,
-    "backgroundImageOpacity": 0.12,
+    "backgroundImageOpacity": 0.35,
     "backgroundImageScale": 1,
     "backgroundParallaxEnabled": true,
     "backgroundParallax": 0.5

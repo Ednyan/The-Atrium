@@ -1,16 +1,17 @@
--- Spooky's picture: a black-and-white jack-o'-lantern over the whole view, faint, drifting
--- with it (public/themes/spooky-pumpkin.svg, carried by the app). For a
--- database where add_special_themes.sql ran before the picture was part of
--- Spooky. Its other settings are left as they are.
+-- Spooky's picture: pumpkins and candles at night, over the whole view,
+-- faint, drifting with it (public/themes/spooky.webp, a public domain photo
+-- carried by the app). For a database where add_special_themes.sql ran
+-- before the picture was part of Spooky. Its other settings are left as they
+-- are.
 --
 -- Safe to run twice.
 
 update public.special_themes
 set theme_settings = theme_settings || '{
-      "backgroundImage": "/themes/spooky-pumpkin.svg",
+      "backgroundImage": "/themes/spooky.webp",
       "backgroundImageEnabled": true,
       "backgroundImageFill": true,
-      "backgroundImageOpacity": 0.12,
+      "backgroundImageOpacity": 0.35,
       "backgroundImageScale": 1,
       "backgroundParallaxEnabled": true,
       "backgroundParallax": 0.5
