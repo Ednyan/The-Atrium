@@ -148,6 +148,12 @@ const TRACE_CELLS: { id: string; span: string; picture?: boolean; video?: boolea
   { id: 'links', span: '' },
 ]
 
+// The film about the place, once it's made: where it's served from (any https
+// address: public/_headers allows media from one) and the still shown before
+// it plays. Until then, its window says it's on its way.
+const FILM_SRC: string = ''
+const FILM_POSTER: string = ''
+
 const TOOLS = ['move', 'arrange', 'connect', 'together', 'style', 'keep'] as const
 
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
@@ -378,11 +384,12 @@ function TopNav({ items, activeSection, onJump, onDonate }: {
 }
 
 // The running order, and the order the page is written in. Index is identity
-// here: it ties an entry to its ref in sectionRefs, so these must move
-// together. Anything jumping to a section by name goes through sectionIndex().
+// here: it ties an entry to its ref in sectionRefs, so each section takes its
+// ref by name, through sectionIndex(), as does anything jumping to one.
 // `desktop` is the one a route names (/desktop): its id stays.
 const sections = [
   { id: 'hero', title: 'The Digital Atrium' },
+  { id: 'film', title: 'The film' },
   { id: 'inside', title: 'Inside an atrium' },
   { id: 'traces', title: 'Traces' },
   { id: 'tools', title: 'What you can do' },
@@ -605,7 +612,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       <main id="landing-main" tabIndex={-1} className="outline-none">
         {/* The hall: the portal, lit, hanging over the name. */}
         <section
-          ref={el => { sectionRefs.current[0] = el }}
+          ref={el => { sectionRefs.current[sectionIndex('hero')] = el }}
           className="relative flex flex-col items-center px-5 sm:px-10 lg:px-16 pb-14 overflow-hidden"
           style={{ minHeight: 'calc(100dvh - 3.5rem)' }}
         >
@@ -662,8 +669,29 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             the rest. */}
         <TraceTicker />
 
+        {/* The film: the window it plays in, waiting for it until it's made. */}
+        <section ref={el => { sectionRefs.current[sectionIndex('film')] = el }} className={sectionClass}>
+          <div className="max-w-[1300px] mx-auto" data-reveal>
+            <SectionTitle>{t('landing.film.title')}</SectionTitle>
+            <div className="relative">
+              <Brackets inset="-0.75rem" />
+              <div className="landing-window relative aspect-video border border-nier-border/30 overflow-hidden">
+                {FILM_SRC ? (
+                  <video src={FILM_SRC} poster={FILM_POSTER || undefined} controls preload="none" playsInline aria-label={t('landing.film.title')} className="absolute inset-0 w-full h-full bg-black" />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 sm:gap-8 px-6 text-center">
+                    <span aria-hidden="true" className="landing-orb w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
+                    <p className="text-[11px] sm:text-xs tracking-[0.35em] uppercase text-nier-strong">{t('landing.film.soon')}</p>
+                    <p className="max-w-[30rem] text-sm sm:text-base font-light leading-relaxed text-nier-bg/75 text-pretty">{t('landing.film.body')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Inside: an atrium as it is, photographed in the app. */}
-        <section ref={el => { sectionRefs.current[1] = el }} className={sectionClass}>
+        <section ref={el => { sectionRefs.current[sectionIndex('inside')] = el }} className={sectionClass}>
           <div className="max-w-[1300px] mx-auto" data-reveal>
             <SectionTitle>{t('landing.inside.title')}</SectionTitle>
             <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[40rem] mb-12 md:mb-16 text-pretty">{t('landing.inside.body')}</p>
@@ -687,7 +715,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </section>
 
         {/* What can be brought in. */}
-        <section ref={el => { sectionRefs.current[2] = el }} className={sectionClass}>
+        <section ref={el => { sectionRefs.current[sectionIndex('traces')] = el }} className={sectionClass}>
           <div className="max-w-[1300px] mx-auto" data-reveal>
             <SectionTitle>{t('landing.traces.title')}</SectionTitle>
             <div className="landing-bento grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px">
@@ -715,7 +743,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </section>
 
         {/* What can be done there, and the keys for it. */}
-        <section ref={el => { sectionRefs.current[3] = el }} className={sectionClass}>
+        <section ref={el => { sectionRefs.current[sectionIndex('tools')] = el }} className={sectionClass}>
           <div className="max-w-[1300px] mx-auto grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 lg:gap-20" data-reveal>
             <div className="lg:sticky lg:top-28 self-start">
               <SectionTitle>{t('landing.tools.title')}</SectionTitle>
@@ -743,7 +771,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         {/* Two ways in: the web, and your computer. The desktop app has no
             need to be told about itself. */}
         {!isDesktop && (
-          <section ref={el => { sectionRefs.current[4] = el }} className={sectionClass}>
+          <section ref={el => { sectionRefs.current[sectionIndex('desktop')] = el }} className={sectionClass}>
             <div className="max-w-[1300px] mx-auto" data-reveal>
               <SectionTitle>{t('landing.ways.title')}</SectionTitle>
               <div className="landing-bento grid md:grid-cols-2 gap-px">
@@ -770,7 +798,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         )}
 
         {/* Who made it. */}
-        <section ref={el => { sectionRefs.current[5] = el }} className={sectionClass}>
+        <section ref={el => { sectionRefs.current[sectionIndex('creator')] = el }} className={sectionClass}>
           <div className="max-w-[1150px] mx-auto grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 md:gap-16 items-center" data-reveal>
             <figure className="relative max-w-[440px] w-full mx-auto md:mx-0">
               <Brackets />
@@ -799,7 +827,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </section>
 
         {/* What keeps it going. */}
-        <section ref={el => { sectionRefs.current[6] = el }} className={sectionClass}>
+        <section ref={el => { sectionRefs.current[sectionIndex('support')] = el }} className={sectionClass}>
           <div className="max-w-[1000px] mx-auto" data-reveal>
             <SectionTitle center>{t('landing.support.title')}</SectionTitle>
             <div className="grid md:grid-cols-2 gap-10 md:gap-14 items-center">
