@@ -1521,6 +1521,7 @@ const ko: Catalogue = {
   'landing.film.body': "Digital Atrium에 관한 단편 영상을 만들고 있습니다. 완성되면 여기에서 재생됩니다.",
   'landing.signature': "만든 사람",
   'landing.film.teaser': "티저 · 영상은 제작 중입니다",
+  'landing.film.timeline': "재생 위치",
   'landing.inside.step1': "끝없는 하나의 방",
   'landing.inside.step1Body': "사진, 영상, 메모, 시트, 파일을 끝없는 캔버스에 나란히.",
   'landing.inside.step2': "무엇이든 가져오기",

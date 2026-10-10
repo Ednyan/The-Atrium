@@ -1505,7 +1505,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   width: max-content;
   animation: trace-ticker-run 70s linear infinite;
 }
-.trace-ticker:hover .trace-ticker-track { animation-play-state: paused; }
 .trace-ticker-run { display: flex; }
 .trace-ticker-item {
   position: relative;
@@ -1519,7 +1518,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   white-space: nowrap;
   color: transparent;
   -webkit-text-stroke: 1px rgb(var(--c-fg) / 0.32);
-  transition: color 0.35s ease, -webkit-text-stroke-color 0.35s ease;
 }
 /* Between each two, a trace's diamond. */
 .trace-ticker-item::after {
@@ -1533,7 +1531,6 @@ input[type='color']::-moz-color-swatch { border: none; }
   border: 1px solid rgb(var(--c-fg) / 0.35);
 }
 .trace-ticker-item[data-lit] { color: rgb(var(--c-fg) / 0.12); -webkit-text-stroke-color: rgb(var(--c-fg) / 0.55); }
-.trace-ticker-item:hover { color: #ff8a3d; -webkit-text-stroke-color: #ff8a3d; }
 @keyframes trace-ticker-run {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }

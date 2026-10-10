@@ -14,6 +14,9 @@
 // own, whose sound the page can't reach at all. Its volume it can set, by
 // message (embedPlayerOf), so it's quieter with distance too; never from a
 // side.
+//
+// The same way into Web Audio feeds a sound trace's equalizer (AudioBars):
+// an element can be taken in only once, so both share its one graph.
 
 import { useEffect } from 'react'
 import { embedPlayerOf } from './embedUrl.ts'
@@ -27,23 +30,35 @@ export function corsReady(src: string | undefined | null): boolean {
 }
 
 let context: AudioContext | null = null
+interface Graph { pan: StereoPannerNode; analyser: AnalyserNode }
 // Each element taken into Web Audio, once -- an element can't be taken twice,
-// nor let go -- with its pan; null for one that can only be made quieter.
-const panners = new WeakMap<HTMLMediaElement, StereoPannerNode | null>()
-function pannerOf(el: HTMLMediaElement): StereoPannerNode | null {
-  if (panners.has(el)) return panners.get(el)!
-  let pan: StereoPannerNode | null = null
+// nor let go -- through what it's heard by (its frequencies) and its side;
+// null for one whose sound can't be reached, which can only be made quieter.
+const graphs = new WeakMap<HTMLMediaElement, Graph | null>()
+function graphOf(el: HTMLMediaElement): Graph | null {
+  if (graphs.has(el)) return graphs.get(el)!
+  let graph: Graph | null = null
   if (el.crossOrigin === 'anonymous' || corsReady(el.currentSrc) && /^(blob|data):/.test(el.currentSrc)) {
     try {
       context ??= new AudioContext()
-      pan = context.createStereoPanner()
-      context.createMediaElementSource(el).connect(pan).connect(context.destination)
+      const analyser = context.createAnalyser()
+      analyser.fftSize = 2048
+      analyser.smoothingTimeConstant = 0.72
+      const pan = context.createStereoPanner()
+      context.createMediaElementSource(el).connect(analyser).connect(pan).connect(context.destination)
+      graph = { pan, analyser }
     } catch {
-      pan = null
+      graph = null
     }
   }
-  panners.set(el, pan)
-  return pan
+  graphs.set(el, graph)
+  if (context?.state === 'suspended') void context.resume()
+  return graph
+}
+
+// A playing element's frequencies, for its equalizer; null where they can't be heard.
+export function analyserOf(el: HTMLMediaElement): AnalyserNode | null {
+  return graphOf(el)?.analyser ?? null
 }
 
 // How it's heard from where it is on screen: its volume (0-1) and side (-1-1).
@@ -83,8 +98,8 @@ export function useSpatialSound(on: boolean) {
     const reset = () => {
       for (const el of document.querySelectorAll<HTMLMediaElement>(MEDIA)) {
         el.volume = 1
-        const pan = panners.get(el)
-        if (pan) pan.pan.value = 0
+        const graph = graphs.get(el)
+        if (graph) graph.pan.pan.value = 0
       }
       for (const frame of document.querySelectorAll<HTMLIFrameElement>(PLAYERS)) {
         if (told.has(frame)) { told.delete(frame); tellVolume(frame, 1, 0) }
@@ -100,10 +115,10 @@ export function useSpatialSound(on: boolean) {
         const r = trace.getBoundingClientRect()
         const { volume, pan } = heardAt(r.left + r.width / 2, r.top + r.height / 2, innerWidth, innerHeight)
         el.volume = volume
-        const panner = pannerOf(el)
-        if (panner) {
+        const graph = graphOf(el)
+        if (graph) {
           if (context?.state === 'suspended') void context.resume()
-          panner.pan.setTargetAtTime(pan, panner.context.currentTime, 0.05)
+          graph.pan.pan.setTargetAtTime(pan, graph.pan.context.currentTime, 0.05)
         }
       }
       const now = performance.now()

@@ -65,7 +65,7 @@ const InsideChapter = forwardRef<HTMLElement, { index: number; shot: 'light' | '
   return (
     <section ref={ref} className="relative">
       {/* Pinned, from a laptop up and with motion: a screen per line. */}
-      <div ref={hold} className={`hidden ${motion ? 'lg:block' : ''} h-[420vh]`}>
+      <div ref={hold} className={`hidden ${motion ? 'lg:block' : ''} h-[270vh]`}>
         <div className="sticky top-0 h-screen flex items-center px-10 lg:px-16">
           <div className="w-full max-w-[1400px] mx-auto grid grid-cols-[minmax(0,4fr)_minmax(0,8fr)] gap-14 items-center">
             <div>

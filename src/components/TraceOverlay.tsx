@@ -3,6 +3,7 @@
 // ...existing code...
 // Removed useEffectOnce, use standard useEffect
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
+import AudioBars from './AudioBars'
 import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
@@ -6912,34 +6913,8 @@ return (
       {/* Audio Content */}
       {trace.type === 'audio' && trace.mediaUrl && (
         <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none px-3 pt-5 pb-4 gap-2">
-          {/* Decorative waveform bars */}
-          <div className="flex items-end justify-center gap-[2px] flex-1 w-full max-h-[60%] min-h-[24px]">
-            {(() => {
-              // Generate deterministic bar heights from trace id
-              const bars = 24
-              const heights: number[] = []
-              for (let i = 0; i < bars; i++) {
-                const hash = trace.id.charCodeAt(i % trace.id.length) + i * 7
-                heights.push(0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82)
-              }
-              const isPlaying = playingMedia.has(trace.id)
-              return heights.map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 max-w-[6px] rounded-full"
-                  style={{
-                    height: `${h * 100}%`,
-                    minHeight: '3px',
-                    background: isPlaying
-                      ? `linear-gradient(to top, ${trace.borderColor || '#8f8f8f'}, ${trace.borderColor ? trace.borderColor + '88' : '#cbcbcb'})`
-                      : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))',
-                    transition: 'background 0.3s ease',
-                    animation: isPlaying ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
-                  }}
-                />
-              ))
-            })()}
-          </div>
+          {/* Its bars: an equalizer while it plays. */}
+          <AudioBars traceId={trace.id} playing={playingMedia.has(trace.id)} color={trace.borderColor} />
           {/* Hidden audio element + custom play button */}
           <audio
             id={`audio-${trace.id}`}

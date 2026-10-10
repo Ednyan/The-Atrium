@@ -1465,6 +1465,7 @@ export const en = {
   'landing.film.body': "A short film about the Digital Atrium is being made. It will play here once it’s finished.",
   'landing.signature': "Made by",
   'landing.film.teaser': "Teaser · the film is in production",
+  'landing.film.timeline': "Timeline",
   'landing.inside.step1': "One endless room",
   'landing.inside.step1Body': "Pictures, videos, notes, sheets and files, side by side on a canvas that never runs out.",
   'landing.inside.step2': "Bring anything in",

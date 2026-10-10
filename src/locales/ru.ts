@@ -1440,6 +1440,7 @@ const ru: Catalogue = {
   'landing.film.body': "Мы снимаем короткий фильм о Digital Atrium. Когда он будет готов, его можно будет посмотреть здесь.",
   'landing.signature': "Автор",
   'landing.film.teaser': "Тизер · фильм в работе",
+  'landing.film.timeline': "Шкала времени",
   'landing.inside.step1': "Одна бесконечная комната",
   'landing.inside.step1Body': "Изображения, видео, заметки, таблицы и файлы рядом на холсте, который никогда не кончается.",
   'landing.inside.step2': "Приносите что угодно",

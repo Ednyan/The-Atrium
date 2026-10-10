@@ -1520,6 +1520,7 @@ const zh: Catalogue = {
   'landing.film.body': "一部关于 Digital Atrium 的短片正在制作中。完成后会在这里播放。",
   'landing.signature': "制作者",
   'landing.film.teaser': "预告 · 影片正在制作中",
+  'landing.film.timeline': "播放进度",
   'landing.inside.step1': "一个无尽的房间",
   'landing.inside.step1Body': "图片、视频、笔记、表格和文件，并排放在一块永无尽头的画布上。",
   'landing.inside.step2': "什么都能放进来",

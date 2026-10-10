@@ -1434,6 +1434,7 @@ const es: Catalogue = {
   'landing.film.body': "Se está rodando un cortometraje sobre el Digital Atrium. Cuando esté terminado, podrás verlo aquí.",
   'landing.signature': "Hecho por",
   'landing.film.teaser': "Avance · la película está en producción",
+  'landing.film.timeline': "Línea de tiempo",
   'landing.inside.step1': "Una sala sin fin",
   'landing.inside.step1Body': "Imágenes, vídeos, notas, hojas y archivos, uno al lado del otro en un lienzo que nunca se acaba.",
   'landing.inside.step2': "Trae lo que sea",

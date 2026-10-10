@@ -369,6 +369,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   const shot = light ? 'light' : 'dark'
   const [showDonate, setShowDonate] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
+  // Scrolled a little way off the first screen: the creator's signature folds to its tab.
+  const [offHall, setOffHall] = useState(false)
   const [scrollProgress, setScrollProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const mainRef = useRef<HTMLElement>(null)
@@ -473,6 +475,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
     const handleScroll = () => {
       const scrollHeight = container.scrollHeight - container.clientHeight
       setScrollProgress(scrollHeight > 0 ? container.scrollTop / scrollHeight : 0)
+      setOffHall(container.scrollTop > container.clientHeight * 0.3)
       let current = 0
       sectionRefs.current.forEach((ref, index) => {
         if (ref && ref.getBoundingClientRect().top <= NAV_HEIGHT + 24) current = index
@@ -539,6 +542,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       <TopNav items={navItems} activeSection={activeSection} onJump={scrollToSection} onDonate={handleBarDonate} />
 
       {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
+
+      <CreatorSignature full={!offHall} />
 
       {/* Scanlines, faint, over everything. */}
       <div
@@ -635,9 +640,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             </div>
           </div>
 
-          {/* The foot of the first screen: who made it, and the way down. */}
+          {/* The foot of the first screen: the way down. */}
           <div className="relative z-10 w-full max-w-[1400px] mx-auto mt-auto pt-12 flex items-end">
-            <CreatorSignature />
             <button type="button" onClick={() => scrollToSection(sectionIndex('film'))} aria-label={t('landing.film.title')} className="scroll-cue absolute left-1/2 -translate-x-1/2 bottom-0 hidden sm:flex flex-col items-center gap-2 text-[10px] tracking-[0.3em] uppercase text-nier-bg/60 hover:text-nier-strong">
               {t('landing.film.title')}
               <span aria-hidden="true" className="scroll-cue-line" />
@@ -824,20 +828,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .ribbon-arrow { width: 2.6rem; height: 2.6rem; border: 1px solid rgb(var(--c-fg) / 0.3); color: rgb(var(--c-strong)); transition: border-color 0.25s ease, opacity 0.25s ease; }
         .ribbon-arrow:hover:not(:disabled) { border-color: rgb(var(--c-strong)); }
         .ribbon-arrow:disabled { opacity: 0.3; }
-        .ribbon-sound { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 0 16%; }
-        .ribbon-sound span { flex: 1; max-width: 4px; border-radius: 2px; background: rgb(var(--c-strong) / 0.85); animation: ribbonBar 1.4s ease-in-out infinite alternate; }
-        @keyframes ribbonBar { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
-        .ribbon-pages { position: absolute; inset: 0; display: grid; place-items: center; }
-        .ribbon-pages > span { position: absolute; width: 50%; aspect-ratio: 3 / 4; display: flex; flex-direction: column; gap: 7px; padding: 14% 12%; background: rgb(var(--c-ground) / 0.9); border: 1px solid rgb(var(--c-fg) / 0.3); }
-        .ribbon-pages i { display: block; height: 3px; background: rgb(var(--c-fg) / 0.35); }
-        .ribbon-pages i:nth-child(3n) { width: 60%; }
-        .ribbon-browser { position: absolute; inset: 14% 10%; display: flex; flex-direction: column; border: 1px solid rgb(var(--c-fg) / 0.35); background: rgb(var(--c-ground) / 0.6); }
-        .ribbon-browser-bar { display: flex; align-items: center; gap: 5px; padding: 7px 8px; border-bottom: 1px solid rgb(var(--c-fg) / 0.25); }
-        .ribbon-browser-bar b { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--c-fg) / 0.45); }
-        .ribbon-browser-bar em { flex: 1; height: 8px; margin-left: 6px; background: rgb(var(--c-fg) / 0.14); }
-        .ribbon-browser-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
-        .ribbon-browser-body i { background: rgb(var(--c-fg) / 0.13); }
-        .ribbon-browser-body i:first-child { grid-column: span 2; }
 
         /* What can be done (landing/ToolChapters): a run of chapters. */
         .tool-panel { position: relative; isolation: isolate; padding: 4.5rem 1.25rem; }
@@ -865,7 +855,17 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .code-roots circle { fill: rgb(var(--c-ground)); stroke: rgb(var(--landing-light) / 0.9); stroke-width: 1; }
         [data-landing-theme='light'] .code-roots circle { stroke: rgb(var(--c-fg) / 0.7); }
         .code-roots text { font-size: 10px; letter-spacing: 0.06em; fill: rgb(var(--c-fg) / 0.45); }
-        .code-history-button { border: 1px solid rgb(var(--c-fg) / 0.35); background: rgb(var(--c-ground) / 0.85); transition: border-color 0.3s ease, box-shadow 0.4s ease; }
+        .code-history-button { border: 1px solid rgb(var(--c-fg) / 0.35); background: rgb(var(--c-ground) / 0.92); transition: border-color 0.3s ease, box-shadow 0.4s ease; }
+        /* The bloom round it (CodeBloom), in graphify's colours. */
+        .code-bloom path { fill: none; }
+        .code-bloom .bloom-line { stroke-width: 1; opacity: 0.55; }
+        .code-bloom .bloom-line.is-trunk { stroke-width: 1.5; opacity: 0.8; }
+        .code-bloom .bloom-across path { stroke: rgb(var(--c-fg) / 0.13); stroke-width: 0.8; }
+        .code-bloom .bloom-dot.is-root { filter: drop-shadow(0 0 6px currentColor); }
+        .code-bloom .bloom-label { font-size: 10.5px; letter-spacing: 0.08em; paint-order: stroke; stroke: rgb(var(--c-ground)); stroke-width: 4px; stroke-linejoin: round; }
+        .code-bloom .bloom-flow { display: none; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 2 46; }
+        .code-bloom.is-grown .bloom-flow { display: inline; animation: bloom-flow 3.2s linear infinite; }
+        @keyframes bloom-flow { to { stroke-dashoffset: 96; } }
         .code-history-button:hover, .code-history-button:focus-visible { border-color: rgb(var(--c-strong)); box-shadow: 0 0 44px rgb(var(--landing-light) / 0.28); outline: none; }
 
         /* The way in: filled with the light, glowing a little under the
@@ -889,8 +889,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .landing-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--landing-light) / 0.8), transparent); opacity: 0; transition: opacity 0.5s ease; z-index: 1; }
         [data-landing-theme='light'] .landing-cell::before { background: linear-gradient(90deg, transparent, rgb(var(--c-strong) / 0.6), transparent); }
         .landing-cell:hover::before { opacity: 1; }
-        .landing-cell-video { background: #000; }
-        [data-landing-theme='light'] .landing-cell-video { background: transparent; filter: invert(1); mix-blend-mode: multiply; }
 
         .landing-window::after, .landing-portrait::after {
           content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -908,13 +906,39 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
         [data-landing-theme='light'] .landing-orb { background: rgb(var(--c-strong)); box-shadow: 0 0 30px 8px rgb(var(--c-fg) / 0.12); }
 
+        /* The teaser's controls (landing/parts ClipControls): on the film's black
+           in either theme, so light; out of the way while it plays, given a pointer. */
+        .clip-controls { color: #fff; background: linear-gradient(to top, rgb(0 0 0 / 0.6), transparent); transition: opacity 0.3s ease; }
+        @media (hover: hover) { .film-screen:not(:hover):not(:focus-within) .clip-controls[data-playing] { opacity: 0; } }
+        .clip-toggle { width: 1.9rem; height: 1.9rem; display: grid; place-items: center; border: 1px solid rgb(255 255 255 / 0.45); transition: border-color 0.2s ease; }
+        .clip-toggle:hover, .clip-toggle:focus-visible { border-color: #fff; outline: none; }
+        .clip-timeline { --at: 0%; -webkit-appearance: none; appearance: none; height: 16px; background: transparent; cursor: pointer; }
+        .clip-timeline::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(to right, #fff var(--at), rgb(255 255 255 / 0.3) var(--at)); }
+        .clip-timeline::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 10px; margin-top: -4px; border-radius: 50%; background: #fff; }
+        .clip-timeline::-moz-range-track { height: 2px; background: rgb(255 255 255 / 0.3); }
+        .clip-timeline::-moz-range-progress { height: 2px; background: #fff; }
+        .clip-timeline::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
+        .clip-timeline:focus-visible { outline: 1px solid #fff; outline-offset: 4px; }
+
+        /* The creator, in the corner all the way down (CreatorSignature): a
+           tab, its name sliding out; in full on the first screen, given room. */
+        .creator-signature { gap: 0; padding: 0.35rem; background: rgb(var(--c-ground) / 0.8); border: 1px solid rgb(var(--c-line) / 0.28); backdrop-filter: blur(10px); transition: background-color 0.4s ease, border-color 0.4s ease, gap 0.45s cubic-bezier(0.22, 1, 0.36, 1), padding 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+        .creator-signature-name { max-width: 0; opacity: 0; transition: max-width 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease; }
+        .creator-signature:hover, .creator-signature:focus-visible { gap: 0.75rem; padding-right: 0.9rem; }
+        .creator-signature:hover .creator-signature-name, .creator-signature:focus-visible .creator-signature-name { max-width: 18rem; opacity: 1; }
+        @media (min-width: 640px) and (min-height: 700px) {
+          .creator-signature[data-full] { gap: 0.75rem; background: transparent; border-color: transparent; backdrop-filter: none; }
+          .creator-signature[data-full] .creator-signature-name { max-width: 18rem; opacity: 1; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
+          .creator-signature, .creator-signature-name { transition: none; }
           .landing-skylight { animation: none; }
           .landing-dust { display: none; }
           [data-reveal] { opacity: 1; transform: none; transition: none; }
           .lit-rule { transform: scaleX(1); transition: none; }
           .headline-word { transform: none; transition: none; }
-          .scroll-cue-line, .ribbon-sound span { animation: none; }
+          .scroll-cue-line { animation: none; }
           .ribbon-card, .ribbon-card-inner, .ribbon-visual { transition: none; }
         }
       `}</style>

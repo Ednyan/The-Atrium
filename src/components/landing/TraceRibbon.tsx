@@ -10,14 +10,14 @@ import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import type { TranslationKey } from '../../locales/en'
 import { useLandingMotion } from '../../lib/landingMotion'
-import { ChapterLabel, Headline } from './parts'
+import { ChapterLabel, Clip, Headline } from './parts'
 
 // In the order they sit around the ring; it opens on the pictures, in the middle.
 const CARDS = ['sound', 'documents', 'video', 'pictures', 'notes', 'drawings', 'sheets', 'links'] as const
 const FIRST = CARDS.indexOf('pictures')
 type CardId = typeof CARDS[number]
-// Photographed in the app (public/landing/close-*).
-const PHOTOGRAPHED: CardId[] = ['pictures', 'notes', 'sheets', 'drawings']
+// The two that move (Visual).
+const MOVING: CardId[] = ['sound', 'video']
 // Degrees between one card and the next around the ring.
 const STEP = 32
 
@@ -197,31 +197,11 @@ const TraceRibbon = forwardRef<HTMLElement, { index: number; shot: 'light' | 'da
 export default TraceRibbon
 
 // What's on a card's face: the trace photographed, or drawn.
+// Each card's picture, taken in the app: one small arrangement per kind, in
+// the page's own atrium (public/landing/close-*). Sound and video move -- the
+// equalizer, the animatic playing -- with their still for less motion.
 function Visual({ id, shot, still }: { id: CardId; shot: 'light' | 'dark'; still: boolean }) {
-  if (PHOTOGRAPHED.includes(id)) {
-    return <img src={`/landing/close-${id}-${shot}.webp`} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-  }
-  if (id === 'video') {
-    return <video src="/idle-animation.mp4" muted loop autoPlay={!still} playsInline aria-hidden="true" className="landing-cell-video w-full h-full object-cover" />
-  }
-  if (id === 'sound') {
-    return (
-      <span className="ribbon-sound" aria-hidden="true">
-        {Array.from({ length: 28 }, (_, i) => <span key={i} style={{ animationDelay: `${-((i * 0.37) % 1.4)}s`, height: `${22 + ((i * 47) % 61)}%` }} />)}
-      </span>
-    )
-  }
-  if (id === 'documents') {
-    return (
-      <span className="ribbon-pages" aria-hidden="true">
-        {[2, 1, 0].map(n => <span key={n} style={{ transform: `translate(${n * 10}px, ${n * -10}px)` }}><i /><i /><i /><i /><i /></span>)}
-      </span>
-    )
-  }
-  return (
-    <span className="ribbon-browser" aria-hidden="true">
-      <span className="ribbon-browser-bar"><b /><b /><b /><em /></span>
-      <span className="ribbon-browser-body"><i /><i /><i /></span>
-    </span>
-  )
+  const picture = `/landing/close-${id}-${shot}`
+  if (MOVING.includes(id)) return <Clip src={`${picture}.mp4`} poster={`${picture}.webp`} still={still} />
+  return <img src={`${picture}.webp`} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
 }

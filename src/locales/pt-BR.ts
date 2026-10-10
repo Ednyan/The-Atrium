@@ -1438,6 +1438,7 @@ const ptBR: Catalogue = {
   'landing.film.body': "Um curta-metragem sobre o Digital Atrium está sendo feito. Quando estiver pronto, ele vai passar aqui.",
   'landing.signature': "Feito por",
   'landing.film.teaser': "Teaser · o filme está em produção",
+  'landing.film.timeline': "Linha do tempo",
   'landing.inside.step1': "Uma sala sem fim",
   'landing.inside.step1Body': "Imagens, vídeos, notas, planilhas e arquivos, lado a lado numa tela que nunca acaba.",
   'landing.inside.step2': "Traga qualquer coisa",

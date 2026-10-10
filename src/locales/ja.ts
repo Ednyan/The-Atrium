@@ -1517,6 +1517,7 @@ const ja: Catalogue = {
   'landing.film.body': "Digital Atrium の短編映像を制作しています。完成したら、ここで再生されます。",
   'landing.signature': "制作",
   'landing.film.teaser': "ティーザー · 映像は制作中です",
+  'landing.film.timeline': "再生位置",
   'landing.inside.step1': "果てしない部屋",
   'landing.inside.step1Body': "画像、動画、メモ、シート、ファイルを、終わりのないキャンバスに並べて。",
   'landing.inside.step2': "なんでも持ち込む",
