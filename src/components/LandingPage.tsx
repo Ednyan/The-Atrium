@@ -8,7 +8,7 @@
 // light source, warm, and nothing else coloured but the Donate button.
 
 import TraceTitle from './TraceTitle'
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalScene from './PortalScene'
 import ContributePanel from './ContributePanel'
@@ -24,6 +24,9 @@ import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import { DesktopDownloads } from './DesktopAppSection'
 import { openCodeHistory, preloadCodeHistory, watchCodeHistory } from '../lib/codeHistory'
+import { useLandingMotion, type LandingMotion } from '../lib/landingMotion'
+import ScrollReveal from './reactbits/ScrollReveal'
+import SplitText from './reactbits/SplitText'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -61,17 +64,58 @@ function TraceTicker() {
 
 // A section's name: a diamond the light fills as the section comes into view,
 // the title, and a rule drawn out from it (.lit-*, below).
-function SectionTitle({ children, center = false }: { children: ReactNode; center?: boolean }) {
+function SectionTitle({ children, center = false }: { children: string; center?: boolean }) {
+  const motion = useLandingMotion()
+  const textRef = useRef<HTMLSpanElement>(null)
+  // Decoded as it comes into view, the way NieR's screens write themselves:
+  // scrambled, settling left to right. Scrambled with its own letters, so a
+  // Japanese title stays Japanese, and the width it will have.
+  useEffect(() => {
+    const el = textRef.current
+    if (!motion || !el) return
+    const { gsap } = motion
+    const ctx = gsap.context(() => {
+      gsap.to(el, {
+        duration: 1.2, ease: 'none',
+        scrambleText: { text: children, chars: children.replace(/\s/g, ''), revealDelay: 0.3, speed: 0.5 },
+        scrollTrigger: { trigger: el, start: 'top 90%', once: true },
+      })
+    })
+    return () => ctx.revert()
+  }, [motion, children])
   return (
     <div className={`flex items-center gap-4 mb-10 md:mb-14 ${center ? 'justify-center' : ''}`}>
       {center && <span aria-hidden="true" className="lit-rule lit-rule-left h-px w-16 md:w-28" />}
       <span aria-hidden="true" className="lit-diamond w-3 h-3 rotate-45 shrink-0" />
-      <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.1em] uppercase text-nier-strong leading-[1.05] text-balance">
-        {children}
+      {/* Named by its label, so nothing reads the scramble out. Keyed by its
+          text: the scramble rewrites the text React put there. */}
+      <h2 aria-label={children} className="text-3xl md:text-5xl font-extralight tracking-[0.1em] uppercase text-nier-strong leading-[1.05] text-balance">
+        <span key={children} ref={textRef} aria-hidden="true">{children}</span>
       </h2>
       <span aria-hidden="true" className={`lit-rule h-px ${center ? 'w-16 md:w-28' : 'flex-1'}`} />
     </div>
   )
+}
+
+// A window rising into its frame as it's scrolled to: tipped back and a little
+// small, upright by the time it's halfway up the screen, which is where a jump
+// to its section leaves it. Measured by its frame, which doesn't move, rather
+// than by itself, which does.
+function useRiseIntoFrame(motion: LandingMotion | null) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!motion || !el) return
+    const { gsap } = motion
+    const ctx = gsap.context(() => {
+      gsap.fromTo(el, { rotateX: 12, scale: 0.95, transformPerspective: 1400, transformOrigin: '50% 100%' }, {
+        rotateX: 0, scale: 1, ease: 'none',
+        scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'top 55%', scrub: 0.5 },
+      })
+    })
+    return () => ctx.revert()
+  }, [motion])
+  return ref
 }
 
 // Corner brackets, the atrium's own framing for anything set apart.
@@ -408,7 +452,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   const [activeSection, setActiveSection] = useState(0)
   const [scrollProgress, setScrollProgress] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const sectionRefs = useRef<(HTMLElement | null)[]>([])
+  const motion = useLandingMotion()
+  const lenisRef = useRef<InstanceType<LandingMotion['Lenis']> | null>(null)
+  const filmRef = useRiseIntoFrame(motion)
+  const insideRef = useRiseIntoFrame(motion)
   const enter = isAuthenticated ? t('landing.continue') : t('landing.enter')
   // A decorative loop stays still for anyone who asked for less motion.
   const still = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, [])
@@ -444,6 +493,36 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [])
+
+  // Smooth scrolling (Lenis), on GSAP's clock, so what's tied to the scroll is
+  // drawn where the page is. Scrollers inside it -- the bar's menu, the
+  // donation panel -- keep their own wheel.
+  useEffect(() => {
+    const wrapper = containerRef.current, content = mainRef.current
+    if (!motion || !wrapper || !content) return
+    const { gsap, ScrollTrigger, Lenis } = motion
+    const lenis = new Lenis({ wrapper, content, allowNestedScroll: true })
+    lenisRef.current = lenis
+    lenis.on('scroll', ScrollTrigger.update)
+    const tick = (time: number) => lenis.raf(time * 1000)
+    gsap.ticker.add(tick)
+    gsap.ticker.lagSmoothing(0)
+    // Pictures and fonts arriving move what's below them: the triggers are
+    // measured again once they've settled.
+    let settle = 0
+    const resized = new ResizeObserver(() => {
+      clearTimeout(settle)
+      settle = window.setTimeout(() => ScrollTrigger.refresh(), 200)
+    })
+    resized.observe(content)
+    return () => {
+      clearTimeout(settle)
+      resized.disconnect()
+      gsap.ticker.remove(tick)
+      lenis.destroy()
+      lenisRef.current = null
+    }
+  }, [motion])
 
   // The code history slides in over this page and back (the strip below).
   useEffect(() => watchCodeHistory(), [])
@@ -496,8 +575,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
     const target = sectionRefs.current[index]
     const container = containerRef.current
     if (!target || !container) return
-    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - NAV_HEIGHT
-    container.scrollTo({ top: Math.max(0, top), behavior })
+    const top = Math.max(0, target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - NAV_HEIGHT)
+    // Through Lenis while it runs: a native scroll would be fought by it.
+    if (lenisRef.current) lenisRef.current.scrollTo(top, { immediate: behavior !== 'smooth' })
+    else container.scrollTo({ top, behavior })
   }
 
   // Opened at a section when the route named one: instantly, and measured
@@ -530,6 +611,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   return (
     <div
       ref={containerRef}
+      data-landing-scroller
       data-landing-theme={theme.resolved}
       className="h-screen bg-nier-black text-nier-bg overflow-y-auto overflow-x-hidden scroll-smooth"
     >
@@ -609,7 +691,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </div>
       </nav>
 
-      <main id="landing-main" tabIndex={-1} className="outline-none">
+      <main ref={mainRef} id="landing-main" tabIndex={-1} className="outline-none">
         {/* The hall: the portal, lit, hanging over the name. */}
         <section
           ref={el => { sectionRefs.current[sectionIndex('hero')] = el }}
@@ -675,7 +757,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             <SectionTitle>{t('landing.film.title')}</SectionTitle>
             <div className="relative">
               <Brackets inset="-0.75rem" />
-              <div className="landing-window relative aspect-video border border-nier-border/30 overflow-hidden">
+              <div ref={filmRef} className="landing-window relative aspect-video border border-nier-border/30 overflow-hidden">
                 {FILM_SRC ? (
                   <video src={FILM_SRC} poster={FILM_POSTER || undefined} controls preload="none" playsInline aria-label={t('landing.film.title')} className="absolute inset-0 w-full h-full bg-black" />
                 ) : (
@@ -694,10 +776,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         <section ref={el => { sectionRefs.current[sectionIndex('inside')] = el }} className={sectionClass}>
           <div className="max-w-[1300px] mx-auto" data-reveal>
             <SectionTitle>{t('landing.inside.title')}</SectionTitle>
-            <p className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[40rem] mb-12 md:mb-16 text-pretty">{t('landing.inside.body')}</p>
+            <ScrollReveal className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[40rem] mb-12 md:mb-16 text-pretty">{t('landing.inside.body')}</ScrollReveal>
             <div className="relative" style={{ transform: 'translate3d(calc(var(--px, 0) * -5px), calc(var(--py, 0) * -5px), 0)', transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)' }}>
               <Brackets inset="-0.75rem" />
-              <div className="landing-window relative border border-nier-border/30 overflow-hidden">
+              <div ref={insideRef} className="landing-window relative border border-nier-border/30 overflow-hidden">
                 <img
                   src={`/landing/atrium-${shot}.webp`}
                   srcSet={`/landing/atrium-${shot}-1000.webp 1000w, /landing/atrium-${shot}.webp 2000w`}
@@ -844,7 +926,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         <section className="relative px-5 sm:px-12 pt-10 pb-32 text-center">
           <div className="max-w-3xl mx-auto flex flex-col items-center" data-reveal>
             <span aria-hidden="true" className="landing-orb w-5 h-5 rounded-full mb-10" />
-            <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.12em] uppercase text-nier-strong text-balance">{t('landing.closing.title')}</h2>
+            <SplitText tag="h2" text={t('landing.closing.title')} from={{ opacity: 0, y: 28 }} delay={45} className="text-3xl md:text-5xl font-extralight tracking-[0.12em] uppercase text-nier-strong text-balance" />
             <button type="button" onClick={onGetStarted} className="landing-cta mt-10 px-12 py-4 text-sm md:text-base tracking-[0.2em] uppercase" style={{ clipPath: DONATE_CUT }}>
               {enter}
             </button>
