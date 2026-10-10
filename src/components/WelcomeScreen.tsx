@@ -11,14 +11,15 @@ import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
 import MonthlyGoalColumn from './MonthlyGoalColumn'
-import CreatorPanel from './CreatorPanel'
+import CreatorSignature from './landing/CreatorSignature'
 import { openExternalUrl } from '../lib/openExternal'
 import { ATRIUM_WEBSITE } from '../lib/creatorLinks'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { shouldShowAppeal } from '../lib/supportAppeal'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
-import PortalLoop from './PortalLoop'
+import PortalScene from './PortalScene'
+import Atmosphere from './Atmosphere'
 import { supabase, isDesktop } from '../lib/supabase'
 import { goTo } from '../lib/route'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
@@ -89,7 +90,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   // reads as going a layer deeper rather than as a page being replaced.
   const [leaving, setLeaving] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
-  const [showCreator, setShowCreator] = useState(false)
   // Evaluated once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
@@ -205,16 +205,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
     }
   }
 
-  // Memoize particle positions (fireflies)
-  const particles = useMemo(() => 
-    [...Array(15)].map((_, i) => ({
-      left: `${(i * 17 + 3) % 96}%`,
-      top: `${(i * 23 + 5) % 94}%`,
-      duration: 8 + (i * 1.5) % 6,
-      delay: i * 0.5,
-    })), []
-  )
-
   // Memoize background rectangles (trace-like elements)
   const backgroundRects = useMemo(() => 
     [...Array(10)].map((_, i) => ({
@@ -275,21 +265,9 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
           ))}
         </div>
 
-        {/* Floating particles (fireflies) */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          {particles.map((particle, i) => (
-            <div
-              key={i}
-              className="absolute w-1 h-1 bg-nier-border rounded-full opacity-0"
-              style={{
-                left: particle.left,
-                top: particle.top,
-                animation: `firefly ${particle.duration}s ease-in-out infinite`,
-                animationDelay: `${particle.delay}s`,
-              }}
-            />
-          ))}
-        </div>
+        {/* The landing page's light from above, and the dust in it: the same
+            hall, so the app's first screen and the website's are one room. */}
+        <Atmosphere />
         
         {/* Corner brackets decoration */}
         <div className="absolute top-8 left-8 w-16 h-16 border-l border-t border-nier-border/30" />
@@ -330,42 +308,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} />
         </div>
-        {/* Whose place this is, in the margin the goal gauge left empty.
-            The same plate the front page wears in its top corner, for the same
-            reason: a person's name on the front of a thing is the difference
-            between a product and somebody's work. On desktop it is also the
-            only place that story is told, since nobody opens an app they have
-            installed to go and read its landing page.
+        {/* Whose place this is: the corner signature the landing page wears,
+            opening the creator's panel -- one way of saying it on every screen,
+            and on a phone too, where the margin it used to sit in isn't. */}
+        <CreatorSignature bare />
 
-            Hidden below lg, where the gauge hides too -- the margins it lives
-            in stop existing. */}
-        <button
-          type="button"
-          onClick={() => setShowCreator(true)}
-          className="group hidden md:flex fixed right-10 xl:right-16 top-1/2 z-20 flex-col items-end text-right"
-          // Same treatment as the gauge opposite: scaled rather than dropped,
-          // with its own centring kept inside the transform so the inline
-          // style does not replace it.
-          style={{
-            transform: `translateY(-50%) scale(${menuScale})`,
-            transformOrigin: 'right center',
-          }}
-        >
-          <span className="byline flex items-center gap-2 text-[10px] tracking-[0.3em] uppercase">
-            <span className="byline-mark w-1.5 h-1.5 rotate-45" />
-            {t('landing.madeBy')}
-          </span>
-          <span className="mt-2 text-sm tracking-[0.12em] uppercase text-nier-strong leading-none">
-            Eduardo Paranhos
-          </span>
-          <span className="byline-link mt-2 flex items-center gap-2 text-[10px] tracking-[0.18em] uppercase text-nier-bg/70">
-            {t('landing.aboutCreator')}
-            <span className="transition-transform duration-300 group-hover:translate-x-0.5">→</span>
-          </span>
-          <span className="byline-rule mt-2 block h-px w-full origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
-        </button>
-
-        <div className="absolute bottom-8 left-8 w-16 h-16 border-l border-b border-nier-border/30" />
         <div className="absolute bottom-8 right-8 w-16 h-16 border-r border-b border-nier-border/30" />
 
         {/* Web only: on desktop the About button below already goes to the
@@ -398,7 +345,9 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
             instead of a stack of boxes -- which is most of the height saved. */}
         <div
           ref={menuRef}
-          className="text-center px-8 py-6 max-w-lg w-full relative z-10"
+          // Clear of the corner buttons and the signature on a phone, where the
+          // column reaches the top and the foot.
+          className="text-center px-8 pt-16 pb-24 sm:py-6 max-w-lg w-full relative z-10"
           style={{
             // transform rather than a font-size cascade: it takes the spacing,
             // the portal loop and the rules with it, so the menu keeps its
@@ -411,42 +360,31 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
         >
           {/* Title */}
           <div className="space-y-[clamp(0.5rem,1.5vh,1rem)]">
+            {/* The landing page's portal, live and lit (PortalScene), over the
+                name as it is there. Sized by height, so on a short window it is
+                what gives way first: the most decorative thing here. */}
+            {/* Wider than the portal, which is sized by the height, so its light
+                has room to fade -- and softened at the top and sides, where on a
+                small screen it would still meet the canvas's edge. Wider than the
+                column too, so centred by a flex row, which lets it spill evenly. */}
+            <div className="flex justify-center">
+              <div className="portal-soft-edge shrink-0">
+                <PortalScene ink={theme.resolved === 'light'} className="w-[min(92vw,620px)] h-[clamp(7rem,24vh,15rem)]" />
+              </div>
+            </div>
             <div className="flex items-center justify-center gap-4">
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
               <span className="text-nier-bg/75 text-xs tracking-[0.3em] uppercase">{t('welcome.welcomeToThe')}</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
             </div>
-            {/* The same face the website's title wears -- silver on black,
-                gold on paper. Two screens, one name, one surface: it was
-                previously flat bone here and metal there, which read as two
-                different products wearing the same words.
-
-                Tighter and heavier than it was. Wide tracking on a light
-                weight is what makes a title look like a caption of itself. */}
-            <h1
-              className="tracking-[0.16em] uppercase font-normal leading-[0.95]"
-              style={{
-                fontSize: 'clamp(1.9rem, 5.6vh, 3.4rem)',
-                // Letter-spacing is added after every character including the
-                // last, so a centred line carries an invisible space on its
-                // right and sits half a space left of centre. Pulling that
-                // trailing space back is what actually centres it.
-                textIndent: '0.16em',
-                backgroundImage: 'var(--welcome-title)',
-                WebkitBackgroundClip: 'text',
-                backgroundClip: 'text',
-                color: 'transparent',
-              }}
-            >
-              DIGITAL ATRIUM
+            {/* The name as the landing page sets it (TraceTitle): DIGITAL in
+                the page's brightest, ATRIUM in its metal -- silver on black,
+                gold on paper -- each with its glow. One name, one face, on both
+                screens. On one line, as it is there. */}
+            <h1 translate="no" className="uppercase font-light tracking-[-0.01em] leading-[0.95] whitespace-nowrap" style={{ fontSize: 'clamp(1.8rem, 5.4vh, 3.1rem)' }}>
+              <span className="text-nier-strong" style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}>DIGITAL</span>{' '}
+              <span className="tt-metal" style={{ filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))' }}>ATRIUM</span>
             </h1>
-            {/* Shrinks first when the window is short -- it's the most
-                decorative element here and the least missed. */}
-            {/* Height in vh rather than fixed steps, so this shrinks first on
-                a short window -- it's the most decorative element here and the
-                least missed. PortalLoop takes className only, so the sizing
-                goes through an arbitrary-value class. */}
-            <PortalLoop className="mx-auto h-[clamp(4rem,18vh,10rem)]" ink={theme.resolved === 'light'} />
             <p className="text-nier-bg/80 text-xs tracking-[0.2em] uppercase">
               {t('welcome.tagline')}
             </p>
@@ -705,7 +643,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
       {showSettings && <ProfileSettings onClose={() => setShowSettings(false)} />}
       {showContribute && <ContributePanel onClose={() => setShowContribute(false)} />}
 
-      {showCreator && <CreatorPanel onClose={() => setShowCreator(false)} />}
       {showAppeal && (
         <SupportAppeal
           onClose={() => setShowAppeal(false)}

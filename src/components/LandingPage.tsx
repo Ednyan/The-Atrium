@@ -31,6 +31,7 @@ import { useLandingMotion, type LandingMotion } from '../lib/landingMotion'
 import SplitText from './reactbits/SplitText'
 import { Brackets, ChapterLabel, Headline } from './landing/parts'
 import CreatorSignature from './landing/CreatorSignature'
+import Atmosphere from './Atmosphere'
 import FilmChapter from './landing/FilmChapter'
 import InsideChapter from './landing/InsideChapter'
 import TraceRibbon from './landing/TraceRibbon'
@@ -386,14 +387,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
   // Dust in the light from above: motes drifting down through the middle of
   // the page, never in step.
-  const motes = useMemo(() => [...Array(24)].map((_, i) => ({
-    left: `${28 + ((i * 37) % 44)}%`,
-    size: 1 + (i % 3) * 0.7,
-    duration: 18 + ((i * 7) % 13),
-    delay: -((i * 2.3) % 30),
-    drift: `${((i * 13) % 9) - 4}vw`,
-  })), [])
-
   // Pointer parallax, published as CSS custom properties instead of React
   // state: each layer picks its own depth, for no render cost. Coalesced into
   // one rAF so a burst of pointer events writes style once a frame.
@@ -573,18 +566,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           transition: 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       />
-      {/* The light from above, over the whole hall, breathing slowly. */}
-      <div aria-hidden="true" className="landing-skylight fixed inset-0 pointer-events-none" />
-      {/* Dust in it. */}
-      <div aria-hidden="true" className="landing-dust fixed inset-0 pointer-events-none overflow-hidden">
-        {motes.map((mote, i) => (
-          <span
-            key={i}
-            className="landing-mote"
-            style={{ left: mote.left, width: mote.size, height: mote.size, animationDuration: `${mote.duration}s`, animationDelay: `${mote.delay}s`, '--drift': mote.drift } as React.CSSProperties}
-          />
-        ))}
-      </div>
+      {/* The light from above, over the whole hall, and the dust in it. */}
+      <Atmosphere />
 
       {/* Where you are, down the right edge (NieR's own). */}
       <nav aria-label={t('landing.sections')} className="fixed right-8 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-end gap-6">
@@ -754,37 +737,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       </footer>
 
       <style>{`
-        /* The one light. Warm on the dark hall; on paper, a bloom of white
-           with the edges of the page a shade darker. */
-        [data-landing-theme] { --landing-light: 255 236 205; }
-        .landing-skylight {
-          background:
-            radial-gradient(ellipse 55% 60% at 50% -12%, rgb(var(--landing-light) / 0.11), transparent 70%),
-            radial-gradient(ellipse 30% 40% at 50% -6%, rgb(var(--landing-light) / 0.08), transparent 70%);
-          animation: landingBreathe 12s ease-in-out infinite;
-        }
-        [data-landing-theme='light'] .landing-skylight {
-          background:
-            radial-gradient(ellipse 60% 65% at 50% -10%, rgb(255 255 255 / 0.85), transparent 72%),
-            radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgb(var(--c-fg) / 0.06));
-        }
-        @keyframes landingBreathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
-
-        .landing-mote {
-          position: absolute; top: 0; border-radius: 9999px;
-          background: rgb(var(--landing-light) / 0.75);
-          box-shadow: 0 0 6px rgb(var(--landing-light) / 0.5);
-          opacity: 0;
-          animation: landingMote linear infinite;
-        }
-        [data-landing-theme='light'] .landing-mote { background: rgb(var(--c-fg) / 0.5); box-shadow: none; }
-        @keyframes landingMote {
-          0% { transform: translate3d(0, -4vh, 0); opacity: 0; }
-          12% { opacity: 0.45; }
-          70% { opacity: 0.3; }
-          100% { transform: translate3d(var(--drift), 96vh, 0); opacity: 0; }
-        }
-
         /* A section lit as it comes into view. */
         .lit-diamond { border: 1px solid rgb(var(--c-fg) / 0.5); transition: background-color 0.9s ease 0.3s, box-shadow 0.9s ease 0.3s, border-color 0.9s ease 0.3s; }
         .lit-rule { background: linear-gradient(90deg, rgb(var(--c-fg) / 0.4), transparent); transform: scaleX(0); transform-origin: left; transition: transform 1.3s cubic-bezier(0.22, 1, 0.36, 1) 0.2s; }
@@ -948,18 +900,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .clip-timeline::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
         .clip-timeline:focus-visible { outline: 1px solid #fff; outline-offset: 4px; }
 
-        /* The creator, in the corner all the way down (CreatorSignature): on a
-           glass of its own, bare on the first screen given room. */
-        .creator-signature { gap: 0.75rem; padding: 0.35rem 0.9rem 0.35rem 0.35rem; background: rgb(var(--c-ground) / 0.8); border: 1px solid rgb(var(--c-line) / 0.28); backdrop-filter: blur(10px); transition: background-color 0.4s ease, border-color 0.4s ease; }
-        .creator-signature:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 3px; }
-        @media (min-width: 640px) and (min-height: 700px) {
-          .creator-signature[data-bare] { background: transparent; border-color: transparent; backdrop-filter: none; }
-        }
-
         @media (prefers-reduced-motion: reduce) {
-          .creator-signature { transition: none; }
-          .landing-skylight { animation: none; }
-          .landing-dust { display: none; }
           [data-reveal] { opacity: 1; transform: none; transition: none; }
           .lit-rule { transform: scaleX(1); transition: none; }
           .headline-word { transform: none; transition: none; }

@@ -137,7 +137,6 @@
    * that display text is held to; at this size the word is around 120px, well
    * past where that threshold applies. */
   --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
-  --welcome-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 
   --nier-bg: #cbcbcb;
   --nier-bg-dark: #b5b5b5;
@@ -175,8 +174,6 @@
      temperature: near-black through to a mid grey, 16:1 and 6.9:1, so it is a
      black title with a sheen across it rather than a coloured one. */
   --metal-title: linear-gradient(100deg, #1A1714 0%, #55504A 100%);
-  /* Flat ink. Two identical stops, so the component keeps one code path. */
-  --welcome-title: linear-gradient(100deg, #161412 0%, #161412 100%);
 }
 
 [data-landing-theme='dark'] {
@@ -196,7 +193,6 @@
   --c-danger: 255 97 97;
   --c-shadow: 0 0 0;
   --metal-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
-  --welcome-title: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%);
 }
 
 /* The individual `scale`, not transform: a light from a shape or border is
@@ -1021,14 +1017,10 @@ input[type='color']::-moz-color-swatch { border: none; }
    holding rgb(var(--x)) with its own parentheses does not survive the
    scanner, and a colour that silently fails to compile is worse than one that
    is merely wrong. */
-.byline { color: rgb(var(--c-orange)); }
 .byline-mark {
   background-color: rgb(var(--c-orange));
   box-shadow: 0 0 10px rgb(var(--c-orange) / 0.5);
 }
-.byline-rule { background-image: linear-gradient(to left, rgb(var(--c-orange) / 0.85), transparent); }
-.byline-link { transition: color 200ms ease; }
-.group:hover .byline-link { color: rgb(var(--c-orange)); }
 
 /* The Support card, which stands beside Donate and should look like it belongs
    to it. Orange runs through the edge, the corner marks and the glow rather
@@ -1537,4 +1529,60 @@ input[type='color']::-moz-color-swatch { border: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .trace-ticker-track { animation: none; }
+}
+
+/* The hall's light and dust (components/Atmosphere), and the creator's corner
+   signature (landing/CreatorSignature): the landing page's, and the welcome
+   screen's too. */
+/* The one light. Warm on the dark hall; on paper, a bloom of white
+   with the edges of the page a shade darker. */
+[data-landing-theme] { --landing-light: 255 236 205; }
+.landing-skylight {
+  background:
+    radial-gradient(ellipse 55% 60% at 50% -12%, rgb(var(--landing-light) / 0.11), transparent 70%),
+    radial-gradient(ellipse 30% 40% at 50% -6%, rgb(var(--landing-light) / 0.08), transparent 70%);
+  animation: landingBreathe 12s ease-in-out infinite;
+}
+[data-landing-theme='light'] .landing-skylight {
+  background:
+    radial-gradient(ellipse 60% 65% at 50% -10%, rgb(255 255 255 / 0.85), transparent 72%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgb(var(--c-fg) / 0.06));
+}
+@keyframes landingBreathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+.landing-mote {
+  position: absolute; top: 0; border-radius: 9999px;
+  background: rgb(var(--landing-light) / 0.75);
+  box-shadow: 0 0 6px rgb(var(--landing-light) / 0.5);
+  opacity: 0;
+  animation: landingMote linear infinite;
+}
+[data-landing-theme='light'] .landing-mote { background: rgb(var(--c-fg) / 0.5); box-shadow: none; }
+@keyframes landingMote {
+  0% { transform: translate3d(0, -4vh, 0); opacity: 0; }
+  12% { opacity: 0.45; }
+  70% { opacity: 0.3; }
+  100% { transform: translate3d(var(--drift), 96vh, 0); opacity: 0; }
+}
+
+/* The creator, in the corner all the way down (CreatorSignature): on a
+   glass of its own, bare on the first screen given room. */
+.creator-signature { gap: 0.75rem; padding: 0.35rem 0.9rem 0.35rem 0.35rem; background: rgb(var(--c-ground) / 0.8); border: 1px solid rgb(var(--c-line) / 0.28); backdrop-filter: blur(10px); transition: background-color 0.4s ease, border-color 0.4s ease; }
+.creator-signature:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 3px; }
+@media (min-width: 640px) and (min-height: 700px) {
+  .creator-signature[data-bare] { background: transparent; border-color: transparent; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .creator-signature { transition: none; }
+  .landing-skylight { animation: none; }
+  .landing-dust { display: none; }
+}
+
+/* A portal drawn smaller than the hall's (the welcome screen): its light faded
+   out before the canvas's top and sides instead of stopping at them. */
+.portal-soft-edge {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 16%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 16%);
+  mask-composite: intersect;
 }

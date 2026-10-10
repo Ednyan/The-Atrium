@@ -26,6 +26,16 @@ import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 
+// An atrium in the browser's lists, the same in each: its name and what's
+// known of it, and what can be done with it -- beside it where there's room,
+// under it, wrapping, on a phone.
+const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors'
+const ROW_LAYOUT = 'flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start'
+const ROW_META = 'flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase'
+const ROW_ACTIONS = 'flex flex-wrap gap-2 sm:shrink-0'
+const ROW_BUTTON = 'px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
+const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors'
+
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
   playerCount?: number
@@ -790,8 +800,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
 
         {/* Header */}
-        <div className="p-6 border-b border-nier-border/20">
-          <div className="flex justify-between items-center">
+        <div className="p-4 sm:p-6 border-b border-nier-border/20">
+          <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-3">
             <div>
               {/* Was eighteen pixels of the same extralight uppercase as the
                   labels under it, which made the screen one continuous
@@ -799,13 +809,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   could only be read. */}
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
-                <h2 className="text-2xl text-nier-strong tracking-[0.08em] uppercase font-normal leading-none">
+                <h2 className="text-xl sm:text-2xl text-nier-strong tracking-[0.08em] uppercase font-normal leading-none">
                   {t('browser.title')}
                 </h2>
               </div>
               <p className="text-nier-bg/70 text-xs tracking-[0.18em] uppercase ml-5 mt-1.5">{t('browser.selectDestination')}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* First in the row, before the window controls: those are things
                   you do to the browser, and this is not one of them. */}
               <ThemeToggle />
@@ -823,7 +833,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
               >
                 <span className={loading ? 'animate-spin' : ''}>↻</span>
-                {t('browser.refresh')}
+                <span className="hidden sm:inline">{t('browser.refresh')}</span>
               </button>
               <button
                 onClick={onClose}
@@ -958,9 +968,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </div>
               <div className="grid gap-3">
                 {userLobbies.map(lobby => (
-                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors group">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
+                  <div key={lobby.id} className={`${ROW} group`}>
+                    <div className={ROW_LAYOUT}>
+                      <div className="flex-1 min-w-0">
                         {editingLobbyId === lobby.id ? (
                           <div className="flex items-center gap-2">
                             <input
@@ -1003,36 +1013,36 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                                 setEditingLobbyId(lobby.id)
                                 setEditingLobbyName(lobby.name)
                               }}
-                              className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                               title={t('browser.rename')}
                             >
                               ✎
                             </button>
                           </div>
                         )}
-                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
+                        <div className={ROW_META}>
                           <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
                           <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
                           {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className={ROW_ACTIONS}>
                         <button
                           onClick={() => onJoinLobby(lobby.id)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
+                          className={ROW_ENTER}
                         >
                           {t('browser.enter')}
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className={ROW_BUTTON}
                           title={t('browser.copyIdTitle')}
                         >
                           {t('browser.copyId')}
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className={ROW_BUTTON}
                           title={t('browser.manageTitle')}
                         >
                           {t('browser.manage')}
@@ -1065,34 +1075,34 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </div>
               <div className="grid gap-3">
                 {adminLobbies.map(lobby => (
-                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors group">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
+                  <div key={lobby.id} className={`${ROW} group`}>
+                    <div className={ROW_LAYOUT}>
+                      <div className="flex-1 min-w-0">
                         <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
-                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
+                        <div className={ROW_META}>
                           <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
                           <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
                           {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
                           <span className="text-nier-bg/70">◦ {t('browser.admin')}</span>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className={ROW_ACTIONS}>
                         <button
                           onClick={() => handleJoinClick(lobby)}
-                          className="px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors"
+                          className={ROW_ENTER}
                         >
                           {t('browser.enter')}
                         </button>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className={ROW_BUTTON}
                           title={t('browser.copyIdTitle')}
                         >
                           {t('browser.copyId')}
                         </button>
                         <button
                           onClick={() => setManagingLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className={ROW_BUTTON}
                           title={t('browser.manageTitle')}
                         >
                           {t('browser.manage')}
@@ -1161,7 +1171,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
 
           {/* Public Atriums */}
           <section>
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
               <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.availableAtriums')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
@@ -1202,24 +1212,24 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 </div>
               ) : (
                 lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).map(lobby => (
-                  <div key={lobby.id} className="bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
+                  <div key={lobby.id} className={ROW}>
+                    <div className={ROW_LAYOUT}>
+                      <div className="flex-1 min-w-0">
                         <h4 className="text-nier-bg text-sm tracking-wide">
                           {lobby.name}
                           {!lobby.isPublic && <span className="ml-2 text-nier-bg/70 text-xs">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
                         </h4>
-                        <div className="flex gap-4 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase">
+                        <div className={ROW_META}>
                           <span>{t('browser.atriumBy')} ◇ {lobby.ownerUsername}</span>
                           <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
                           {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
                           {!lobby.isPublic && <span>{isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.whitelisted')}`}</span>}
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className={ROW_ACTIONS}>
                         <button
                           onClick={() => copyLobbyId(lobby.id)}
-                          className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                          className={ROW_BUTTON}
                           title={t('browser.copyIdTitle')}
                         >
                           {t('browser.copyId')}

@@ -394,7 +394,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const [zoom, setZoom] = useState(1)
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [legendOpen, setLegendOpen] = useState(true)
+  const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 640)
 
   // The window the wall is showing, and whether the control for it is worth
   // offering at all -- a view without the window columns cannot answer.
@@ -887,8 +887,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </div>
       </div>
 
-      {/* Search, top centre, above the wall it filters */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(360px,70vw)]">
+      {/* Search, top centre, above the wall it filters -- on a phone, across
+          the width, under the title and the controls. */}
+      <div className="absolute top-[6.25rem] inset-x-4 sm:inset-x-auto sm:top-6 sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(360px,70vw)]">
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
             ⌕
@@ -922,7 +923,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           being looked at is not the wall anyone else sees. */}
       {seeded.length > 0 && (
         <div
-          className="absolute top-[4.75rem] left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
+          className="absolute top-[9rem] sm:top-[4.75rem] left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
           style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
         >
           <span className="text-xs tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
@@ -932,12 +933,12 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       )}
 
       {/* Title, top left, out of the way of the space */}
-      <div className="absolute top-6 left-6 pointer-events-none">
+      <div className="absolute top-4 left-4 sm:top-6 sm:left-6 pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
           <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">{t('wall.title')}</h1>
         </div>
-        <p className="text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
+        <p className="hidden sm:block text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
           {t('wall.intro')}
         </p>
       </div>
@@ -947,7 +948,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           at the foot of the page: it explains that control, and a caption
           six hundred pixels away from the thing it captions is a caption
           nobody connects to anything. */}
-      <div className="absolute top-6 right-6 flex flex-col items-end gap-1.5">
+      <div className="absolute top-12 right-4 sm:top-6 sm:right-6 flex flex-col items-end gap-1.5">
         <div className="flex items-center gap-2">
           {/* Shaped like the donation ranks in the other corner: a diamond that
               turns, and a list that appears under it. One idiom for "this panel
@@ -1020,7 +1021,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
           Collapsible because it is reference, not commentary: useful once,
           then in the way of the space it sits over. */}
-      <div className="absolute bottom-6 left-6">
+      <div className="absolute bottom-6 left-4 sm:left-6">
         <button
           type="button"
           onClick={() => setLegendOpen(open => !open)}
@@ -1074,7 +1075,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
       {/* The month, bottom centre, where an atrium shows its usage */}
       {month && month.goalCents > 0 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[min(420px,60vw)] pointer-events-none">
+        <div className="absolute bottom-[5.25rem] inset-x-4 sm:inset-x-auto sm:bottom-6 sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(420px,60vw)] pointer-events-none">
           <div className="flex items-baseline justify-between mb-1">
             <span className="text-xs text-nier-bg/70 tracking-[0.2em] uppercase">{t('wall.thisMonth')}</span>
             {/* Was "12 / 50 €". The wall already names every contributor; it
@@ -1111,7 +1112,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         <button
           type="button"
           onClick={() => setShowNameApproval(true)}
-          className="absolute bottom-6 right-6 px-7 py-4 text-[11px] tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.03] active:scale-[0.99]"
+          className="absolute bottom-6 right-4 sm:right-6 px-7 py-4 text-[11px] tracking-[0.2em] uppercase font-medium transition-transform hover:scale-[1.03] active:scale-[0.99]"
           style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
         >
           ◇ {t('wall.names')}
@@ -1124,7 +1125,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         // Its own padding classes and the ones passed in both landed in the
         // same class list, and which won was decided by the stylesheet's order
         // rather than by intent -- which is what threw it out of line.
-        <div className="absolute bottom-6 right-6">
+        <div className="absolute bottom-6 right-4 sm:right-6">
           <DonateButton onClick={onContribute} className="px-9 py-4 text-xs tracking-[0.22em]" />
         </div>
       )}
