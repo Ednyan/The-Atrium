@@ -334,6 +334,7 @@ function frame(now) {
     pos = Math.min(last, pos + (now - prev) / perStage())
     if (pos >= last) { playing = false; playLabel() }
     slider.value = pos
+    slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%')
   }
   if (!introDone) opening(now)
   // Edits land as their stage starts arriving, with the new code beside them.
@@ -475,7 +476,7 @@ addEventListener('keydown', e => {
   if (!introDone) return
   if (e.code === 'Space') { e.preventDefault(); toggle() }
 })
-slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel() }
+slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel(); slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%') }
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault()

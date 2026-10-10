@@ -24,8 +24,21 @@
 @view-transition { navigation: auto; }
 ::view-transition-old(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-off-right; }
 ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-left; }
-:root[data-slide='forward']::view-transition-old(root) { animation-name: slide-off-left; }
-:root[data-slide='forward']::view-transition-new(root) { animation-name: slide-in-right; }
+/* Into the code history and out (lib/codeHistory): the landing page swells
+   toward the button and goes as the code history grows out of it, and back.
+   Scale and opacity on the two snapshots, about the button's middle, and
+   nothing else: the compositor's work alone. Blended normally -- the default,
+   adding the two, would flare where they overlap. */
+:root[data-slide]::view-transition-old(root),
+:root[data-slide]::view-transition-new(root) { transform-origin: var(--dive-x, 50%) var(--dive-y, 50%); mix-blend-mode: normal; }
+:root[data-slide='forward']::view-transition-old(root) { animation: 760ms cubic-bezier(.7, 0, .84, 0) both dive-past; }
+:root[data-slide='forward']::view-transition-new(root) { animation: 760ms cubic-bezier(.16, 1, .3, 1) both dive-open; }
+:root[data-slide='back']::view-transition-old(root) { animation: 600ms cubic-bezier(.7, 0, .84, 0) both dive-close; }
+:root[data-slide='back']::view-transition-new(root) { animation: 600ms cubic-bezier(.16, 1, .3, 1) both dive-return; }
+@keyframes dive-past { to { transform: scale(2.6); opacity: 0; } }
+@keyframes dive-open { from { transform: scale(0.08); opacity: 0; } 30% { opacity: 1; } }
+@keyframes dive-close { to { transform: scale(0.08); opacity: 0; } }
+@keyframes dive-return { from { transform: scale(2.6); opacity: 0; } }
 @keyframes slide-off-right { to { transform: translateX(100%); } }
 @keyframes slide-in-left { from { transform: translateX(-100%); } }
 @keyframes slide-off-left { to { transform: translateX(-100%); } }
@@ -1586,3 +1599,33 @@ input[type='color']::-moz-color-swatch { border: none; }
   mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent), linear-gradient(to bottom, transparent, #000 16%);
   mask-composite: intersect;
 }
+
+/* A diamond lit by the landing page's light: a chapter's marker, a title's. */
+.landing-lit {
+  background-color: rgb(var(--landing-light));
+  border-color: rgb(var(--landing-light));
+  box-shadow: 0 0 14px rgb(var(--landing-light) / 0.7);
+}
+[data-landing-theme='light'] .landing-lit { background-color: rgb(var(--c-strong)); border-color: rgb(var(--c-strong)); box-shadow: none; }
+
+/* The landing page's light as a fill: a gauge, a bar (the monthly goal on the
+   landing page and the contributors wall). */
+.landing-light-fill { background: rgb(var(--landing-light)); box-shadow: 0 0 10px rgb(var(--landing-light) / 0.6); }
+[data-landing-theme='light'] .landing-light-fill { background: rgb(var(--c-strong)); box-shadow: none; }
+
+/* The contributors wall in the landing page's glass: each trace a pane with a
+   sheen across it (its rank's border and glow over that, set where it's
+   drawn), and the ranks' legend a pane of the same. */
+.wall-trace {
+  background:
+    linear-gradient(150deg, rgb(var(--c-fg) / 0.1), rgb(var(--c-fg) / 0.03) 45%, rgb(var(--c-fg) / 0.06)),
+    rgb(var(--c-ground) / 0.88);
+}
+.wall-pane {
+  border: 1px solid rgb(var(--c-fg) / 0.22);
+  background: linear-gradient(150deg, rgb(var(--c-fg) / 0.1), rgb(var(--c-fg) / 0.03) 45%, rgb(var(--c-fg) / 0.06)), rgb(var(--c-ground) / 0.82);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(8px);
+}
+[data-landing-theme='light'] .wall-pane { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7); }
+

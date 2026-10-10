@@ -12,10 +12,14 @@
 // with depth, as the scene's material does.
 //
 // Still, for anyone who asked for less motion; paused while out of view; the
-// looping video (PortalLoop) where WebGL isn't there.
+// still picture of it where WebGL isn't there -- or is there only drawn by the
+// processor, with no graphics card behind it. There, setting it up (the
+// context, the shaders) took seconds of a slow phone's main thread, and every
+// frame after that more of it: PageSpeed's phone, which has no graphics card,
+// measured fifteen seconds of the page blocked.
 
 import { useEffect, useRef, useState } from 'react'
-import PortalLoop from './PortalLoop'
+import { webglKind } from '../lib/gpuProbe'
 
 // ---- The scene, in Blender's space (Z up) ---------------------------------------
 
@@ -63,6 +67,14 @@ const apply = (m: Mat4, [x, y, z]: Vec3): Vec3 => [
   m[1] * x + m[5] * y + m[9] * z + m[13],
   m[2] * x + m[6] * y + m[10] * z + m[14],
 ]
+
+// WebGL drawn by the processor, with no graphics card behind it (SwiftShader,
+// Mesa's llvmpipe, Windows' Basic Render Driver).
+function drawnBySoftware(gl: WebGLRenderingContext): boolean {
+  const info = gl.getExtension('WEBGL_debug_renderer_info')
+  const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
+  return /swiftshader|llvmpipe|softpipe|software|basic render driver/i.test(renderer)
+}
 
 // ---- The wormhole's geometry -------------------------------------------------------
 
@@ -202,15 +214,28 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
   const inkRef = useRef(ink)
   inkRef.current = ink
   const [failed, setFailed] = useState(false)
+  // Set up only once a worker has said a graphics card draws WebGL here
+  // (lib/gpuProbe) -- or couldn't say, when this finds out itself, below.
+  const [ready, setReady] = useState(false)
   const redrawRef = useRef<() => void>(() => {})
 
   useEffect(() => { redrawRef.current() }, [ink])
 
   useEffect(() => {
+    let live = true
+    void webglKind().then(kind => { if (live) { if (kind === 'software') setFailed(true); else setReady(true) } })
+    return () => { live = false }
+  }, [])
+
+  useEffect(() => {
+    if (!ready) return
     const canvas = canvasRef.current
     if (!canvas) return
-    const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true })
+    const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true, failIfMajorPerformanceCaveat: true })
     if (!gl) { setFailed(true); return }
+    // Asked outright too: not every browser counts a software renderer as the
+    // caveat above. Before any shader is compiled, which is where the seconds go.
+    if (drawnBySoftware(gl)) { gl.getExtension('WEBGL_lose_context')?.loseContext(); setFailed(true); return }
     let alive = true
     let frame = 0
     const still = reducedMotion()
@@ -435,8 +460,12 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
       canvas.removeEventListener('webglcontextlost', onLost)
       redrawRef.current = () => {}
     }
-  }, [])
+  }, [ready])
 
-  if (failed) return <PortalLoop className={className} playbackRate={0.6} ink={ink} />
+  // A picture of it, where it can't be drawn: its own still frame, taken from
+  // this scene (public/portal/still*.webp), so it looks as it does live and
+  // costs nothing -- an animation by the processor is the very thing a device
+  // without a graphics card can least afford.
+  if (failed) return <img src={ink ? '/portal/still-ink.webp' : '/portal/still.webp'} alt="" aria-hidden="true" decoding="async" className={`block object-contain pointer-events-none select-none ${className}`} />
   return <canvas ref={canvasRef} aria-hidden="true" className={`block pointer-events-none select-none ${className}`} />
 }

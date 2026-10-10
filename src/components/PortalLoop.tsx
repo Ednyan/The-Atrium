@@ -41,10 +41,11 @@ interface PortalLoopProps {
 
 // Rec. 709. The same coefficients the SVG filter used, for the same reason:
 // green carries most of what the eye reads as brightness, so a luma-weighted
-// sum keeps the line-art's own falloff instead of flattening it.
-const LUMA_R = 0.2126
-const LUMA_G = 0.7152
-const LUMA_B = 0.0722
+// sum keeps the line-art's own falloff instead of flattening it. In 256ths, so
+// each pixel is integer arithmetic and a shift.
+const LUMA_R = 54
+const LUMA_G = 183
+const LUMA_B = 19
 
 // Not pure black for the ink variant: the page it lands on is warm paper, and
 // #000 on it reads as a hole.
@@ -69,12 +70,20 @@ export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 
 
     let frame = 0
     let context: CanvasRenderingContext2D | null = null
+    let drawnAt = -1
+    // Redrawn when the video has a new frame -- at its own rate (24 a second,
+    // at 0.6x), not the screen's -- and only then: where the browser says when
+    // (requestVideoFrameCallback), else each animation frame whose time moved.
+    const byVideo = typeof video.requestVideoFrameCallback === 'function'
+    const next = () => { frame = byVideo ? video.requestVideoFrameCallback(draw) : requestAnimationFrame(draw) }
 
     const draw = () => {
-      frame = requestAnimationFrame(draw)
+      next()
 
       const canvas = canvasRef.current
       if (!canvas || video.readyState < 2 || !video.videoWidth) return
+      if (!byVideo && video.currentTime === drawnAt) return
+      drawnAt = video.currentTime
 
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth
@@ -94,7 +103,7 @@ export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 
       const asInk = inkRef.current
 
       for (let i = 0; i < pixels.length; i += 4) {
-        const luma = LUMA_R * pixels[i] + LUMA_G * pixels[i + 1] + LUMA_B * pixels[i + 2]
+        const luma = (LUMA_R * pixels[i] + LUMA_G * pixels[i + 1] + LUMA_B * pixels[i + 2]) >> 8
         if (asInk) {
           // The drawing keeps the alpha it derives from its own luminance and
           // comes out as ink instead of light.
@@ -119,10 +128,18 @@ export default function PortalLoop({ className = 'h-32 md:h-40', playbackRate = 
 
     video.addEventListener('loadeddata', onReady)
     if (video.readyState >= 2) onReady()
-    frame = requestAnimationFrame(draw)
+    next()
+    // Paused while off the screen: no new frames, so nothing redrawn either.
+    const watch = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) video.pause()
+      else if (video.readyState >= 2) video.play().catch(() => {})
+    })
+    watch.observe(video.parentElement ?? video)
 
     return () => {
-      cancelAnimationFrame(frame)
+      watch.disconnect()
+      if (byVideo) video.cancelVideoFrameCallback(frame)
+      else cancelAnimationFrame(frame)
       video.removeEventListener('loadeddata', onReady)
     }
   }, [playbackRate])

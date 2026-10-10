@@ -86,10 +86,14 @@ export default function TraceTitle({ className = '' }: { className?: string }) {
       setPieces(out)
     }
     let live = true
+    // Measured again on a resize only once the traces are out: before, there
+    // is nothing drawn from the measurements, and measuring is a layout.
+    let started = false
     let timers: number[] = []
     // Measured in the font it'll be seen in -- but not waited on for long.
     void Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 800))]).then(() => new Promise(r => setTimeout(r, PAUSE))).then(() => {
       if (!live) return
+      started = true
       measure()
       setPhase('arrive')
       timers = [
@@ -97,7 +101,7 @@ export default function TraceTitle({ className = '' }: { className?: string }) {
         window.setTimeout(() => setPhase('done'), DONE_BY),
       ]
     })
-    const observer = new ResizeObserver(() => { if (live) measure() })
+    const observer = new ResizeObserver(() => { if (live && started) measure() })
     observer.observe(root)
     return () => { live = false; observer.disconnect(); timers.forEach(clearTimeout) }
     // eslint-disable-next-line react-hooks/exhaustive-deps

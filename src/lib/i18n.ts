@@ -93,10 +93,14 @@ let current: LanguageCode | null = null
  * localeCompare rather than a plain `<`, so the scripts land in a sensible
  * sequence -- Latin, then Cyrillic, then CJK -- instead of by code point.
  */
+let available: Language[] | null = null
 export function availableLanguages(): Language[] {
-  return LANGUAGES
+  // Worked out once: the list doesn't change while the app runs, and sorting
+  // it by locale on every render of everything that translates added up.
+  available ??= LANGUAGES
     .filter(language => language.code === 'en' || loaders[language.code])
     .sort((a, b) => a.endonym.localeCompare(b.endonym))
+  return available
 }
 
 function isAvailable(code: string): code is LanguageCode {

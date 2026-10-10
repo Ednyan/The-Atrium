@@ -742,12 +742,12 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .lit-rule { background: linear-gradient(90deg, rgb(var(--c-fg) / 0.4), transparent); transform: scaleX(0); transform-origin: left; transition: transform 1.3s cubic-bezier(0.22, 1, 0.36, 1) 0.2s; }
         .lit-rule-left { background: linear-gradient(270deg, rgb(var(--c-fg) / 0.4), transparent); transform-origin: right; }
         .is-revealed .lit-rule { transform: scaleX(1); }
-        .is-revealed .lit-diamond, .landing-lit {
+        .is-revealed .lit-diamond {
           background-color: rgb(var(--landing-light));
           border-color: rgb(var(--landing-light));
           box-shadow: 0 0 14px rgb(var(--landing-light) / 0.7);
         }
-        [data-landing-theme='light'] .is-revealed .lit-diamond, [data-landing-theme='light'] .landing-lit {
+        [data-landing-theme='light'] .is-revealed .lit-diamond {
           background-color: rgb(var(--c-strong)); border-color: rgb(var(--c-strong)); box-shadow: none;
         }
         [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -881,8 +881,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           border: 1px solid rgb(var(--c-fg) / 0.35); border-bottom-width: 2px;
           font-size: 0.75rem; letter-spacing: 0.08em; color: rgb(var(--c-strong)); white-space: nowrap;
         }
-        .landing-light-fill { background: rgb(var(--landing-light)); box-shadow: 0 0 10px rgb(var(--landing-light) / 0.6); }
-        [data-landing-theme='light'] .landing-light-fill { background: rgb(var(--c-strong)); box-shadow: none; }
         .landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
         [data-landing-theme='light'] .landing-orb { background: rgb(var(--c-strong)); box-shadow: 0 0 30px 8px rgb(var(--c-fg) / 0.12); }
 

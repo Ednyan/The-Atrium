@@ -8,10 +8,10 @@
 <meta name="description" content="How The Digital Atrium was built: every file of its code, day by day, drawn as a graph you can pan, zoom and play through.">
 <link rel="canonical" href="https://digitalatrium.org/code-history/">
 <style>
-  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ff8a3d; --pregit: #8b7cf0;
+  :root { --bg: #07070b; --fg: #dcdce4; --dim: #8b8b98; --line: #262631; --accent: #ffeccd; --pregit: #8b7cf0;
           --panel: #13131a; --strong: #fff; --metal: linear-gradient(100deg, #FFFFFF 0%, #A9A9A9 100%); --lead: rgb(220 220 228 / .86); }
   /* Light, as the landing page's is: paper, ink, the metal darkened. */
-  :root[data-theme='light'] { --bg: #f2efe8; --fg: #2e2a25; --dim: #6e685f; --line: #d6d0c4; --pregit: #6b5bd6;
+  :root[data-theme='light'] { --bg: #f2efe8; --fg: #2e2a25; --dim: #6e685f; --line: #d6d0c4; --pregit: #6b5bd6; --accent: #161412;
           --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
@@ -26,7 +26,9 @@
   #top .end { margin-left: auto; display: flex; gap: 8px; }
   #title { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; pointer-events: none;
            font-size: 11px; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap; color: var(--strong); }
-  #title i { width: 7px; height: 7px; background: var(--accent); transform: rotate(45deg); }
+  /* Lit, as the landing page's chapter marks are. */
+  #title i { width: 7px; height: 7px; background: var(--accent); transform: rotate(45deg); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
+  :root[data-theme='light'] #title i { box-shadow: none; }
   #title span + span { color: var(--dim); }
   .chrome { height: 34px; display: inline-flex; align-items: center; gap: 10px;
             background: var(--panel); color: var(--fg); border: 1px solid var(--line); font: inherit; text-decoration: none; cursor: pointer;
@@ -61,7 +63,10 @@
   /* What's what, and how to move about: two panels down the right, the
      legend's marks drawn as the graph draws them, in its colours. */
   #side { position: fixed; right: 18px; top: 74px; z-index: 2; width: 264px; display: flex; flex-direction: column; gap: 12px; }
-  .panel { padding: 12px 14px 13px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line);
+  .panel { padding: 12px 14px 13px; border: 1px solid var(--line);
+           background: linear-gradient(150deg, color-mix(in srgb, var(--fg) 9%, transparent), color-mix(in srgb, var(--fg) 2%, transparent) 45%, color-mix(in srgb, var(--fg) 5%, transparent)),
+                       color-mix(in srgb, var(--panel) 86%, transparent);
+           box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent); backdrop-filter: blur(6px);
            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%); }
   .panel h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font: inherit; font-size: 10.5px; letter-spacing: .28em;
               text-transform: uppercase; color: var(--dim); }
@@ -77,12 +82,19 @@
   @media (max-width: 760px), (max-height: 560px) { #side { display: none; } }
   @media (min-width: 761px) { #hud { max-width: min(640px, calc(100vw - 340px)); } }
   #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
-  #bar button, #bar select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 6px 12px; font: inherit; cursor: pointer; }
-  #bar button:hover, #bar select:hover { border-color: var(--accent); }
+  #play { min-width: 84px; justify-content: center; padding: 0 14px; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; }
+  #speed { padding: 0 10px; appearance: none; -webkit-appearance: none; text-align: center; }
   #track { flex: 1; position: relative; }
   #era { position: absolute; left: 0; top: -14px; height: 3px; background: var(--pregit); }
   #eraLabel { position: absolute; left: 0; top: -30px; color: var(--pregit); font-size: 11px; white-space: nowrap; }
-  #slider { width: 100%; accent-color: var(--accent); }
+  #slider { --at: 0%; width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  #slider::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(to right, var(--accent) var(--at), color-mix(in srgb, var(--fg) 25%, transparent) var(--at)); }
+  #slider::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: -4.5px; border-radius: 50%; background: var(--accent);
+                                  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent); }
+  #slider::-moz-range-track { height: 2px; background: color-mix(in srgb, var(--fg) 25%, transparent); }
+  #slider::-moz-range-progress { height: 2px; background: var(--accent); }
+  #slider::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--accent); }
+  #slider:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
   #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
   #hud, #side, #bar { transition: opacity 1.2s ease; }
@@ -135,9 +147,9 @@
 </div>
 <div id="tip"></div>
 <div id="bar">
-  <button id="play">Pause</button>
+  <button id="play" class="chrome" type="button">Pause</button>
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
-  <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
+  <select id="speed" class="chrome" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
 <script>
 const D = /*DATA*/null
@@ -475,6 +487,7 @@ function frame(now) {
     pos = Math.min(last, pos + (now - prev) / perStage())
     if (pos >= last) { playing = false; playLabel() }
     slider.value = pos
+    slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%')
   }
   if (!introDone) opening(now)
   // Edits land as their stage starts arriving, with the new code beside them.
@@ -616,7 +629,7 @@ addEventListener('keydown', e => {
   if (!introDone) return
   if (e.code === 'Space') { e.preventDefault(); toggle() }
 })
-slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel() }
+slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel(); slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%') }
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault()

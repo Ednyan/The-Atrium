@@ -127,15 +127,21 @@ function removeFrame() {
   frame = null
 }
 
-// The two pages side by side, sliding one way or the other (index.css). The
-// snapshots are what move, so the landing page's fixed parts go with it, and
-// the motion is the compositor's alone.
+// Into the button and out of it (index.css): the landing page swells toward
+// the code history's button and goes, as the code history grows out of it --
+// and back the other way. The snapshots are what move, scaled and faded about
+// the button's middle, so the landing page's fixed parts go with it and the
+// motion is the compositor's alone.
 function slide(direction: 'forward' | 'back', update: () => void): Promise<void> {
   if (!document.startViewTransition) {
     update()
     return Promise.resolve()
   }
   const root = document.documentElement
+  // Laid out even while the landing page is hidden, so found on the way back too.
+  const button = document.querySelector('.code-history-button')?.getBoundingClientRect()
+  root.style.setProperty('--dive-x', button?.width ? `${button.left + button.width / 2}px` : '50%')
+  root.style.setProperty('--dive-y', button?.height ? `${button.top + button.height / 2}px` : '50%')
   root.dataset.slide = direction
   return document.startViewTransition(update).finished.finally(() => { delete root.dataset.slide })
 }

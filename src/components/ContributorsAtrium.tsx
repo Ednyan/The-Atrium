@@ -7,6 +7,7 @@ import ThemeToggle from './ThemeToggle'
 import CurrencyToggle from './CurrencyToggle'
 import { useCurrency } from '../lib/currency'
 import HeartRush from './HeartRush'
+import Atmosphere from './Atmosphere'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import { useTranslation } from '../lib/i18n'
 import { contributionCountKey } from '../lib/monthlyGauge'
@@ -745,6 +746,9 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         }}
       />
 
+      {/* The landing page's light from above, and the dust in it. */}
+      <Atmosphere />
+
       {/* The space itself */}
       <div
         className={dragging ? 'absolute inset-0 cursor-grabbing' : 'absolute inset-0 cursor-grab'}
@@ -763,7 +767,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
             return (
               <div
                 key={`${person.isSeed ? 's' : person.isBeyondWall ? 'b' : 'r'}|${person.displayName}`}
-                className="absolute px-4 py-3"
+                className="wall-trace absolute px-4 py-3"
                 style={{
                   left: x,
                   top: y,
@@ -785,8 +789,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   border: '1.5px solid',
                   borderColor: draw.borderColor,
                   borderImage: draw.borderImage,
-                  boxShadow: `0 0 24px ${draw.glow}`,
-                  background: 'rgb(var(--c-surface) / 0.86)',
+                  boxShadow: `inset 0 1px 0 rgb(255 255 255 / ${isLight ? 0.7 : 0.1}), 0 0 24px ${draw.glow}`,
                   // The monthly animation lives on the border now (below),
                   // not on the box's opacity.
                 }}
@@ -887,43 +890,125 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </div>
       </div>
 
-      {/* Search, top centre, above the wall it filters -- on a phone, across
-          the width, under the title and the controls. */}
-      <div className="absolute top-[6.25rem] inset-x-4 sm:inset-x-auto sm:top-6 sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(360px,70vw)]">
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
-            ⌕
-          </span>
-          <input
-            type="text"
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            onKeyDown={event => {
-              if (event.key === 'Enter') { event.preventDefault(); nextMatch() }
-              if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
-            }}
-            placeholder={t('wall.search')}
-            className="w-full pl-8 pr-4 py-2 bg-nier-black/80 border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
-          />
-        </div>
+      {/* One bar across the top, as the landing page's: the mark and the
+          name at the left, the search in the middle, the controls at the right.
+          On a phone it wraps -- the controls under the name, the search under
+          them. The figures' currency note hangs under it at the right. */}
+      <div className="absolute top-0 inset-x-0 z-30 backdrop-blur-md border-b border-nier-border/25" style={{ background: 'rgb(var(--c-ground) / 0.82)' }}>
+        <div className="px-4 sm:px-6 py-2.5 sm:py-0 sm:h-14 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          {/* Its own width kept, so on a phone the controls wrap under it rather than over it. */}
+          <div className="flex items-center gap-3 shrink-0 pointer-events-none">
+            <span
+              aria-hidden="true"
+              className="w-6 h-6 shrink-0 bg-nier-strong opacity-90"
+              style={{ WebkitMaskImage: 'url(/atrium-mark.png)', maskImage: 'url(/atrium-mark.png)', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center' }}
+            />
+            <span aria-hidden="true" className="w-1.5 h-1.5 rotate-45 shrink-0 landing-lit" />
+            <h1 className="text-nier-strong text-sm tracking-[0.22em] uppercase font-normal leading-none whitespace-nowrap">{t('wall.title')}</h1>
+          </div>
+          {/* Above the wall it filters: centred in the bar, across it on a phone. */}
+          <div className="relative order-last basis-full sm:order-none sm:basis-auto sm:flex-1 sm:max-w-[360px] sm:mx-auto">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
+                ⌕
+              </span>
+              <input
+                type="text"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') { event.preventDefault(); nextMatch() }
+                  if (event.key === 'Escape') { event.preventDefault(); setQuery('') }
+                }}
+                placeholder={t('wall.search')}
+                className="w-full pl-8 pr-4 py-2 bg-nier-black/80 border border-nier-border/30 text-nier-bg text-xs tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 focus:outline-none transition-colors"
+              />
+            </div>
 
-        {query.trim().length > 0 && (
-          <p className="text-center text-xs tracking-[0.15em] uppercase mt-2 text-nier-bg/70">
-            {matches.length === 0
-              ? 'Nobody here by that name'
-              : matches.length === 1
-                ? 'One match'
-                : `${matchIndex + 1} of ${matches.length} — Enter for the next`}
-            {beyondCount > 0 && ` · ${beyondCount} beyond the wall`}
+            {query.trim().length > 0 && (
+              <p className="text-center text-xs tracking-[0.15em] uppercase mt-2 text-nier-bg/70">
+                {matches.length === 0
+                  ? 'Nobody here by that name'
+                  : matches.length === 1
+                    ? 'One match'
+                    : `${matchIndex + 1} of ${matches.length} — Enter for the next`}
+                {beyondCount > 0 && ` · ${beyondCount} beyond the wall`}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 ml-auto sm:ml-0">
+            {/* Shaped like the donation ranks in the other corner: a diamond that
+                turns, and a list that appears under it. One idiom for "this panel
+                opens", used twice. */}
+            {rangeAvailable && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setRangeOpen(open => !open)}
+                  className="cut-corner flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
+                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+                >
+                  <span
+                    className="inline-block transition-transform duration-200"
+                    style={{ transform: rangeOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
+                  >
+                    ◇
+                  </span>
+                  {t((RANGES.find(entry => entry.id === range)?.labelKey ?? 'wall.rangeAll') as TranslationKey)}
+                </button>
+
+                {rangeOpen && (
+                  <div className="absolute right-0 mt-1 w-full min-w-[9.5rem] border border-nier-border/40 bg-nier-black">
+                    {RANGES.map(entry => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => { setRange(entry.id); setRangeOpen(false) }}
+                        className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
+                          entry.id === range
+                            ? 'text-nier-strong bg-nier-bg/10'
+                            : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
+                        }`}
+                      >
+                        {t(entry.labelKey as TranslationKey)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Beside the theme and language switches, because it is the same kind
+                of preference and this is where this page keeps them. */}
+            <CurrencyToggle />
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={closeWithTransition}
+              className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
+              style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+            >
+              ← {t('common.back')}
+            </button>
+          </div>
+        </div>
+        {converted && (
+          <p className="absolute right-4 sm:right-6 top-full mt-1.5 text-right text-[10px] tracking-[0.12em] text-nier-bg/45 pointer-events-none">
+            {t(rateSource === 'ecb' ? 'currency.rateNote' : 'currency.rateNoteOther')}
           </p>
         )}
       </div>
+
+      {/* What this is, under the bar at the left -- where there's room for it. */}
+      <p className="hidden sm:block absolute top-20 left-6 max-w-xs text-nier-bg/70 text-xs tracking-wide leading-relaxed pointer-events-none">
+        {t('wall.intro')}
+      </p>
 
       {/* Impossible to forget about. The count is the giveaway that the wall
           being looked at is not the wall anyone else sees. */}
       {seeded.length > 0 && (
         <div
-          className="absolute top-[9rem] sm:top-[4.75rem] left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
+          className="absolute top-[9.5rem] sm:top-20 left-1/2 -translate-x-1/2 px-4 py-2 border pointer-events-none"
           style={{ borderColor: 'rgba(255,97,97,0.5)', background: 'rgba(255,97,97,0.08)' }}
         >
           <span className="text-xs tracking-[0.2em] uppercase" style={{ color: '#FF6161' }}>
@@ -931,86 +1016,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           </span>
         </div>
       )}
-
-      {/* Title, top left, out of the way of the space */}
-      <div className="absolute top-4 left-4 sm:top-6 sm:left-6 pointer-events-none">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h1 className="text-nier-strong text-xl tracking-[0.12em] uppercase font-normal leading-none">{t('wall.title')}</h1>
-        </div>
-        <p className="hidden sm:block text-nier-bg/70 text-xs tracking-wide mt-2 max-w-xs leading-relaxed">
-          {t('wall.intro')}
-        </p>
-      </div>
-
-      {/* The buttons, and under them what the figures on this wall are
-          denominated in. It belongs with the currency picker rather than
-          at the foot of the page: it explains that control, and a caption
-          six hundred pixels away from the thing it captions is a caption
-          nobody connects to anything. */}
-      <div className="absolute top-12 right-4 sm:top-6 sm:right-6 flex flex-col items-end gap-1.5">
-        <div className="flex items-center gap-2">
-          {/* Shaped like the donation ranks in the other corner: a diamond that
-              turns, and a list that appears under it. One idiom for "this panel
-              opens", used twice. */}
-          {rangeAvailable && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setRangeOpen(open => !open)}
-                className="cut-corner flex items-center justify-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase transition-colors leading-none"
-                style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-              >
-                <span
-                  className="inline-block transition-transform duration-200"
-                  style={{ transform: rangeOpen ? 'rotate(45deg)' : 'rotate(0deg)' }}
-                >
-                  ◇
-                </span>
-                {t((RANGES.find(entry => entry.id === range)?.labelKey ?? 'wall.rangeAll') as TranslationKey)}
-              </button>
-
-              {rangeOpen && (
-                <div className="absolute right-0 mt-1 w-full min-w-[9.5rem] border border-nier-border/40 bg-nier-black">
-                  {RANGES.map(entry => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      onClick={() => { setRange(entry.id); setRangeOpen(false) }}
-                      className={`block w-full text-left px-4 py-2 text-[11px] tracking-[0.15em] uppercase transition-colors ${
-                        entry.id === range
-                          ? 'text-nier-strong bg-nier-bg/10'
-                          : 'text-nier-bg/70 hover:text-nier-bg hover:bg-nier-bg/5'
-                      }`}
-                    >
-                      {t(entry.labelKey as TranslationKey)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Beside the theme and language switches, because it is the same kind
-              of preference and this is where this page keeps them. */}
-          <CurrencyToggle />
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={closeWithTransition}
-            className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors leading-none"
-            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
-          >
-            ← {t('common.back')}
-          </button>
-        </div>
-
-        {converted && (
-          <p className="self-stretch text-center text-[10px] tracking-[0.12em] text-nier-bg/45 pointer-events-none">
-            {t(rateSource === 'ecb' ? 'currency.rateNote' : 'currency.rateNoteOther')}
-          </p>
-        )}
-      </div>
 
       {/* Bottom left, where an atrium keeps its controls.
 
@@ -1037,7 +1042,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         </button>
 
         {legendOpen && (
-          <div className="mt-2 space-y-1">
+          <div className="wall-pane mt-2 space-y-1 px-3.5 py-3">
             {TIERS.map(tier => (
               <div key={tier.labelKey} className="flex items-center gap-2">
                 <span className="w-3 h-[2px]" style={{ background: lineOf(tier, isLight) }} />
@@ -1086,7 +1091,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
           </div>
           <div className="h-[3px] bg-nier-black border border-nier-border/30 overflow-hidden">
             <div
-              className="h-full bg-nier-bg/80 transition-all duration-700 ease-out"
+              className="h-full landing-light-fill transition-all duration-700 ease-out"
               style={{ width: `${Math.min(100, (month.totalCents / month.goalCents) * 100)}%` }}
             />
           </div>
