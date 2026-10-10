@@ -1,85 +1,62 @@
-// The Creator, as a panel.
+// The Creator, as a panel from the side: his portrait, his story, and the
+// ways to reach him.
 //
-// The desktop app can reach the landing page, but nobody goes looking for a
-// marketing page inside an app they have already installed -- so the one
-// section of it that is actually about a person rather than about the product
-// travels to the welcome screen instead, behind the byline in the corner.
-//
-// Same words as the landing page's Creator section, from the same keys, so
-// there is one story and not two that drift.
+// Opened from the landing page's signature (landing/CreatorSignature) and the
+// welcome screen's byline -- the desktop app can reach the landing page, but
+// nobody goes looking for a marketing page inside an app they have already
+// installed. One panel and one story for both, so there aren't two that drift.
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from '../lib/i18n'
 import ConnectTiles from './ConnectTiles'
-import { DONATE_CUT } from './DonateButton'
+
+export const CREATOR_NAME = 'Eduardo Paranhos'
 
 export default function CreatorPanel({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
-
+  const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+    panel.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      // Tab stays in the panel while it's open.
+      if (e.key !== 'Tab' || !panel.current) return
+      const stops = [...panel.current.querySelectorAll<HTMLElement>('a[href], button, [tabindex]:not([tabindex="-1"])')]
+      if (!stops.length) return
+      const first = stops[0], last = stops[stops.length - 1]
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-
-  return (
-    <div
-      className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000400] p-4 overflow-y-auto"
-      onClick={onClose}
-    >
-      <div className="flex flex-col items-center gap-5 w-full max-w-lg">
-        <div
-          className="support-card modal-in bg-nier-blackLight border p-6 w-full relative max-h-[85vh] overflow-y-auto"
-          onClick={event => event.stopPropagation()}
-        >
-          <div className="corner absolute top-0 left-0 w-4 h-4 border-l border-t" />
-          <div className="corner absolute top-0 right-0 w-4 h-4 border-r border-t" />
-          <div className="corner absolute bottom-0 left-0 w-4 h-4 border-l border-b" />
-          <div className="corner absolute bottom-0 right-0 w-4 h-4 border-r border-b" />
-
-          <div className="flex items-center gap-3 mb-5">
-            <div className="byline-mark w-2 h-2 rotate-45" />
-            <h3 className="support-orange tracking-[0.15em] uppercase">
-              {t('landing.nav.creator')}
-            </h3>
-            <div className="support-rule flex-1 h-px" />
-          </div>
-
-          <p className="text-nier-strong text-lg sm:text-xl tracking-[0.12em] uppercase leading-none mb-5">
-            Eduardo Paranhos
-          </p>
-
-          <div className="border-l-2 pl-5 py-1 space-y-4 mb-8"
-               style={{ borderColor: 'rgb(var(--c-orange) / 0.45)' }}>
-            <p className="text-nier-bg/85 text-sm tracking-wide leading-relaxed italic">
-              {t('landing.creator.p1')}
-            </p>
-            <p className="text-nier-bg/75 text-sm tracking-wide leading-relaxed italic">
-              {t('landing.creator.p2')}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 mb-3">
-            <span className="support-orange text-[11px] tracking-[0.22em] uppercase whitespace-nowrap">
-              {t('support.connect')}
-            </span>
-            <div className="support-rule flex-1 h-px" />
-          </div>
-
-          <ConnectTiles />
+  // On the landing page, inside its own element, which carries the theme's
+  // colours; elsewhere, over everything.
+  const host = document.querySelector('[data-landing-theme]') ?? document.body
+  return createPortal(
+    <div className="fixed inset-0 z-[10000400] flex justify-end" data-lenis-prevent>
+      <button type="button" aria-label={t('common.close')} onClick={onClose} className="creator-backdrop absolute inset-0 cursor-default" />
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="creator-panel-title"
+        tabIndex={-1}
+        className="creator-panel relative h-full w-full max-w-[30rem] overflow-y-auto outline-none border-l border-nier-border/30 px-7 sm:px-10 py-10 font-mono"
+      >
+        <button type="button" onClick={onClose} aria-label={t('common.close')} className="absolute top-5 right-5 w-9 h-9 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/80">×</button>
+        <div className="relative max-w-[16rem] mb-8 overflow-hidden border border-nier-border/30">
+          <img src="/landing/creator.webp" srcSet="/landing/creator-480.webp 480w, /landing/creator.webp 900w" sizes="16rem" width={900} height={900} alt={t('landing.creator.alt')} className="block w-full h-auto" />
         </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-10 py-2.5 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.18em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}
-        >
-          {t('common.close')}
-        </button>
+        <p className="text-[11px] tracking-[0.3em] uppercase text-nier-bg/60">{t('landing.creator.title')}</p>
+        <h2 id="creator-panel-title" translate="no" className="mt-2 text-3xl font-extralight tracking-[0.04em] text-nier-strong">{CREATOR_NAME}</h2>
+        <p className="mt-6 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.creator.p1')}</p>
+        <p className="mt-4 text-nier-bg/75 leading-relaxed text-pretty">{t('landing.creator.p2')}</p>
+        <h3 className="mt-10 mb-4 text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.connect')}</h3>
+        <ConnectTiles columns={2} />
       </div>
-    </div>
+    </div>,
+    host,
   )
 }

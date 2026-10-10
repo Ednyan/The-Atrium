@@ -1,11 +1,15 @@
-// The landing page: a hall with one light. The portal hangs at the top --
-// its orb the light, the bits it sheds settling as traces in the grid below
-// (components/PortalScene) -- and the page goes down into the atrium from
-// there: what one looks like inside, what can be brought in, what can be done
-// there, the two ways in, who made it, and how to keep the light on.
+// The landing page: a hall with one light, telling the Atrium's story. The
+// portal hangs at the top -- its orb the light, the bits it sheds settling as
+// traces in the grid below (components/PortalScene) -- and opens into the
+// film; then what an atrium is, what can be brought in, what can be done
+// there, why it exists (with the code growing down the margins to its
+// history), the two ways in, and how to keep the light on. Who made it is a
+// signature on the first screen, opening a panel. The chapters are in
+// components/landing.
 //
-// NieR's language, kept: bone and ink, thin rules, diamonds and brackets. One
-// light source, warm, and nothing else coloured but the Donate button.
+// NieR's language underneath: bone and ink, thin rules, diamonds and
+// brackets, one warm light. Bolder on top: big type, off-centre layouts,
+// things that slide and turn into view.
 
 import TraceTitle from './TraceTitle'
 import { useState, useEffect, useMemo, useRef } from 'react'
@@ -18,15 +22,21 @@ import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
 import { contributionCountKey } from '../lib/monthlyGauge'
-import ConnectTiles from './ConnectTiles'
 import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 import { DesktopDownloads } from './DesktopAppSection'
-import { openCodeHistory, preloadCodeHistory, watchCodeHistory } from '../lib/codeHistory'
+import { watchCodeHistory } from '../lib/codeHistory'
 import { useLandingMotion, type LandingMotion } from '../lib/landingMotion'
-import ScrollReveal from './reactbits/ScrollReveal'
 import SplitText from './reactbits/SplitText'
+import { Brackets, ChapterLabel, Headline } from './landing/parts'
+import CreatorSignature from './landing/CreatorSignature'
+import FilmChapter from './landing/FilmChapter'
+import InsideChapter from './landing/InsideChapter'
+import TraceRibbon from './landing/TraceRibbon'
+import ToolChapters from './landing/ToolChapters'
+import WhyChapter from './landing/WhyChapter'
+import CodeRoots from './landing/CodeRoots'
 
 interface LandingPageProps {
   onGetStarted: () => void
@@ -59,75 +69,6 @@ function TraceTicker() {
         ))}
       </div>
     </div>
-  )
-}
-
-// A section's name: a diamond the light fills as the section comes into view,
-// the title, and a rule drawn out from it (.lit-*, below).
-function SectionTitle({ children, center = false }: { children: string; center?: boolean }) {
-  const motion = useLandingMotion()
-  const textRef = useRef<HTMLSpanElement>(null)
-  // Decoded as it comes into view, the way NieR's screens write themselves:
-  // scrambled, settling left to right. Scrambled with its own letters, so a
-  // Japanese title stays Japanese, and the width it will have.
-  useEffect(() => {
-    const el = textRef.current
-    if (!motion || !el) return
-    const { gsap } = motion
-    const ctx = gsap.context(() => {
-      gsap.to(el, {
-        duration: 1.2, ease: 'none',
-        scrambleText: { text: children, chars: children.replace(/\s/g, ''), revealDelay: 0.3, speed: 0.5 },
-        scrollTrigger: { trigger: el, start: 'top 90%', once: true },
-      })
-    })
-    return () => ctx.revert()
-  }, [motion, children])
-  return (
-    <div className={`flex items-center gap-4 mb-10 md:mb-14 ${center ? 'justify-center' : ''}`}>
-      {center && <span aria-hidden="true" className="lit-rule lit-rule-left h-px w-16 md:w-28" />}
-      <span aria-hidden="true" className="lit-diamond w-3 h-3 rotate-45 shrink-0" />
-      {/* Named by its label, so nothing reads the scramble out. Keyed by its
-          text: the scramble rewrites the text React put there. */}
-      <h2 aria-label={children} className="text-3xl md:text-5xl font-extralight tracking-[0.1em] uppercase text-nier-strong leading-[1.05] text-balance">
-        <span key={children} ref={textRef} aria-hidden="true">{children}</span>
-      </h2>
-      <span aria-hidden="true" className={`lit-rule h-px ${center ? 'w-16 md:w-28' : 'flex-1'}`} />
-    </div>
-  )
-}
-
-// A window rising into its frame as it's scrolled to: tipped back and a little
-// small, upright by the time it's halfway up the screen, which is where a jump
-// to its section leaves it. Measured by its frame, which doesn't move, rather
-// than by itself, which does.
-function useRiseIntoFrame(motion: LandingMotion | null) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!motion || !el) return
-    const { gsap } = motion
-    const ctx = gsap.context(() => {
-      gsap.fromTo(el, { rotateX: 12, scale: 0.95, transformPerspective: 1400, transformOrigin: '50% 100%' }, {
-        rotateX: 0, scale: 1, ease: 'none',
-        scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'top 55%', scrub: 0.5 },
-      })
-    })
-    return () => ctx.revert()
-  }, [motion])
-  return ref
-}
-
-// Corner brackets, the atrium's own framing for anything set apart.
-function Brackets({ inset = '-0.5rem' }: { inset?: string }) {
-  const corner = 'absolute w-6 h-6 border-nier-border/60 pointer-events-none'
-  return (
-    <>
-      <span aria-hidden="true" className={`${corner} border-l border-t`} style={{ top: inset, left: inset }} />
-      <span aria-hidden="true" className={`${corner} border-r border-t`} style={{ top: inset, right: inset }} />
-      <span aria-hidden="true" className={`${corner} border-l border-b`} style={{ bottom: inset, left: inset }} />
-      <span aria-hidden="true" className={`${corner} border-r border-b`} style={{ bottom: inset, right: inset }} />
-    </>
   )
 }
 
@@ -177,28 +118,6 @@ function SupportPanel() {
     </div>
   )
 }
-
-// What can be brought into an atrium: one cell each, the four with pictures
-// of the real thing (photographed in the app, public/landing) and the rest in
-// words. Laid out 4 across: pictures large, sheets wide.
-const TRACE_CELLS: { id: string; span: string; picture?: boolean; video?: boolean }[] = [
-  { id: 'pictures', span: 'sm:col-span-2 lg:row-span-2', picture: true },
-  { id: 'video', span: '', video: true },
-  { id: 'notes', span: '', picture: true },
-  { id: 'sound', span: '' },
-  { id: 'documents', span: '' },
-  { id: 'sheets', span: 'sm:col-span-2', picture: true },
-  { id: 'drawings', span: '', picture: true },
-  { id: 'links', span: '' },
-]
-
-// The film about the place, once it's made: where it's served from (any https
-// address: public/_headers allows media from one) and the still shown before
-// it plays. Until then, its window says it's on its way.
-const FILM_SRC: string = ''
-const FILM_POSTER: string = ''
-
-const TOOLS = ['move', 'arrange', 'connect', 'together', 'style', 'keep'] as const
 
 // The sticky bar's height (h-14). Both the jump and the scroll-spy measure
 // against it, so it is written once.
@@ -437,8 +356,8 @@ const sections = [
   { id: 'inside', title: 'Inside an atrium' },
   { id: 'traces', title: 'Traces' },
   { id: 'tools', title: 'What you can do' },
+  { id: 'why', title: 'Why' },
   { id: 'desktop', title: 'Web & Desktop' },
-  { id: 'creator', title: 'The Creator' },
   { id: 'support', title: 'Support' },
 ]
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
@@ -456,8 +375,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   const sectionRefs = useRef<(HTMLElement | null)[]>([])
   const motion = useLandingMotion()
   const lenisRef = useRef<InstanceType<LandingMotion['Lenis']> | null>(null)
-  const filmRef = useRiseIntoFrame(motion)
-  const insideRef = useRiseIntoFrame(motion)
+  // Where the roots start, and the button they gather at (CodeRoots).
+  const insideRef = useRef<HTMLElement | null>(null)
+  const codeButtonRef = useRef<HTMLAnchorElement>(null)
   const enter = isAuthenticated ? t('landing.continue') : t('landing.enter')
   // A decorative loop stays still for anyone who asked for less motion.
   const still = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, [])
@@ -599,13 +519,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
     setShowDonate(true)
   }
 
-  const controls: [TranslationKey, TranslationKey][] = [
-    ['landing.controls.dragKey', 'landing.controls.drag'],
-    ['landing.controls.scrollKey', 'landing.controls.scroll'],
-    ['landing.controls.numbersKey', 'landing.controls.numbers'],
-    ['landing.controls.dKey', 'landing.controls.d'],
-    ['landing.controls.tKeyKey', 'landing.controls.tKey'],
-  ]
+  // A chapter's number: its place among those shown (the desktop app has no
+  // Web & Desktop), the hall not counted.
+  const chapter = (id: string) => navItems.findIndex(item => item.id === id) + 1
   const sectionClass = 'relative px-5 sm:px-10 lg:px-16 py-20 md:py-28'
 
   return (
@@ -691,11 +607,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         </div>
       </nav>
 
-      <main ref={mainRef} id="landing-main" tabIndex={-1} className="outline-none">
+      <main ref={mainRef} id="landing-main" tabIndex={-1} className="relative outline-none">
+        {/* The Atrium's own code, growing down the margins (CodeRoots). */}
+        <CodeRoots host={mainRef} from={insideRef} to={codeButtonRef} />
+
         {/* The hall: the portal, lit, hanging over the name. */}
         <section
           ref={el => { sectionRefs.current[sectionIndex('hero')] = el }}
-          className="relative flex flex-col items-center px-5 sm:px-10 lg:px-16 pb-14 overflow-hidden"
+          className="relative flex flex-col items-center px-5 sm:px-10 lg:px-16 pb-10 overflow-hidden"
           style={{ minHeight: 'calc(100dvh - 3.5rem)' }}
         >
           <div className="relative z-10 w-full max-w-[1100px] mx-auto flex flex-col items-center text-center">
@@ -716,149 +635,35 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
             </div>
           </div>
 
-          {/* The code history (public/code-history), a page of its own: a
-              strip at the foot of the first screen, the finished graph printed
-              into it. It slides in beside this page (lib/codeHistory); hovering
-              loads it ahead. */}
-          <a
-            href="/code-history/"
-            onPointerEnter={preloadCodeHistory}
-            onFocus={preloadCodeHistory}
-            onClick={e => {
-              if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-              if (openCodeHistory()) e.preventDefault()
-            }}
-            className="code-history-strip group relative z-10 w-full max-w-[1400px] mx-auto mt-auto pt-14"
-          >
-            <span className="relative block">
-              <Brackets />
-              <span className="relative flex items-center gap-6 h-[clamp(68px,6.5vw,100px)] px-5 sm:px-8 overflow-hidden border border-nier-border/30">
-                <img src="/code-history/banner.webp" srcSet="/code-history/banner-800.webp 800w, /code-history/banner.webp 1774w" sizes="(min-width: 640px) 66vw, 100vw" alt="" className="absolute inset-y-0 right-0 w-full sm:w-[66%] h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
-                <span className="relative hidden sm:flex items-center gap-3 max-w-[46%] text-sm leading-snug text-nier-bg/75 font-light">
-                  <span className="byline-mark w-2 h-2 rotate-45 shrink-0" />
-                  {t('landing.codeHistory.what')}
-                </span>
-                <span className="byline-link relative ml-auto flex items-center gap-3 text-[11px] sm:text-xs tracking-[0.22em] uppercase text-nier-bg/80 whitespace-nowrap">
-                  {t('landing.codeHistory')}
-                  <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
-                </span>
-              </span>
-            </span>
-          </a>
+          {/* The foot of the first screen: who made it, and the way down. */}
+          <div className="relative z-10 w-full max-w-[1400px] mx-auto mt-auto pt-12 flex items-end">
+            <CreatorSignature />
+            <button type="button" onClick={() => scrollToSection(sectionIndex('film'))} aria-label={t('landing.film.title')} className="scroll-cue absolute left-1/2 -translate-x-1/2 bottom-0 hidden sm:flex flex-col items-center gap-2 text-[10px] tracking-[0.3em] uppercase text-nier-bg/60 hover:text-nier-strong">
+              {t('landing.film.title')}
+              <span aria-hidden="true" className="scroll-cue-line" />
+            </button>
+          </div>
         </section>
 
-        {/* Every kind of trace, running past: the beat between the hall and
-            the rest. */}
+        <FilmChapter ref={el => { sectionRefs.current[sectionIndex('film')] = el }} index={chapter('film')} still={still} />
+
+        {/* Every kind of trace, running past: the beat before the room. */}
         <TraceTicker />
 
-        {/* The film: the window it plays in, waiting for it until it's made. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('film')] = el }} className={sectionClass}>
-          <div className="max-w-[1300px] mx-auto" data-reveal>
-            <SectionTitle>{t('landing.film.title')}</SectionTitle>
-            <div className="relative">
-              <Brackets inset="-0.75rem" />
-              <div ref={filmRef} className="landing-window relative aspect-video border border-nier-border/30 overflow-hidden">
-                {FILM_SRC ? (
-                  <video src={FILM_SRC} poster={FILM_POSTER || undefined} controls preload="none" playsInline aria-label={t('landing.film.title')} className="absolute inset-0 w-full h-full bg-black" />
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 sm:gap-8 px-6 text-center">
-                    <span aria-hidden="true" className="landing-orb w-4 h-4 sm:w-5 sm:h-5 rounded-full" />
-                    <p className="text-[11px] sm:text-xs tracking-[0.35em] uppercase text-nier-strong">{t('landing.film.soon')}</p>
-                    <p className="max-w-[30rem] text-sm sm:text-base font-light leading-relaxed text-nier-bg/75 text-pretty">{t('landing.film.body')}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Inside: an atrium as it is, photographed in the app. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('inside')] = el }} className={sectionClass}>
-          <div className="max-w-[1300px] mx-auto" data-reveal>
-            <SectionTitle>{t('landing.inside.title')}</SectionTitle>
-            <ScrollReveal className="text-nier-bg/80 text-lg md:text-xl font-light leading-relaxed max-w-[40rem] mb-12 md:mb-16 text-pretty">{t('landing.inside.body')}</ScrollReveal>
-            <div className="relative" style={{ transform: 'translate3d(calc(var(--px, 0) * -5px), calc(var(--py, 0) * -5px), 0)', transition: 'transform 0.6s cubic-bezier(0.22, 1, 0.36, 1)' }}>
-              <Brackets inset="-0.75rem" />
-              <div ref={insideRef} className="landing-window relative border border-nier-border/30 overflow-hidden">
-                <img
-                  src={`/landing/atrium-${shot}.webp`}
-                  srcSet={`/landing/atrium-${shot}-1000.webp 1000w, /landing/atrium-${shot}.webp 2000w`}
-                  sizes="(min-width: 1400px) 1300px, 92vw"
-                  width={2000}
-                  height={1250}
-                  loading="lazy"
-                  decoding="async"
-                  alt={t('landing.inside.alt')}
-                  className="block w-full h-auto"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* What can be brought in. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('traces')] = el }} className={sectionClass}>
-          <div className="max-w-[1300px] mx-auto" data-reveal>
-            <SectionTitle>{t('landing.traces.title')}</SectionTitle>
-            <div className="landing-bento grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px">
-              {TRACE_CELLS.map(cell => (
-                <article key={cell.id} className={`landing-cell group flex flex-col ${cell.span}`}>
-                  {(cell.picture || cell.video) && (
-                    <div className="relative flex-1 min-h-[10rem] overflow-hidden">
-                      {cell.picture ? (
-                        <img src={`/landing/close-${cell.id}-${shot}.webp`} alt="" width={1200} height={760} loading="lazy" decoding="async" className="landing-cell-picture absolute inset-0 w-full h-full object-cover" />
-                      ) : (
-                        // The portal itself, playing: light lines on black,
-                        // or -- inverted onto the paper -- ink.
-                        <video src="/idle-animation.mp4" muted loop autoPlay={!still} playsInline aria-hidden="true" className="landing-cell-picture landing-cell-video absolute inset-0 w-full h-full object-contain" />
-                      )}
-                    </div>
-                  )}
-                  <div className="p-6 md:p-7">
-                    <h3 className="text-sm md:text-base tracking-[0.14em] uppercase text-nier-strong">{t(`landing.traces.${cell.id}` as TranslationKey)}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-nier-bg/75 max-w-[34ch] text-pretty">{t(`landing.traces.${cell.id}Desc` as TranslationKey)}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* What can be done there, and the keys for it. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('tools')] = el }} className={sectionClass}>
-          <div className="max-w-[1300px] mx-auto grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 lg:gap-20" data-reveal>
-            <div className="lg:sticky lg:top-28 self-start">
-              <SectionTitle>{t('landing.tools.title')}</SectionTitle>
-              <h3 className="text-xs tracking-[0.2em] uppercase text-nier-bg/70 mb-5">{t('landing.tools.keys')}</h3>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 items-baseline text-sm">
-                {controls.map(([key, desc]) => (
-                  <div key={key} className="contents">
-                    <dt><kbd className="landing-key">{t(key)}</kbd></dt>
-                    <dd className="text-nier-bg/80">{t(desc)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            <ol className="border-y border-nier-border/20 divide-y divide-nier-border/20">
-              {TOOLS.map(id => (
-                <li key={id} className="landing-tool py-7 md:py-9 grid sm:grid-cols-[minmax(0,15rem)_1fr] gap-x-10 gap-y-2 items-baseline">
-                  <span className="landing-tool-name text-2xl md:text-4xl font-extralight tracking-[0.06em] uppercase text-nier-strong">{t(`landing.tools.${id}` as TranslationKey)}</span>
-                  <p className="text-nier-bg/75 leading-relaxed text-pretty">{t(`landing.tools.${id}Desc` as TranslationKey)}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
+        <InsideChapter ref={el => { sectionRefs.current[sectionIndex('inside')] = el; insideRef.current = el }} index={chapter('inside')} shot={shot} />
+        <TraceRibbon ref={el => { sectionRefs.current[sectionIndex('traces')] = el }} index={chapter('traces')} shot={shot} still={still} />
+        <ToolChapters ref={el => { sectionRefs.current[sectionIndex('tools')] = el }} index={chapter('tools')} shot={shot} still={still} />
+        <WhyChapter ref={el => { sectionRefs.current[sectionIndex('why')] = el }} index={chapter('why')} buttonRef={codeButtonRef} />
 
         {/* Two ways in: the web, and your computer. The desktop app has no
             need to be told about itself. */}
         {!isDesktop && (
           <section ref={el => { sectionRefs.current[sectionIndex('desktop')] = el }} className={sectionClass}>
-            <div className="max-w-[1300px] mx-auto" data-reveal>
-              <SectionTitle>{t('landing.ways.title')}</SectionTitle>
-              <div className="landing-bento grid md:grid-cols-2 gap-px">
+            <div className="max-w-[1300px] mx-auto">
+              <ChapterLabel index={chapter('desktop')} className="mb-12">{t('landing.ways.title')}</ChapterLabel>
+              <div className="landing-bento grid md:grid-cols-2 gap-px" data-reveal>
                 <div className="landing-cell p-8 md:p-12 flex flex-col">
-                  <h3 className="text-xl md:text-2xl font-light tracking-[0.12em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
+                  <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
                   <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.webDesc')}</p>
                   <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.webLimits')}</p>
                   <div className="mt-auto pt-10">
@@ -868,56 +673,27 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
                   </div>
                 </div>
                 <div className="landing-cell p-8 md:p-12 flex flex-col">
-                  <h3 className="text-xl md:text-2xl font-light tracking-[0.12em] uppercase text-nier-strong">{t('landing.ways.desktop')}</h3>
+                  <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.desktop')}</h3>
                   <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.desktopDesc')}</p>
                   <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.desktopSolo')}</p>
                   <div className="mt-10"><DesktopDownloads /></div>
                 </div>
               </div>
-              <p className="mt-6 text-sm text-nier-bg/70 leading-relaxed max-w-[64ch] text-pretty">{t('desktop.moveBetween')}</p>
+              <p className="mt-6 text-sm text-nier-bg/70 leading-relaxed max-w-[64ch] text-pretty" data-reveal>{t('desktop.moveBetween')}</p>
             </div>
           </section>
         )}
 
-        {/* Who made it. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('creator')] = el }} className={sectionClass}>
-          <div className="max-w-[1150px] mx-auto grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-12 md:gap-16 items-center" data-reveal>
-            <figure className="relative max-w-[440px] w-full mx-auto md:mx-0">
-              <Brackets />
-              <div className="landing-portrait relative overflow-hidden border border-nier-border/30">
-                <img
-                  src="/landing/creator.webp"
-                  srcSet="/landing/creator-480.webp 480w, /landing/creator.webp 900w"
-                  sizes="(min-width: 768px) 440px, 90vw"
-                  width={900}
-                  height={900}
-                  loading="lazy"
-                  decoding="async"
-                  alt={t('landing.creator.alt')}
-                  className="block w-full h-auto"
-                />
-              </div>
-            </figure>
-            <div>
-              <SectionTitle>{t('landing.creator.title')}</SectionTitle>
-              <p className="text-nier-bg/85 text-lg leading-relaxed text-pretty">{t('landing.creator.p1')}</p>
-              <p className="mt-5 text-nier-bg/75 leading-relaxed text-pretty">{t('landing.creator.p2')}</p>
-              <h3 className="mt-10 mb-4 text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.connect')}</h3>
-              <ConnectTiles columns={2} />
-            </div>
-          </div>
-        </section>
-
         {/* What keeps it going. */}
         <section ref={el => { sectionRefs.current[sectionIndex('support')] = el }} className={sectionClass}>
-          <div className="max-w-[1000px] mx-auto" data-reveal>
-            <SectionTitle center>{t('landing.support.title')}</SectionTitle>
-            <div className="grid md:grid-cols-2 gap-10 md:gap-14 items-center">
-              <div className="space-y-4">
-                <p className="text-nier-bg/85 leading-relaxed text-pretty">{t('landing.support.body1')}</p>
+          <div className="max-w-[1100px] mx-auto">
+            <ChapterLabel index={chapter('support')} className="mb-12">{t('landing.support.title')}</ChapterLabel>
+            <div className="grid md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] gap-10 md:gap-16 items-center">
+              <div className="space-y-5" data-reveal="left">
+                <Headline as="h3" className="text-[clamp(1.6rem,2.6vw,2.4rem)] font-extralight leading-[1.15] text-nier-strong text-balance">{t('landing.support.body1')}</Headline>
                 <p className="text-nier-bg/70 leading-relaxed text-pretty">{t('landing.support.body2')}</p>
               </div>
-              <SupportPanel />
+              <div data-reveal="right"><SupportPanel /></div>
             </div>
           </div>
         </section>
@@ -1005,8 +781,92 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         [data-landing-theme='light'] .is-revealed .lit-diamond, [data-landing-theme='light'] .landing-lit {
           background-color: rgb(var(--c-strong)); border-color: rgb(var(--c-strong)); box-shadow: none;
         }
-        [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+        [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+        [data-reveal='left'] { transform: translateX(-56px); }
+        [data-reveal='right'] { transform: translateX(56px); }
         [data-reveal].is-revealed { opacity: 1; transform: none; }
+
+        /* A headline: each word risen from behind its own mask (landing/parts). */
+        .headline-mask { display: inline-block; overflow: hidden; vertical-align: bottom; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+        .headline-word { display: inline-block; transform: translateY(108%); transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1); }
+        .is-revealed .headline-word { transform: none; }
+
+        /* The way down from the first screen. */
+        .scroll-cue-line { display: block; width: 1px; height: 44px; background: linear-gradient(rgb(var(--c-fg) / 0.7), transparent); transform-origin: top; animation: landingCue 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+        @keyframes landingCue { 0% { transform: scaleY(0); opacity: 1; } 55% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
+
+        /* The film: its screen dark in either theme, and the orb's glow it opens from. */
+        [data-landing-theme] .film-screen .landing-orb { background: #fff; box-shadow: 0 0 24px 6px rgb(255 236 205 / 0.55), 0 0 80px 20px rgb(255 236 205 / 0.2); }
+        .film-glow { z-index: 2; background: radial-gradient(circle, #fff 0%, rgb(var(--landing-light)) 28%, rgb(var(--landing-light) / 0.35) 52%, transparent 72%); box-shadow: 0 0 80px 30px rgb(var(--landing-light) / 0.35); }
+        [data-landing-theme='light'] .film-glow { background: radial-gradient(circle, rgb(var(--c-strong)) 0%, rgb(var(--c-strong) / 0.5) 40%, transparent 72%); box-shadow: none; }
+
+        /* The ribbon of traces (landing/TraceRibbon): cards of glass on a ring. */
+        .ribbon-stage { --ribbon-card-w: clamp(190px, 20vw, 290px); --ribbon-radius: calc(var(--ribbon-card-w) * 2.1); height: calc(var(--ribbon-card-w) * 1.8); max-width: 1600px; perspective: 1700px; perspective-origin: 50% 35%; cursor: grab; }
+        .ribbon-stage:active { cursor: grabbing; }
+        .ribbon-ring { transform-style: preserve-3d; transform: translateZ(calc(var(--ribbon-radius) * -1)) rotateX(-5deg); }
+        .ribbon-card { position: absolute; left: 50%; top: 50%; width: var(--ribbon-card-w); aspect-ratio: 3 / 4.15; transform-style: preserve-3d; transition: opacity 0.5s ease; }
+        .ribbon-card-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+        .ribbon-card.is-open .ribbon-card-inner { transform: rotateY(180deg); }
+        .ribbon-face {
+          position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; text-align: left;
+          -webkit-backface-visibility: hidden; backface-visibility: hidden;
+          border: 1px solid rgb(var(--c-fg) / 0.24);
+          background: linear-gradient(150deg, rgb(var(--c-fg) / 0.12), rgb(var(--c-fg) / 0.03) 45%, rgb(var(--c-fg) / 0.06));
+          box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 28px 60px rgb(0 0 0 / 0.38);
+        }
+        [data-landing-theme='light'] .ribbon-face { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7), 0 22px 44px rgb(var(--c-fg) / 0.16); }
+        .ribbon-front::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 32%, rgb(255 255 255 / 0.12) 46%, transparent 58%); }
+        .ribbon-back { transform: rotateY(180deg); padding: 1.4rem 1.3rem; background: rgb(var(--c-ground) / 0.94); }
+        .ribbon-visual { position: relative; flex: 1; margin: 10px 10px 0; overflow: hidden; background: rgb(var(--c-fg) / 0.05); filter: grayscale(calc(1 - var(--colour, 0))); transition: filter 0.6s ease; }
+        .ribbon-caption { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; padding: 12px 14px 14px; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
+        .ribbon-card:focus-visible { outline: none; }
+        .ribbon-card:focus-visible .ribbon-face { outline: 1px solid rgb(var(--c-strong)); outline-offset: 3px; }
+        .ribbon-arrow { width: 2.6rem; height: 2.6rem; border: 1px solid rgb(var(--c-fg) / 0.3); color: rgb(var(--c-strong)); transition: border-color 0.25s ease, opacity 0.25s ease; }
+        .ribbon-arrow:hover:not(:disabled) { border-color: rgb(var(--c-strong)); }
+        .ribbon-arrow:disabled { opacity: 0.3; }
+        .ribbon-sound { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 0 16%; }
+        .ribbon-sound span { flex: 1; max-width: 4px; border-radius: 2px; background: rgb(var(--c-strong) / 0.85); animation: ribbonBar 1.4s ease-in-out infinite alternate; }
+        @keyframes ribbonBar { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+        .ribbon-pages { position: absolute; inset: 0; display: grid; place-items: center; }
+        .ribbon-pages > span { position: absolute; width: 50%; aspect-ratio: 3 / 4; display: flex; flex-direction: column; gap: 7px; padding: 14% 12%; background: rgb(var(--c-ground) / 0.9); border: 1px solid rgb(var(--c-fg) / 0.3); }
+        .ribbon-pages i { display: block; height: 3px; background: rgb(var(--c-fg) / 0.35); }
+        .ribbon-pages i:nth-child(3n) { width: 60%; }
+        .ribbon-browser { position: absolute; inset: 14% 10%; display: flex; flex-direction: column; border: 1px solid rgb(var(--c-fg) / 0.35); background: rgb(var(--c-ground) / 0.6); }
+        .ribbon-browser-bar { display: flex; align-items: center; gap: 5px; padding: 7px 8px; border-bottom: 1px solid rgb(var(--c-fg) / 0.25); }
+        .ribbon-browser-bar b { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--c-fg) / 0.45); }
+        .ribbon-browser-bar em { flex: 1; height: 8px; margin-left: 6px; background: rgb(var(--c-fg) / 0.14); }
+        .ribbon-browser-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
+        .ribbon-browser-body i { background: rgb(var(--c-fg) / 0.13); }
+        .ribbon-browser-body i:first-child { grid-column: span 2; }
+
+        /* What can be done (landing/ToolChapters): a run of chapters. */
+        .tool-panel { position: relative; isolation: isolate; padding: 4.5rem 1.25rem; }
+        @media (min-width: 640px) { .tool-panel { padding: 5rem 2.5rem; } }
+        .tool-chapter { display: grid; gap: 1.75rem; max-width: 760px; margin: 0 auto; }
+        .tool-number {
+          position: absolute; top: 2.5rem; right: 1.25rem; z-index: -1; pointer-events: none;
+          font-size: clamp(6rem, 18vw, 15rem); line-height: 1; font-weight: 200; letter-spacing: -0.04em;
+          color: transparent; -webkit-text-stroke: 1px rgb(var(--c-fg) / 0.22);
+        }
+        .tool-media { width: 100%; }
+        @media (min-width: 1024px) {
+          .tool-run-flow .tool-panel { flex: none; height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 0 4vw; margin: 0; }
+          .tool-run-flow .tool-intro { width: 50vw; padding-left: max(4rem, calc((100vw - 1400px) / 2)); }
+          .tool-run-flow .tool-chapter { width: 68vw; max-width: 1180px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); align-items: center; gap: 3.5vw; }
+          .tool-run-flow .tool-keys { width: 36vw; padding-right: max(4rem, calc((100vw - 1400px) / 2)); }
+          .tool-run-flow .tool-number { top: 14vh; right: 4vw; }
+        }
+
+        /* The roots (landing/CodeRoots). */
+        .code-roots .root-main { fill: none; stroke: rgb(var(--c-fg) / 0.3); stroke-width: 1.2; }
+        .code-roots .root-branch { fill: none; stroke: rgb(var(--c-fg)); stroke-width: 0.8; opacity: 0; transition: opacity 0.9s ease; }
+        .code-roots .root-node { opacity: 0; transition: opacity 0.7s ease; }
+        .code-roots .is-reached { opacity: 1; }
+        .code-roots circle { fill: rgb(var(--c-ground)); stroke: rgb(var(--landing-light) / 0.9); stroke-width: 1; }
+        [data-landing-theme='light'] .code-roots circle { stroke: rgb(var(--c-fg) / 0.7); }
+        .code-roots text { font-size: 10px; letter-spacing: 0.06em; fill: rgb(var(--c-fg) / 0.45); }
+        .code-history-button { border: 1px solid rgb(var(--c-fg) / 0.35); background: rgb(var(--c-ground) / 0.85); transition: border-color 0.3s ease, box-shadow 0.4s ease; }
+        .code-history-button:hover, .code-history-button:focus-visible { border-color: rgb(var(--c-strong)); box-shadow: 0 0 44px rgb(var(--landing-light) / 0.28); outline: none; }
 
         /* The way in: filled with the light, glowing a little under the
            pointer, pressed on click. */
@@ -1029,10 +889,8 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .landing-cell::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--landing-light) / 0.8), transparent); opacity: 0; transition: opacity 0.5s ease; z-index: 1; }
         [data-landing-theme='light'] .landing-cell::before { background: linear-gradient(90deg, transparent, rgb(var(--c-strong) / 0.6), transparent); }
         .landing-cell:hover::before { opacity: 1; }
-        .landing-cell-picture { transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1); }
         .landing-cell-video { background: #000; }
         [data-landing-theme='light'] .landing-cell-video { background: transparent; filter: invert(1); mix-blend-mode: multiply; }
-        .landing-cell:hover .landing-cell-picture { transform: scale(1.035); }
 
         .landing-window::after, .landing-portrait::after {
           content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -1045,9 +903,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           border: 1px solid rgb(var(--c-fg) / 0.35); border-bottom-width: 2px;
           font-size: 0.75rem; letter-spacing: 0.08em; color: rgb(var(--c-strong)); white-space: nowrap;
         }
-        .landing-tool-name { transition: text-shadow 0.5s ease, color 0.3s ease; }
-        .landing-tool:hover .landing-tool-name { text-shadow: 0 0 24px rgb(var(--landing-light) / 0.55); }
-        [data-landing-theme='light'] .landing-tool:hover .landing-tool-name { text-shadow: none; }
         .landing-light-fill { background: rgb(var(--landing-light)); box-shadow: 0 0 10px rgb(var(--landing-light) / 0.6); }
         [data-landing-theme='light'] .landing-light-fill { background: rgb(var(--c-strong)); box-shadow: none; }
         .landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
@@ -1058,7 +913,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           .landing-dust { display: none; }
           [data-reveal] { opacity: 1; transform: none; transition: none; }
           .lit-rule { transform: scaleX(1); transition: none; }
-          .landing-cell-picture { transition: none; }
+          .headline-word { transform: none; transition: none; }
+          .scroll-cue-line, .ribbon-sound span { animation: none; }
+          .ribbon-card, .ribbon-card-inner, .ribbon-visual { transition: none; }
         }
       `}</style>
     </div>
