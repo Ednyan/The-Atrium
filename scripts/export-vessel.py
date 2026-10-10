@@ -1,6 +1,6 @@
 # The landing page's portal (components/PortalScene) draws the wireframe
 # wormhole from digitalatrium_orb_animation.blend: this writes its geometry,
-# modifiers applied, to public/portal/vessel.bin. Run it again after changing
+# modifiers applied, to public/portal/vessel.bin.gz. Run it again after changing
 # the model:
 #
 #   blender -b --factory-startup digitalatrium_orb_animation.blend -P scripts/export-vessel.py
@@ -10,7 +10,7 @@
 # triangles -- in the vessel's own space, Blender's Z up. Subdivision 0: drawn
 # flat and unlit, more doesn't show, and it's a quarter of the size.
 
-import bpy, struct, os
+import bpy, struct, os, gzip
 
 vessel = bpy.data.objects['wireframe_wormhole_shape']
 subsurf = next(m for m in vessel.modifiers if m.type == 'SUBSURF')
@@ -31,6 +31,7 @@ if len(verts) % 2:
 for t in tris:
     data += struct.pack('<HHH', *t)
 
-out = os.path.join(os.path.dirname(bpy.data.filepath), 'public', 'portal', 'vessel.bin')
-open(out, 'wb').write(data)
+# Gzipped: the host won't compress a .bin, and PortalScene unpacks it.
+out = os.path.join(os.path.dirname(bpy.data.filepath), 'public', 'portal', 'vessel.bin.gz')
+open(out, 'wb').write(gzip.compress(data, 9, mtime=0))
 print(f'wrote {out}: {len(verts)} vertices, {len(tris)} triangles, {len(data)} bytes')

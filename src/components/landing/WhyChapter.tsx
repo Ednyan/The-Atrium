@@ -29,7 +29,8 @@ const WhyChapter = forwardRef<HTMLElement, { index: number; buttonRef: RefObject
       </div>
       <div ref={stage} className="relative mt-6 mx-auto max-w-[1600px] h-[clamp(620px,86vh,820px)] flex items-center justify-center px-5">
         <CodeBloom stage={stage} button={buttonRef} clear={clear} />
-        <div ref={clear} className="relative flex flex-col items-center text-center max-w-[30rem]" data-reveal>
+        {/* Not revealed by sliding in: the bloom is measured off the button, and grows out of it. */}
+        <div ref={clear} className="relative flex flex-col items-center text-center max-w-[30rem]">
           <a
             ref={buttonRef}
             href="/code-history/"

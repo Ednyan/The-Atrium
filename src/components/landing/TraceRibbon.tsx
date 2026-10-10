@@ -203,5 +203,6 @@ export default TraceRibbon
 function Visual({ id, shot, still }: { id: CardId; shot: 'light' | 'dark'; still: boolean }) {
   const picture = `/landing/close-${id}-${shot}`
   if (MOVING.includes(id)) return <Clip src={`${picture}.mp4`} poster={`${picture}.webp`} still={still} />
-  return <img src={`${picture}.webp`} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+  // Half size for a card on a phone or at one pixel to a point; whole for the rest.
+  return <img src={`${picture}.webp`} srcSet={`${picture}-360.webp 360w, ${picture}.webp 720w`} sizes="(min-width: 1450px) 270px, (min-width: 950px) calc(20vw - 20px), 170px" alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
 }

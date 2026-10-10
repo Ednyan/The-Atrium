@@ -181,6 +181,11 @@ async function load(code: LanguageCode) {
   announce()
 }
 
+// The reader's language, fetched from the start rather than once something
+// first asks for a string -- which was after the first screen was drawn, so it
+// was drawn in English and then again. main.tsx waits on this (a little).
+export const languageReady: Promise<void> = load(currentLanguage())
+
 export function setLanguage(code: LanguageCode | 'browser') {
   if (code === 'browser') {
     current = browserLanguage()

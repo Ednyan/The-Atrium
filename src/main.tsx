@@ -5,6 +5,7 @@ import ToastHost from './components/ToastHost.tsx'
 import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
 import { localDbReady, isDesktop } from './lib/supabase'
+import { languageReady } from './lib/i18n'
 
 // Into the desktop app's startup log (see main.rs).
 const noteStartup = (line: string) => {
@@ -15,8 +16,11 @@ noteStartup('loaded')
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
-// Wait for local DB initialization before rendering (resolves instantly in web mode)
-localDbReady.then(() => {
+// Wait for local DB initialization before rendering (resolves instantly in web
+// mode), and for the reader's language -- a little: past 2.5 s, English now and
+// theirs when it comes.
+const languageOrNot = Promise.race([languageReady, new Promise(resolve => setTimeout(resolve, 2500))])
+Promise.all([localDbReady, languageOrNot]).then(() => {
   noteStartup('local database ready')
   root.render(
     <React.StrictMode>

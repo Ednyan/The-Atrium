@@ -12,7 +12,7 @@
 // things that slide and turn into view.
 
 import TraceTitle from './TraceTitle'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, startTransition } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalScene from './PortalScene'
 import ContributePanel from './ContributePanel'
@@ -449,9 +449,20 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   // The code history slides in over this page and back (the strip below).
   useEffect(() => watchCodeHistory(), [])
 
+  // The first screen first. Everything below the film is built in a second
+  // pass, one that gives way to the browser as it goes: building every chapter
+  // at once held a slow phone's first sight of the hall back by seconds. A
+  // link to a chapter needs it there from the start.
+  const [rest, setRest] = useState(() => !!section)
+  useEffect(() => {
+    if (rest) return
+    const frame = requestAnimationFrame(() => startTransition(() => setRest(true)))
+    return () => cancelAnimationFrame(frame)
+  }, [rest])
+
   // Each section lit as it comes into view: its diamond fills, its rule
   // draws out, its content rises. One-way -- re-hiding on the way back up
-  // distracts.
+  // distracts. Looked for again once the rest of the page is in.
   useEffect(() => {
     const observer = new IntersectionObserver(
       entries => {
@@ -463,9 +474,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       },
       { threshold: 0.12, rootMargin: '0px 0px -8% 0px' },
     )
-    document.querySelectorAll('[data-reveal]').forEach(n => observer.observe(n))
+    document.querySelectorAll('[data-reveal]:not(.is-revealed)').forEach(n => observer.observe(n))
     return () => observer.disconnect()
-  }, [])
+  }, [rest])
 
   // The section whose top has most recently passed under the bar, and how far
   // down the page is.
@@ -543,7 +554,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
       {showDonate && <ContributePanel onClose={() => setShowDonate(false)} />}
 
-      <CreatorSignature full={!offHall} />
+      <CreatorSignature bare={!offHall} />
 
       {/* Scanlines, faint, over everything. */}
       <div
@@ -651,67 +662,69 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
         <FilmChapter ref={el => { sectionRefs.current[sectionIndex('film')] = el }} index={chapter('film')} still={still} />
 
-        {/* Every kind of trace, running past: the beat before the room. */}
-        <TraceTicker />
+        {rest && <>
+          {/* Every kind of trace, running past: the beat before the room. */}
+          <TraceTicker />
 
-        <InsideChapter ref={el => { sectionRefs.current[sectionIndex('inside')] = el; insideRef.current = el }} index={chapter('inside')} shot={shot} />
-        <TraceRibbon ref={el => { sectionRefs.current[sectionIndex('traces')] = el }} index={chapter('traces')} shot={shot} still={still} />
-        <ToolChapters ref={el => { sectionRefs.current[sectionIndex('tools')] = el }} index={chapter('tools')} shot={shot} still={still} />
-        <WhyChapter ref={el => { sectionRefs.current[sectionIndex('why')] = el }} index={chapter('why')} buttonRef={codeButtonRef} />
+          <InsideChapter ref={el => { sectionRefs.current[sectionIndex('inside')] = el; insideRef.current = el }} index={chapter('inside')} shot={shot} />
+          <TraceRibbon ref={el => { sectionRefs.current[sectionIndex('traces')] = el }} index={chapter('traces')} shot={shot} still={still} />
+          <ToolChapters ref={el => { sectionRefs.current[sectionIndex('tools')] = el }} index={chapter('tools')} shot={shot} still={still} />
+          <WhyChapter ref={el => { sectionRefs.current[sectionIndex('why')] = el }} index={chapter('why')} buttonRef={codeButtonRef} />
 
-        {/* Two ways in: the web, and your computer. The desktop app has no
-            need to be told about itself. */}
-        {!isDesktop && (
-          <section ref={el => { sectionRefs.current[sectionIndex('desktop')] = el }} className={sectionClass}>
-            <div className="max-w-[1300px] mx-auto">
-              <ChapterLabel index={chapter('desktop')} className="mb-12">{t('landing.ways.title')}</ChapterLabel>
-              <div className="landing-bento grid md:grid-cols-2 gap-px" data-reveal>
-                <div className="landing-cell p-8 md:p-12 flex flex-col">
-                  <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
-                  <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.webDesc')}</p>
-                  <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.webLimits')}</p>
-                  <div className="mt-auto pt-10">
-                    <button type="button" onClick={onGetStarted} className="landing-link text-sm tracking-[0.18em] uppercase">
-                      {enter} <span aria-hidden="true">→</span>
-                    </button>
+          {/* Two ways in: the web, and your computer. The desktop app has no
+              need to be told about itself. */}
+          {!isDesktop && (
+            <section ref={el => { sectionRefs.current[sectionIndex('desktop')] = el }} className={sectionClass}>
+              <div className="max-w-[1300px] mx-auto">
+                <ChapterLabel index={chapter('desktop')} className="mb-12">{t('landing.ways.title')}</ChapterLabel>
+                <div className="landing-bento grid md:grid-cols-2 gap-px" data-reveal>
+                  <div className="landing-cell p-8 md:p-12 flex flex-col">
+                    <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
+                    <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.webDesc')}</p>
+                    <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.webLimits')}</p>
+                    <div className="mt-auto pt-10">
+                      <button type="button" onClick={onGetStarted} className="landing-link text-sm tracking-[0.18em] uppercase">
+                        {enter} <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="landing-cell p-8 md:p-12 flex flex-col">
+                    <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.desktop')}</h3>
+                    <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.desktopDesc')}</p>
+                    <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.desktopSolo')}</p>
+                    <div className="mt-10"><DesktopDownloads /></div>
                   </div>
                 </div>
-                <div className="landing-cell p-8 md:p-12 flex flex-col">
-                  <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.desktop')}</h3>
-                  <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.desktopDesc')}</p>
-                  <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.desktopSolo')}</p>
-                  <div className="mt-10"><DesktopDownloads /></div>
-                </div>
+                <p className="mt-6 text-sm text-nier-bg/70 leading-relaxed max-w-[64ch] text-pretty" data-reveal>{t('desktop.moveBetween')}</p>
               </div>
-              <p className="mt-6 text-sm text-nier-bg/70 leading-relaxed max-w-[64ch] text-pretty" data-reveal>{t('desktop.moveBetween')}</p>
+            </section>
+          )}
+
+          {/* What keeps it going. */}
+          <section ref={el => { sectionRefs.current[sectionIndex('support')] = el }} className={sectionClass}>
+            <div className="max-w-[1100px] mx-auto">
+              <ChapterLabel index={chapter('support')} className="mb-12">{t('landing.support.title')}</ChapterLabel>
+              <div className="grid md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] gap-10 md:gap-16 items-center">
+                <div className="space-y-5" data-reveal="left">
+                  <Headline as="h3" className="text-[clamp(1.6rem,2.6vw,2.4rem)] font-extralight leading-[1.15] text-nier-strong text-balance">{t('landing.support.body1')}</Headline>
+                  <p className="text-nier-bg/70 leading-relaxed text-pretty">{t('landing.support.body2')}</p>
+                </div>
+                <div data-reveal="right"><SupportPanel /></div>
+              </div>
             </div>
           </section>
-        )}
 
-        {/* What keeps it going. */}
-        <section ref={el => { sectionRefs.current[sectionIndex('support')] = el }} className={sectionClass}>
-          <div className="max-w-[1100px] mx-auto">
-            <ChapterLabel index={chapter('support')} className="mb-12">{t('landing.support.title')}</ChapterLabel>
-            <div className="grid md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] gap-10 md:gap-16 items-center">
-              <div className="space-y-5" data-reveal="left">
-                <Headline as="h3" className="text-[clamp(1.6rem,2.6vw,2.4rem)] font-extralight leading-[1.15] text-nier-strong text-balance">{t('landing.support.body1')}</Headline>
-                <p className="text-nier-bg/70 leading-relaxed text-pretty">{t('landing.support.body2')}</p>
-              </div>
-              <div data-reveal="right"><SupportPanel /></div>
+          {/* The way in, again, at the end. */}
+          <section className="relative px-5 sm:px-12 pt-10 pb-32 text-center">
+            <div className="max-w-3xl mx-auto flex flex-col items-center" data-reveal>
+              <span aria-hidden="true" className="landing-orb w-5 h-5 rounded-full mb-10" />
+              <SplitText tag="h2" text={t('landing.closing.title')} from={{ opacity: 0, y: 28 }} delay={45} className="text-3xl md:text-5xl font-extralight tracking-[0.12em] uppercase text-nier-strong text-balance" />
+              <button type="button" onClick={onGetStarted} className="landing-cta mt-10 px-12 py-4 text-sm md:text-base tracking-[0.2em] uppercase" style={{ clipPath: DONATE_CUT }}>
+                {enter}
+              </button>
             </div>
-          </div>
-        </section>
-
-        {/* The way in, again, at the end. */}
-        <section className="relative px-5 sm:px-12 pt-10 pb-32 text-center">
-          <div className="max-w-3xl mx-auto flex flex-col items-center" data-reveal>
-            <span aria-hidden="true" className="landing-orb w-5 h-5 rounded-full mb-10" />
-            <SplitText tag="h2" text={t('landing.closing.title')} from={{ opacity: 0, y: 28 }} delay={45} className="text-3xl md:text-5xl font-extralight tracking-[0.12em] uppercase text-nier-strong text-balance" />
-            <button type="button" onClick={onGetStarted} className="landing-cta mt-10 px-12 py-4 text-sm md:text-base tracking-[0.2em] uppercase" style={{ clipPath: DONATE_CUT }}>
-              {enter}
-            </button>
-          </div>
-        </section>
+          </section>
+        </>}
       </main>
 
       {/* The mark, the name under a rule, and the small print. */}
@@ -802,6 +815,21 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         /* The film: its screen dark in either theme, and the orb's glow it opens from. */
         [data-landing-theme] .film-screen .landing-orb { background: #fff; box-shadow: 0 0 24px 6px rgb(255 236 205 / 0.55), 0 0 80px 20px rgb(255 236 205 / 0.2); }
         .film-glow { z-index: 2; background: radial-gradient(circle, #fff 0%, rgb(var(--landing-light)) 28%, rgb(var(--landing-light) / 0.35) 52%, transparent 72%); box-shadow: 0 0 80px 30px rgb(var(--landing-light) / 0.35); }
+        /* The film coming on (FilmChapter): the orb's light flares out as the
+           screen draws a line across and opens to its height; closed again,
+           unseen, once out of view, to come on again next time. */
+        .film-stage.is-moving .film-screen { opacity: 0; transform: scale(0.04, 0.006); }
+        .film-stage.is-moving[data-open] .film-screen { animation: film-on 1s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+        @keyframes film-on {
+          0% { opacity: 0; transform: scale(0.04, 0.006); }
+          12% { opacity: 1; }
+          45% { opacity: 1; transform: scale(1, 0.006); }
+          100% { opacity: 1; transform: none; }
+        }
+        .film-stage .film-glow { transition: transform 0.7s cubic-bezier(0.4, 0, 1, 1), opacity 0.7s ease-in; }
+        .film-stage[data-open] .film-glow { opacity: 0; transform: scale(5); }
+        .film-stage.is-moving .film-label { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .film-stage.is-moving[data-open] .film-label { opacity: 1; transform: none; transition-delay: 0.45s; }
         [data-landing-theme='light'] .film-glow { background: radial-gradient(circle, rgb(var(--c-strong)) 0%, rgb(var(--c-strong) / 0.5) 40%, transparent 72%); box-shadow: none; }
 
         /* The ribbon of traces (landing/TraceRibbon): cards of glass on a ring. */
@@ -920,19 +948,16 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .clip-timeline::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
         .clip-timeline:focus-visible { outline: 1px solid #fff; outline-offset: 4px; }
 
-        /* The creator, in the corner all the way down (CreatorSignature): a
-           tab, its name sliding out; in full on the first screen, given room. */
-        .creator-signature { gap: 0; padding: 0.35rem; background: rgb(var(--c-ground) / 0.8); border: 1px solid rgb(var(--c-line) / 0.28); backdrop-filter: blur(10px); transition: background-color 0.4s ease, border-color 0.4s ease, gap 0.45s cubic-bezier(0.22, 1, 0.36, 1), padding 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
-        .creator-signature-name { max-width: 0; opacity: 0; transition: max-width 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease; }
-        .creator-signature:hover, .creator-signature:focus-visible { gap: 0.75rem; padding-right: 0.9rem; }
-        .creator-signature:hover .creator-signature-name, .creator-signature:focus-visible .creator-signature-name { max-width: 18rem; opacity: 1; }
+        /* The creator, in the corner all the way down (CreatorSignature): on a
+           glass of its own, bare on the first screen given room. */
+        .creator-signature { gap: 0.75rem; padding: 0.35rem 0.9rem 0.35rem 0.35rem; background: rgb(var(--c-ground) / 0.8); border: 1px solid rgb(var(--c-line) / 0.28); backdrop-filter: blur(10px); transition: background-color 0.4s ease, border-color 0.4s ease; }
+        .creator-signature:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 3px; }
         @media (min-width: 640px) and (min-height: 700px) {
-          .creator-signature[data-full] { gap: 0.75rem; background: transparent; border-color: transparent; backdrop-filter: none; }
-          .creator-signature[data-full] .creator-signature-name { max-width: 18rem; opacity: 1; }
+          .creator-signature[data-bare] { background: transparent; border-color: transparent; backdrop-filter: none; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .creator-signature, .creator-signature-name { transition: none; }
+          .creator-signature { transition: none; }
           .landing-skylight { animation: none; }
           .landing-dust { display: none; }
           [data-reveal] { opacity: 1; transform: none; transition: none; }

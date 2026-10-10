@@ -29,6 +29,10 @@
     <title>Digital Atrium — Your ideas in one place</title>
     <meta name="description" content="An interactive space where ideas take shape, are seen, shared and built on. A fast, flexible tool for brainstorming, references, diagrams and much more." />
     <link rel="canonical" href="https://digitalatrium.org/" />
+    <!-- The database's address, connected to early: the first thing the app
+         asks of it shouldn't also have to wait for the handshake. Filled in at
+         build time from the environment, like the client itself. -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin />
     <meta name="theme-color" content="#191919" />
 
     <meta property="og:type" content="website" />
@@ -104,7 +108,11 @@
 
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Something on screen the moment the stylesheet is in, rather than once
+         all the JavaScript has run: the app's own loading frame (App.tsx's,
+         without its words, which wait for the reader's language). React
+         replaces it with whatever comes first. -->
+    <div id="root"><div class="fixed inset-0 bg-nier-black flex items-center justify-center"><div class="relative px-10 py-6"><div class="absolute top-0 left-0 w-4 h-4 border-t border-l border-nier-border/60"></div><div class="absolute top-0 right-0 w-4 h-4 border-t border-r border-nier-border/60"></div><div class="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-nier-border/60"></div><div class="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-nier-border/60"></div><svg width="192" height="3" class="block overflow-hidden" aria-hidden="true"><rect width="192" height="3" fill="#dad4bb" fill-opacity="0.1" /><rect class="animate-nier-slide" width="192" height="3" fill="#dad4bb" fill-opacity="0.8" /></svg></div></div></div>
     <!-- The shell renders empty until React runs, so this is both what a
          visitor without JavaScript should see and the only prose the first
          crawl pass has to go on. -->

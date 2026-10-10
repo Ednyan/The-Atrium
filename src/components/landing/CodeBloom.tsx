@@ -29,10 +29,21 @@ export default function CodeBloom({ stage, button, clear }: { stage: RefObject<H
   const [measure, setMeasure] = useState<Measure | null>(null)
   const svg = useRef<SVGSVGElement>(null)
   const grown = useRef(false)
-
+  // Drawn only once it's within a screen of view: hundreds of shapes nobody
+  // at the top of the page needs laid out.
+  const [near, setNear] = useState(false)
   useEffect(() => {
     const el = stage.current
-    if (!el || !button.current || !clear.current) return
+    if (!el || near) return
+    const watch = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) setNear(true) }, { rootMargin: '100% 0px' })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [stage, near])
+
+  // Measured once near too: measuring lays out the whole page.
+  useEffect(() => {
+    const el = stage.current
+    if (!near || !el || !button.current || !clear.current) return
     const update = () => {
       const base = el.getBoundingClientRect()
       if (!button.current || !clear.current) return
@@ -43,10 +54,10 @@ export default function CodeBloom({ stage, button, clear }: { stage: RefObject<H
     watch.observe(el)
     watch.observe(clear.current)
     return () => watch.disconnect()
-  }, [stage, button, clear])
+  }, [near, stage, button, clear])
 
   const drawing = useMemo(() => {
-    if (!measure) return null
+    if (!measure || !near) return null
     const { w, h, button: b, clear: c } = measure
     const ox = b.x + b.w / 2, oy = b.y + b.h / 2
     const sx = w * 0.47, sy = h * 0.46
@@ -78,7 +89,7 @@ export default function CodeBloom({ stage, button, clear }: { stage: RefObject<H
       ? nodes.flatMap(([, , g, parent], i) => (parent === -1 && kept[i] ? [{ x: at[i][0], y: at[i][1], name: groups[g].name, color: groups[g].color, right: at[i][0] >= ox }] : []))
       : []
     return { lines, across, dots, labels, deepest: Math.max(...lines.map(l => l.depth)) }
-  }, [measure])
+  }, [measure, near])
 
   // Grown once, outward from the button, when it's well in view.
   useEffect(() => {

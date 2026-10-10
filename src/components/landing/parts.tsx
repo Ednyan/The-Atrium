@@ -75,7 +75,8 @@ export const Lead = ({ children, className = '' }: { children: ReactNode; classN
 // stands in, still. With `controls` (the teaser): a pause, and a timeline to
 // click or drag along -- which also lets anyone who asked for less motion
 // play it after all. Paused by hand, it stays paused coming back into view.
-export function Clip({ src, poster, still, controls = false }: { src: string; poster: string; still: boolean; controls?: boolean }) {
+// `ahead`: how far off screen it starts loading.
+export function Clip({ src, poster, still, controls = false, ahead = '200px 400px' }: { src: string; poster: string; still: boolean; controls?: boolean; ahead?: string }) {
   const video = useRef<HTMLVideoElement>(null)
   const held = useRef(false)
   const [playing, setPlaying] = useState(false)
@@ -87,10 +88,10 @@ export function Clip({ src, poster, still, controls = false }: { src: string; po
       if (held.current) return
       if (!v.getAttribute('src')) v.src = src
       void v.play().catch(() => { /* not allowed to play yet: the picture stays */ })
-    }, { rootMargin: '200px 400px' })
+    }, { rootMargin: ahead })
     watch.observe(v)
     return () => watch.disconnect()
-  }, [src, still])
+  }, [src, still, ahead])
   return (
     <>
       <video

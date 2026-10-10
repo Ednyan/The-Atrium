@@ -7,7 +7,7 @@
 // light falls from the orb. On a pale page it's ink instead of light.
 //
 // The wormhole's geometry is the .blend's, modifiers applied
-// (public/portal/vessel.bin: int16 positions, uint16 triangles); everything
+// (public/portal/vessel.bin.gz: int16 positions, uint16 triangles); everything
 // else -- the orb, the little orbs, the light -- is drawn here. Its lines fade
 // with depth, as the scene's material does.
 //
@@ -69,9 +69,16 @@ const apply = (m: Mat4, [x, y, z]: Vec3): Vec3 => [
 interface Vessel { positions: Int16Array; indices: Uint16Array; extent: number }
 let vesselFile: Promise<Vessel> | null = null
 function loadVessel(): Promise<Vessel> {
-  vesselFile ??= fetch('/portal/vessel.bin').then(r => {
+  // Gzipped, as the host won't compress a .bin (a third smaller); unpacked
+  // here -- unless something on the way already did. Where the browser can't
+  // unpack it, the portal falls back to its video, as for any failure.
+  vesselFile ??= fetch('/portal/vessel.bin.gz').then(r => {
     if (!r.ok) throw new Error(`vessel ${r.status}`)
     return r.arrayBuffer()
+  }).then(packed => {
+    const head = new Uint8Array(packed, 0, 2)
+    if (head[0] !== 0x1f || head[1] !== 0x8b) return packed
+    return new Response(new Blob([packed]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer()
   }).then(buffer => {
     const view = new DataView(buffer)
     if (view.getUint32(0, true) !== 0x31565441) throw new Error('not a vessel file') // 'ATV1'
@@ -160,7 +167,9 @@ void main() {
   if (down <= 0.0) { gl_FragColor = vec4(0.0); return; }
   float spread = abs(p.x) / (down * 0.42 + 28.0);
   float beam = (1.0 - smoothstep(0.0, 1.0, spread)) * exp(-down / (uSize.y * 0.75)) * smoothstep(0.0, 60.0, down);
-  float a = beam * uStrength;
+  // Gone by the canvas's foot rather than cut off by it: the title sits there.
+  float foot = smoothstep(0.0, uSize.y * 0.25, (vPos.y * 0.5 + 0.5) * uSize.y);
+  float a = beam * foot * uStrength;
   gl_FragColor = vec4(uLight * a, a);
 }`
 

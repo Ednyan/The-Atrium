@@ -29,6 +29,8 @@ const FROM = [
 // load it can start late. These are only in case its events never come (ms).
 const SETTLE_BY = 4500
 const DONE_BY = 6500
+// A moment of the empty hall, the portal alone, before the traces come in (ms).
+const PAUSE = 1000
 
 interface Piece {
   ch: string; word: number; x: number; y: number; w: number; h: number; size: number
@@ -86,7 +88,7 @@ export default function TraceTitle({ className = '' }: { className?: string }) {
     let live = true
     let timers: number[] = []
     // Measured in the font it'll be seen in -- but not waited on for long.
-    void Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 800))]).then(() => {
+    void Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 800))]).then(() => new Promise(r => setTimeout(r, PAUSE))).then(() => {
       if (!live) return
       measure()
       setPhase('arrive')

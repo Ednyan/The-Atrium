@@ -1,63 +1,62 @@
 // The film, straight after the hall: the portal's light opening into it. Once
-// enough of it is in view, the screen opens by itself out of a glow the size
-// of the orb -- everything comes out of the orb -- and what plays in it starts
-// from its beginning. Without motion, it's simply there, open.
+// about half of it is in view, the screen comes on out of a flare of the orb's
+// light -- a line drawn across, then opening to its height -- and what plays in
+// it starts from its beginning; each time it's come back to after leaving
+// view, again. Transform and opacity only, so the compositor does it all
+// (LandingPage's styles). Without motion, it's simply there, open.
 //
 // What plays in it: the film once it's made; a teaser of the app until then;
 // failing both, a card saying it's on its way.
 
-import { forwardRef, useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
-import { useLandingMotion } from '../../lib/landingMotion'
 import { Brackets, ChapterLabel, Clip } from './parts'
 
 // Served from any https address (public/_headers allows media from one).
 const FILM_SRC: string = ''
 const FILM_POSTER: string = ''
 // Until then: a short, silent loop -- the portal, the app at work, the name
-// -- and its last frame for a poster.
-const TEASER_SRC: string = '/landing/teaser.mp4'
+// -- and its last frame for a poster. In 1080p where the screen it plays on
+// has the pixels for it, 720p elsewhere (a phone): half the download.
+const TEASER_SRC: string = typeof window !== 'undefined' && Math.min(window.innerWidth, 1300) * (window.devicePixelRatio || 1) > 1100
+  ? '/landing/teaser.mp4'
+  : '/landing/teaser-720.mp4'
 const TEASER_POSTER = '/landing/teaser.webp'
 
 const FilmChapter = forwardRef<HTMLElement, { index: number; still: boolean }>(function FilmChapter({ index, still }, ref) {
   const { t } = useTranslation()
-  const motion = useLandingMotion()
   const frame = useRef<HTMLDivElement>(null)
-  const glow = useRef<HTMLDivElement>(null)
-  const label = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(still)
 
+  // Open with about half of it in view; closed again once wholly out of it.
+  // Watched by its frame, which keeps its size while the screen is shrunk.
   useEffect(() => {
-    const screen = frame.current
-    if (!motion || !screen) return
-    const { gsap } = motion
-    const ctx = gsap.context(() => {
-      gsap.timeline({
-        // About half the screen in view.
-        scrollTrigger: { trigger: screen, start: 'top 55%', once: true },
-        onStart: () => {
-          const loop = screen.querySelector('video')
-          if (loop) loop.currentTime = 0
-        },
-      })
-        .fromTo(screen, { clipPath: 'inset(44% 47% 44% 47% round 999px)' }, { clipPath: 'inset(0% 0% 0% 0% round 0px)', ease: 'expo.inOut', duration: 1.5 }, 0)
-        .fromTo(glow.current, { scale: 1, opacity: 1 }, { scale: 6, opacity: 0, ease: 'power1.in', duration: 0.8 }, 0)
-        .fromTo(label.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.7)
-    })
-    return () => ctx.revert()
-  }, [motion])
+    const screen = frame.current?.parentElement
+    if (still || !screen) return
+    const watch = new IntersectionObserver(([entry]) => {
+      if (entry.intersectionRatio >= 0.45) setOpen(true)
+      else if (!entry.isIntersecting) setOpen(false)
+    }, { threshold: [0, 0.45] })
+    watch.observe(screen)
+    return () => watch.disconnect()
+  }, [still])
+  // Each opening from the start.
+  useEffect(() => {
+    const loop = open && !still ? frame.current?.querySelector('video') : null
+    if (loop) loop.currentTime = 0
+  }, [open, still])
 
   return (
     <section ref={ref} aria-labelledby="film-title" className="relative">
-      <div className="py-20 md:py-28 px-5 sm:px-10 lg:px-16">
+      <div className={`film-stage py-20 md:py-28 px-5 sm:px-10 lg:px-16 ${still ? '' : 'is-moving'}`} data-open={open ? '' : undefined}>
         <div className="w-full max-w-[1300px] mx-auto">
-          <div ref={label} className="mb-8">
+          <div className="film-label mb-8">
             <ChapterLabel index={index}>{t('landing.film.title')}</ChapterLabel>
             <span id="film-title" className="sr-only">{t('landing.film.title')}</span>
           </div>
           <div className="relative mx-auto" style={{ width: 'min(100%, calc((100vh - 13rem) * 16 / 9))' }}>
             <Brackets inset="-0.75rem" />
-            {/* Only while it opens: nothing would fade it out otherwise. */}
-            {motion && <div ref={glow} aria-hidden="true" className="film-glow absolute left-1/2 top-1/2 w-16 h-16 -ml-8 -mt-8 rounded-full pointer-events-none" />}
+            {!still && <div aria-hidden="true" className="film-glow absolute left-1/2 top-1/2 w-16 h-16 -ml-8 -mt-8 rounded-full pointer-events-none" />}
             <Screen ref={frame} still={still} />
           </div>
         </div>
@@ -75,7 +74,9 @@ const Screen = forwardRef<HTMLDivElement, { still: boolean }>(function Screen({ 
         <video src={FILM_SRC} poster={FILM_POSTER || undefined} controls preload="none" playsInline aria-label={t('landing.film.title')} className="absolute inset-0 w-full h-full" />
       ) : TEASER_SRC ? (
         <>
-          <Clip src={TEASER_SRC} poster={TEASER_POSTER} still={still} controls />
+          {/* Fetched once it's on screen, not before: right under the hall, it
+              would otherwise download while the page itself still is. */}
+          <Clip src={TEASER_SRC} poster={TEASER_POSTER} still={still} controls ahead="0px" />
           <span className="absolute left-4 bottom-14 text-[10px] tracking-[0.3em] uppercase text-white/80 pointer-events-none">{t('landing.film.teaser')}</span>
         </>
       ) : (

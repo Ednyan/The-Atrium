@@ -713,6 +713,19 @@ const STORAGE_KEYS = {
 // precisely because they have no account and should not need one.
 const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest'])
 
+// Whether there may be a session to restore -- one kept from before, or one
+// arriving now from a sign-in elsewhere (an OAuth return). Without either, a
+// visitor to the landing page sees it at once instead of the "Initializing"
+// screen while the session check finds nothing: on a slow phone, seconds.
+function mightBeSignedIn(): boolean {
+  try {
+    if (/[?&#](code|access_token|error_description)=/.test(window.location.search + window.location.hash)) return true
+    return Object.keys(localStorage).some(key => /^sb-.+-auth-token/.test(key))
+  } catch {
+    return true
+  }
+}
+
 // Route parsing helper
 function parseRoute(): { page: string; lobbyId?: string; section?: string } {
   // The path on the web, the hash on desktop -- see lib/route.
@@ -973,7 +986,7 @@ function AppInner() {
     window.history.replaceState({}, '', cleaned)
     navigate('/login')
   }, [])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => isDesktop || route.page !== 'landing' || mightBeSignedIn())
   const [currentLobbyId, setCurrentLobbyId] = useState<string | null>(() => {
     // Only a session that was already in an atrium is still in one. On a cold
     // start this is null, the effect below clears the stored id to match, and
