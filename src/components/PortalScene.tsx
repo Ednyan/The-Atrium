@@ -225,7 +225,7 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index)
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, v.indices, gl.STATIC_DRAW)
       vessel = { buffer, index, count: v.indices.length, extent: v.extent }
-      draw(performance.now())
+      redraw()
       start()
     }).catch(e => { console.warn('[portal] no vessel:', e); if (alive) setFailed(true) })
 
@@ -241,9 +241,13 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
     const settled: Settled[] = []
     let lastBirth = 0
     let lastTime = 0
-    const t0 = performance.now()
+    // The scene's own clock, in ms: it runs only while the scene is drawn
+    // moving. Out of view or in a hidden tab, the scene is paused, not
+    // falling behind -- on the wall's clock it came back owing every birth it
+    // had missed, and let them all out at once.
+    let clock = 0
 
-    function draw(now: number) {
+    function draw(frameTime: number) {
       if (!gl || !progs || !vessel || !canvas) return
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr))
@@ -252,9 +256,10 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-      const t = (now - t0) / 1000
-      const dt = Math.min(0.05, lastTime ? (now - lastTime) / 1000 : 0)
-      lastTime = now
+      const dt = Math.min(0.05, lastTime ? (frameTime - lastTime) / 1000 : 0)
+      lastTime = frameTime
+      clock += dt * 1000
+      const now = clock, t = now / 1000
       lean.x += (lean.tx - lean.x) * Math.min(1, dt * 2.2)
       lean.y += (lean.ty - lean.y) * Math.min(1, dt * 2.2)
       const inkNow = inkRef.current
@@ -398,13 +403,15 @@ export default function PortalScene({ ink = false, className = '' }: { ink?: boo
       frame = requestAnimationFrame(loop)
     }
     function stop() { cancelAnimationFrame(frame); frame = 0 }
-    redrawRef.current = () => { if (!frame) draw(performance.now()) }
+    // Drawn again as it stands (resized, or the theme changed), time stopped.
+    function redraw() { lastTime = 0; draw(performance.now()) }
+    redrawRef.current = () => { if (!frame) redraw() }
 
     const io = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; if (visible) start(); else stop() })
     io.observe(canvas)
     const onVisibility = () => (document.hidden ? stop() : start())
     document.addEventListener('visibilitychange', onVisibility)
-    const resize = new ResizeObserver(() => { if (!frame) draw(performance.now()) })
+    const resize = new ResizeObserver(() => { if (!frame) redraw() })
     resize.observe(canvas)
     const onLost = (e: Event) => { e.preventDefault(); stop(); setFailed(true) }
     canvas.addEventListener('webglcontextlost', onLost)
