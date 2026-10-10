@@ -83,6 +83,9 @@ export function buildTraceInsertRow(
   if (trace.height) newTrace.height = trace.height
   // A drawing's strokes (lib/brushes StrokeData): what it's painted from.
   if (trace.strokeData) newTrace.stroke_data = trace.strokeData
+  // A picture made from an EXR (lib/exr). Only when it is one, so a database
+  // without the column still takes every other trace.
+  if (trace.exr) newTrace.exr = trace.exr
 
   if (trace.type === 'shape') {
     if (trace.shapeType) newTrace.shape_type = trace.shapeType
@@ -187,6 +190,8 @@ export function traceColumns(trace: Trace): Record<string, any> {
   // auto-fit) on save, reverting to its creation-time size on reload.
   if (trace.width !== undefined) columns.width = trace.width
   if (trace.height !== undefined) columns.height = trace.height
+  // Graded again, an EXR's picture is a new file and this its new look.
+  if (trace.exr) columns.exr = trace.exr
 
   // Shape properties
   if (trace.type === 'shape') {

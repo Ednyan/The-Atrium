@@ -20,7 +20,7 @@ import { resolveLocalStreamUrl } from '../lib/localMedia'
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
-import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss, fitFontSize } from '../lib/textFit'
+import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss, fitFontSize, watchFonts, fontsLoadedVersion } from '../lib/textFit'
 import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
@@ -69,6 +69,7 @@ import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel
 import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
 import SheetTrace from './SheetTrace'
+import ExrGradePanel from './ExrGradePanel'
 import { CUSTOM_FONTS } from '../lib/customFonts'
 import { vaultWriteProgress, watchVaultWrites } from '../lib/vaultWrites'
 
@@ -660,6 +661,8 @@ export const CULL_MARGIN = 500
 
 export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, lassoSelectRequest, selecting = false, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
+  // A web font arrived: text fitted to its box is fitted again, in it.
+  const fontsVersion = useSyncExternalStore(watchFonts, fontsLoadedVersion)
     // Register an @font-face for each custom font bundled from
     // src/assets/fonts (see CUSTOM_FONTS above). Build-time resolved, so no
     // runtime directory listing is involved.
@@ -1349,6 +1352,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
   const [editingTrace, setEditingTrace] = useState<Trace | null>(null)
   const [imageProxySources, setImageProxySources] = useState<Record<string, string>>({}) // Track which images use proxy
+  // An EXR trace being graded (ExrGradePanel): the picture to show for it
+  // meanwhile, over its own file.
+  const [exrPreview, setExrPreview] = useState<Record<string, string>>({})
   const [localMediaUrls, setLocalMediaUrls] = useState<Record<string, string>>({}) // Track resolved local:// URLs for audio/video
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ traceIds: string[]; linkIds: string[] } | null>(null)
   // "New group" from the Move to Group flyout: which traces are going into it,
@@ -5974,10 +5980,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     return [
       // The view, and what every trace is drawn with. `t` is one function
       // whatever the language, so the language stands in for it.
-      zoom, worldOffset, atriumBackground, canEdit, language, showTraceTypeLabels, traceFloat,
+      zoom, worldOffset, atriumBackground, canEdit, language, showTraceTypeLabels, traceFloat, fontsVersion,
       // This trace.
       zOf(trace), localTraceTransforms[id], imageDimensions[id], imageProxySources[id], imageRetryCount[id],
-      failedImages.has(id), failedMedia.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id],
+      failedImages.has(id), failedMedia.has(id), confirmedImageIds.has(id), localMediaUrls[id], localShapePoints[id], exrPreview[id],
       playingMedia.has(id), movingIds.has(id), glidingIds.has(id),
       // The selected trace's frame, and crop mode, which only it shows.
       selected, multiSelectedIds.has(id), inWholeGroup.has(id), selected ? selectedPointIndex : null, selected && isCropMode, !!hiddenTraceIds?.has(id),
@@ -6702,7 +6708,7 @@ return (
           // lib/atriumFile): the error, saying what it was.
           if (rawUrl.startsWith(UNSUPPORTED)) return <TraceGlitch reason={t('atrium.error.unsupportedType', { type: rawUrl.slice(UNSUPPORTED.length) })} />
           const isLocal = rawUrl.startsWith('local://')
-          const resolvedSrc = imageProxySources[trace.id]
+          const resolvedSrc = exrPreview[trace.id] ?? imageProxySources[trace.id]
           // For local:// URLs, wait for resolved blob URL before rendering
           if (isLocal && !resolvedSrc) return <div className="flex items-center justify-center h-full"><span className="text-nier-strong/70 text-[10px] tracking-wider uppercase">{t('common.loading')}...</span></div>
           // A successful resolve always hands back a blob: URL, so one
@@ -7305,8 +7311,11 @@ return (
           }}
         >
         <div
-          className={`flex flex-col items-center ${valign === 'top' ? 'justify-start' : valign === 'bottom' ? 'justify-end' : 'justify-center'}`}
+          className="flex flex-col items-center"
           style={{
+            // Safe: text taller than its box shows from its first line,
+            // rather than spilling out of the top and the bottom alike.
+            justifyContent: valign === 'top' ? 'flex-start' : valign === 'bottom' ? 'safe flex-end' : 'safe center',
             width: `${100 / textScale}%`,
             height: `${100 / textScale}%`,
             padding: '6px',
@@ -9329,6 +9338,22 @@ return (
             
             </Section>
 
+            {/* An EXR's colour, graded from its original (lib/exr). */}
+            {editingTrace.type === 'image' && editingTrace.exr && (
+              <Section id="exr" title={t('atrium.customize.sectionExr')}>
+                <ExrGradePanel
+                  key={editingTrace.id}
+                  trace={{ ...editingTrace, exr: editingTrace.exr }}
+                  lobbyId={lobbyId ?? ''}
+                  userId={userId ?? ''}
+                  onPreview={(id, url) => setExrPreview(prev => {
+                    const { [id]: _, ...rest } = prev
+                    return url ? { ...rest, [id]: url } : rest
+                  })}
+                  onCommit={(id, updates) => updateTraceCustomization(id, updates)}
+                />
+              </Section>
+            )}
             {(framed || shapeLike) && (
             <Section id="style" title={t('atrium.customize.sectionStyle')}>
               {/* NieR Presets */}

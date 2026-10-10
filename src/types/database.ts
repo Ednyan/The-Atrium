@@ -1,5 +1,6 @@
 import type { StrokeStyle } from '../lib/strokeStyle'
 import type { StrokeData } from '../lib/brushes'
+import type { ExrGrade } from '../lib/exr'
 export interface Database {
   public: {
     Tables: {
@@ -92,6 +93,8 @@ export interface Trace {
   shapeOutlineOpacity?: number // Outline/stroke opacity 0-1, independent of shapeOpacity (fill)
   // A drawing stroke's stroke, kept to paint it again from (lib/brushes).
   strokeData?: StrokeData | null
+  // A picture made from an EXR: its original, and how it's shown (lib/exr).
+  exr?: ExrGrade
   shapePoints?: Array<{
     x: number
     y: number

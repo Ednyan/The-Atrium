@@ -1573,6 +1573,13 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
+  try {
+    // A picture made from an EXR: its original and how it's shown, as JSON
+    // (lib/exr ExrGrade; the web's add_trace_exr.sql).
+    await db.execute('ALTER TABLE traces ADD COLUMN exr TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Deleted traces' files, kept while undo could bring them back (holdTraceMedia).
   await db.execute('CREATE TABLE IF NOT EXISTS held_trace_media (trace_id TEXT PRIMARY KEY, lobby_id TEXT, type TEXT, media_url TEXT, image_url TEXT)')
@@ -2126,6 +2133,9 @@ function convertRowFromSql(table: string, row: any): any {
   if (table === 'traces' && out.stroke_data) {
     out.stroke_data = parseJsonField(out.stroke_data)
   }
+  if (table === 'traces' && out.exr) {
+    out.exr = parseJsonField(out.exr)
+  }
   if (table === 'lobbies' && out.theme_settings) {
     out.theme_settings = parseJsonField(out.theme_settings)
   }
@@ -2163,6 +2173,9 @@ function convertRowToSql(table: string, row: any): any {
   }
   if (table === 'traces' && out.stroke_data && typeof out.stroke_data !== 'string') {
     out.stroke_data = JSON.stringify(out.stroke_data)
+  }
+  if (table === 'traces' && out.exr && typeof out.exr !== 'string') {
+    out.exr = JSON.stringify(out.exr)
   }
   if (table === 'lobbies' && out.theme_settings && typeof out.theme_settings !== 'string') {
     out.theme_settings = JSON.stringify(out.theme_settings)

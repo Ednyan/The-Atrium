@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { asStrokeStyle } from '../lib/strokeStyle'
 import { asStrokeData } from '../lib/brushes'
+import { asExrGrade } from '../lib/exr'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
@@ -132,6 +133,7 @@ export function mapRowToTrace(row: any): Trace {
     shapePoints: row.shape_points,
     // Checked, not trusted: it's painted from.
     strokeData: asStrokeData(row.stroke_data),
+    exr: asExrGrade(row.exr),
     pathCurveType: row.path_curve_type,
     pathArrowStart: row.path_arrow_start,
     pathArrowEnd: row.path_arrow_end,

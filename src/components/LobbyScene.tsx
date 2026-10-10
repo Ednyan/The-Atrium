@@ -45,7 +45,7 @@ import { packBoxesAroundCenter, getDefaultTraceBoxSize, scaleToDisplayBox, probe
 import { nextShapeStyle, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleColumns, textColourOn, type ShapeStyle } from '../lib/shapeStyle'
 import { defaultEmbedBox, embedSourcesIn } from '../lib/embedUrl'
 import { hasTransparency } from '../lib/imageAlpha'
-import { isExr, withExrAsPng } from '../lib/exr'
+import { exrOrigin, isExr, withExrAsPng } from '../lib/exr'
 import { asStrokeData, BUILTIN_BRUSHES, customBrushKey, drawingOf, drawPlacedPicture, drawStroke, erasePicture, eraseStrokeData, fitBox, localToWorldDelta, strokeToLocal, isCustomBrush, makeBrushTip, newStrokeSeed, rasterizeStroke, registerCustomBrush, type CustomBrush, type Piece, type Stroke, type StrokeData, type StrokePoint } from '../lib/brushes'
 import { createWheelGestures } from '../lib/canvasGestures'
 import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPinterestConnect, takeImportAfterPinterestConnect } from '../lib/pinterest'
@@ -4163,7 +4163,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       if (item.file) {
         const uploadedUrl = await uploadFile(item.file)
         if (uploadedUrl) {
-          await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY, item.file)
+          // From an EXR: the original kept too, so it can be graded again
+          // (lib/exr). Not kept -- too big for the storage, say -- it's a
+          // picture like any other. Never as a data URL, the upload's last
+          // resort: a whole render written into the row.
+          const origin = exrOrigin(item.file)
+          const source = origin ? await uploadFile(origin.source).catch(() => null) : null
+          const exr = origin && source && !source.startsWith('data:') ? { exr: { source, ...origin.look } } : undefined
+          await insertDroppedTrace(item.traceType, item.content, uploadedUrl, dropX, dropY, item.file, undefined, undefined, exr)
         }
       } else {
         await insertDroppedTrace(item.traceType, item.content, item.mediaUrl, dropX, dropY)
@@ -4413,6 +4420,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // How it looks, where not the atrium's house style: the quick bar's plain
     // text has no border, background or shadow, and a colour of its own.
     look?: { showBorder?: boolean; showBackground?: boolean; showShadow?: boolean; textColor?: string },
+    // Columns of its own kind: an EXR's original and look.
+    extra?: Record<string, unknown>,
   ) => {
     const sized = size ? { width: Math.round(size.width), height: Math.round(size.height) } : {}
     // Not dragged out to a size: its usual size on screen, at any zoom --
@@ -4485,6 +4494,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       ...(embedBox ?? {}),
       ...sized,
       ...layerFields,
+      ...extra,
     }, message => showToast(t('atrium.error.traceSaveFailed', { message })))
     // Returned so a caller can act on the trace it just made -- "Text" in
     // the canvas menu needs the id to put it straight into editing.
@@ -4767,8 +4777,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           </>
         )}
 
-        {/* The way out; with the interface hidden, the way back to it, faint
-            until reached for. */}
+        {/* The way out; with the interface hidden, the way back to it, dimmed
+            until reached for -- but not so far it can't be found. */}
         <HudIconButton
           icon={uiHidden ? MENU_ICONS.show : MENU_ICONS.leave}
           label={uiHidden ? t('atrium.hud.showUi') : t('atrium.hud.leaveAtrium')}
@@ -4777,7 +4787,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             if (uiHidden) { setUiHidden(false); return }
             askToLeave()
           }}
-          className={uiHidden ? 'opacity-25 hover:opacity-100' : 'hover:brightness-110'}
+          className={uiHidden ? 'opacity-60 hover:opacity-100' : 'hover:brightness-110'}
           // red-300 is 1.65:1 on paper -- a warning nobody can read. The token
           // carries the red each theme can actually show.
           style={uiHidden ? undefined : { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' }}

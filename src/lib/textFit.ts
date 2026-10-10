@@ -44,15 +44,22 @@ export function wrapLines(ctx: CanvasRenderingContext2D, content: string, availa
     words.forEach((word, i) => {
       const isLastWord = i === words.length - 1
       const wordWithSpace = isLastWord ? word : `${word} `
-      const wordWidth = ctx.measureText(wordWithSpace).width
+      // Whether it fits is the word's own width: the space after it hangs
+      // past the end of the line, as the page's wrapping lets it. Counted, a
+      // space typed at the end of a line made the fit shrink the text until
+      // the next letter.
+      const wordWidth = ctx.measureText(word).width
+      const advance = ctx.measureText(wordWithSpace).width
       if (wordWidth <= width) {
-        if (lineWidth > 0 && lineWidth + wordWidth > width) {
+        // An empty word -- a space after a space, or at the end -- only adds
+        // its space, which hangs like the rest.
+        if (lineWidth > 0 && wordWidth > 0 && lineWidth + wordWidth > width) {
           lines.push(line)
           line = wordWithSpace
-          lineWidth = wordWidth
+          lineWidth = advance
         } else {
           line += wordWithSpace
-          lineWidth += wordWidth
+          lineWidth += advance
         }
         return
       }
@@ -160,24 +167,56 @@ export function fittedTextBox(trace: { content?: string | null; fontSize?: 'smal
 // a text is drawn again on every frame of a zoom. An empty box is sized as
 // one letter would be, so typing the first one doesn't jump.
 const FIT_PADDING = 6
+const FIT_WIDTH_SHARE = 0.98
 const fitCache = new Map<string, number>()
+
+// A web font loads when it's first used, and until it has, the canvas
+// measures in a fallback -- narrower or wider than the font the text is then
+// drawn in, so a fit remembered from then overflowed its box, or broke a word
+// across lines, for good. Fits are remembered per state of the fonts, and
+// whatever shows them is told (watchFonts) to fit again when one arrives.
+let fontsVersion = 0
+const fontWatchers = new Set<() => void>()
+if (typeof document !== 'undefined') {
+  document.fonts?.addEventListener('loadingdone', () => {
+    fontsVersion++
+    fontWatchers.forEach(watcher => watcher())
+  })
+}
+export const watchFonts = (watcher: () => void) => {
+  fontWatchers.add(watcher)
+  return () => { fontWatchers.delete(watcher) }
+}
+export const fontsLoadedVersion = () => fontsVersion
+
 export function fitFontSize(content: string, width: number, height: number, font: { family: string; bold?: boolean; italic?: boolean }): number {
-  const key = [content, Math.round(width), Math.round(height), font.family, font.bold ? 1 : 0, font.italic ? 1 : 0].join('\u0001')
+  const key = [content, Math.round(width), Math.round(height), font.family, font.bold ? 1 : 0, font.italic ? 1 : 0, fontsVersion].join('\u0001')
   const known = fitCache.get(key)
   if (known !== undefined) return known
   const ctx = getMeasureContext()
   const innerW = Math.max(1, width - FIT_PADDING * 2), innerH = Math.max(1, height - FIT_PADDING * 2)
   if (!ctx) return Math.max(4, innerH / LINE_HEIGHT_RATIO / 2)
+  const style = `${font.italic ? 'italic ' : ''}${font.bold ? 'bold ' : ''}`
+  // Not here yet: fetched now, so it's here to fit with when it's next asked.
+  try {
+    if (typeof document !== 'undefined' && document.fonts && !document.fonts.check(`${style}16px ${font.family}`)) {
+      void document.fonts.load(`${style}16px ${font.family}`).catch(() => {})
+    }
+  } catch { /* a family the font syntax refuses: measured as it is */ }
   const text = content.trim() ? content : 'M'
   // Words whole: a size that would break one across lines is too big (a word
   // is broken only where even the smallest size can't fit it).
   const words = text.split(/\s+/).filter(Boolean)
+  // Fitted to a little less than the width: the page can lay a line out a
+  // shade wider than the canvas measures it (its font rendering), and with
+  // no room to spare, that shade broke the last letter of a word onto a line
+  // of its own, or a line more pushed the first out of the top of the box.
+  const fitW = innerW * FIT_WIDTH_SHARE
   const fits = (size: number) => {
-    ctx.font = `${font.italic ? 'italic ' : ''}${font.bold ? 'bold ' : ''}${size}px ${font.family}`
-    if (words.some(word => ctx.measureText(word).width > innerW)) return false
-    const lines = wrapLines(ctx, text, innerW)
-    if (lines.length * size * LINE_HEIGHT_RATIO > innerH) return false
-    return lines.every(line => ctx.measureText(line.trimEnd()).width <= innerW + 0.5)
+    ctx.font = `${style}${size}px ${font.family}`
+    if (words.some(word => ctx.measureText(word).width > fitW)) return false
+    const lines = wrapLines(ctx, text, fitW)
+    return lines.length * size * LINE_HEIGHT_RATIO <= innerH
   }
   let low = 2, high = Math.max(2, innerH / LINE_HEIGHT_RATIO)
   for (let i = 0; i < 16 && high - low > 0.25; i++) {
