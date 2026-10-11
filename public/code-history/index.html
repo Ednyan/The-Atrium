@@ -15,9 +15,33 @@
           --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
-  #c { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  /* The graph is drawn on glass: the room behind it shows through. */
+  #c { position: relative; z-index: 1; display: block; width: 100vw; height: 100vh; cursor: grab; }
   #c.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* The landing page's light from above, and the dust drifting down in it
+     (its Atmosphere): the same room, behind the graph. */
+  #sky { position: fixed; inset: 0; pointer-events: none; overflow: hidden;
+         background: radial-gradient(ellipse 55% 60% at 50% -12%, rgb(255 236 205 / .11), transparent 70%),
+                     radial-gradient(ellipse 30% 40% at 50% -6%, rgb(255 236 205 / .08), transparent 70%);
+         animation: breathe 12s ease-in-out infinite; }
+  :root[data-theme='light'] #sky { background: radial-gradient(ellipse 60% 65% at 50% -10%, rgb(255 255 255 / .85), transparent 72%),
+                                               radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgb(46 42 37 / .06)); }
+  @keyframes breathe { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+  #sky i { position: absolute; top: 0; border-radius: 50%; background: rgb(255 236 205 / .75); box-shadow: 0 0 6px rgb(255 236 205 / .5);
+           opacity: 0; animation: mote linear infinite; }
+  :root[data-theme='light'] #sky i { background: rgb(46 42 37 / .5); box-shadow: none; }
+  @keyframes mote { 0% { transform: translate3d(0, -4vh, 0); opacity: 0; } 12% { opacity: .45; } 70% { opacity: .3; }
+                    100% { transform: translate3d(var(--drift), 96vh, 0); opacity: 0; } }
+  /* The speck of light the history grows from: it falls from above at the
+     opening, a thread of light behind it, and the first files come out of it. */
+  #seed { position: fixed; left: 0; top: 0; z-index: 2; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%;
+          pointer-events: none; opacity: 0; background: #fff; will-change: transform, opacity;
+          box-shadow: 0 0 12px 3px rgb(255 236 205 / .7), 0 0 50px 14px rgb(255 236 205 / .2); }
+  #seed::before { content: ''; position: absolute; left: 3px; bottom: 3.5px; width: 1px; height: 38vh; transform-origin: bottom;
+                  transform: scaleY(var(--trail, 0)); background: linear-gradient(to top, rgb(255 236 205 / .75), transparent); }
+  :root[data-theme='light'] #seed { background: var(--strong); box-shadow: 0 0 0 5px rgb(22 20 18 / .07); }
+  :root[data-theme='light'] #seed::before { background: linear-gradient(to top, rgb(22 20 18 / .5), transparent); }
+  #hud { position: fixed; z-index: 2; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
   /* The bar along the top, as the landing page has one: the way back on the
      left, what this is in the middle, the language and light or dark on the
      right -- the site's own buttons, bordered, a corner cut. */
@@ -36,8 +60,8 @@
             transition: border-color .25s ease, color .25s ease, background .25s ease; }
   .chrome:hover { border-color: var(--accent); color: var(--strong); }
   #back { padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
-  #back b { font-weight: normal; transition: transform .25s ease; }
-  #back:hover b { transform: translateX(-3px); }
+  .home b { font-weight: normal; transition: transform .25s ease; }
+  .home:hover b { transform: translateX(-3px); }
   #mode { width: 34px; justify-content: center; padding: 0; }
   .chrome svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   /* The language: the select itself, the whole button wide, so its own list opens. */
@@ -57,12 +81,20 @@
   ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-right; }
   @keyframes slide-off-left { to { transform: translateX(-100%); } }
   @keyframes slide-in-right { from { transform: translateX(100%); } }
-  #date { font-size: 30px; letter-spacing: .06em; }
-  #stats { color: var(--dim); margin-top: 2px; }
-  #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
-  /* What's what, and how to move about: two panels down the right, the
-     legend's marks drawn as the graph draws them, in its colours. */
-  #side { position: fixed; right: 18px; top: 74px; z-index: 2; width: 264px; display: flex; flex-direction: column; gap: 12px; }
+  /* When it is, large and light; what's there, in the landing page's small
+     spaced capitals; and what changed, the commit's own words, set off by a
+     thread of its light. */
+  #date { font-size: clamp(22px, 2.6vw, 34px); font-weight: 300; letter-spacing: .08em; color: var(--strong); }
+  #stats { margin-top: 6px; color: var(--dim); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; }
+  #note { margin-top: 12px; padding-left: 12px; border-left: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); color: var(--lead); font-style: italic; }
+  /* What's what, and how to move about: one pane of glass, folded away behind
+     its button until asked for, so the graph has the whole screen. */
+  #guide { position: fixed; right: 18px; top: 74px; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #guide summary { list-style: none; padding: 0 14px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
+  #guide summary::-webkit-details-marker { display: none; }
+  #guide[open] summary { border-color: var(--accent); color: var(--strong); }
+  #guide .panel { width: min(290px, calc(100vw - 36px)); max-height: calc(100vh - 210px); overflow: auto; display: grid; gap: 16px; }
+  #about { margin: 0; color: var(--lead); line-height: 1.6; }
   .panel { padding: 12px 14px 13px; border: 1px solid var(--line);
            background: linear-gradient(150deg, color-mix(in srgb, var(--fg) 9%, transparent), color-mix(in srgb, var(--fg) 2%, transparent) 45%, color-mix(in srgb, var(--fg) 5%, transparent)),
                        color-mix(in srgb, var(--panel) 86%, transparent);
@@ -79,9 +111,15 @@
   kbd { justify-self: start; padding: 1px 7px; font: inherit; font-size: 11px; color: var(--fg); background: var(--bg);
         border: 1px solid var(--line); border-bottom-width: 2px; white-space: nowrap; }
   #controls span { color: var(--dim); }
-  @media (max-width: 760px), (max-height: 560px) { #side { display: none; } }
   @media (min-width: 761px) { #hud { max-width: min(640px, calc(100vw - 340px)); } }
-  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  /* How to move about, said once over the graph as it starts, then gone --
+     where there's a mouse and keys to do it with. */
+  #hints { position: fixed; z-index: 2; left: 50%; bottom: 100px; transform: translateX(-50%); display: flex; gap: 18px; white-space: nowrap;
+           color: var(--dim); pointer-events: none; opacity: 0; transition: opacity 1.2s ease; }
+  #hints span { display: flex; align-items: center; gap: 7px; }
+  body.hinting #hints { opacity: 1; }
+  @media (hover: none), (max-width: 900px) { #hints { display: none; } }
+  #bar { position: fixed; z-index: 2; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #play { min-width: 84px; justify-content: center; padding: 0 14px; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; }
   #speed { padding: 0 10px; appearance: none; -webkit-appearance: none; text-align: center; }
   #track { flex: 1; position: relative; }
@@ -95,29 +133,36 @@
   #slider::-moz-range-progress { height: 2px; background: var(--accent); }
   #slider::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--accent); }
   #slider:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
-  #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
+  /* The releases along the timeline: a notch each, the minor ones named
+     where there's room. */
+  #marks { position: absolute; inset: 0; pointer-events: none; }
+  #marks i { position: absolute; top: -15px; width: 1px; height: 6px; background: color-mix(in srgb, var(--fg) 30%, transparent); }
+  #marks i[data-v] { top: -18px; height: 9px; background: var(--dim); }
+  #marks i[data-v]::after { content: attr(data-v); position: absolute; bottom: 12px; left: 0; transform: translateX(-50%);
+                            font-size: 10px; letter-spacing: .06em; color: var(--dim); }
+  @media (max-width: 760px) { #marks i[data-v]::after { display: none; } }
+  #tip { position: fixed; z-index: 3; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
-  #hud, #side, #bar { transition: opacity 1.2s ease; }
-  body.intro #hud, body.intro #side, body.intro #bar { opacity: 0; pointer-events: none; }
-  :root[data-theme='light'] body.intro canvas { filter: brightness(1.05) saturate(0.35) blur(1.5px); }
-  /* Behind the title the graph is texture, not content: darker, greyer and a
-     little soft, so the name stands clear of it. The canvas is empty by the
-     time the filter comes off, so the switch never shows. */
-  body.intro canvas { filter: brightness(0.6) saturate(0.35) blur(1.5px); }
-  #intro { position: fixed; inset: 0; pointer-events: none; }
-  /* Two moments, one over the other: the name; then, once it has gone, what
-     follows. */
-  #intro > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-                 gap: 22px; padding: 0 24px; text-align: center; opacity: 0; }
-  /* The line before the name, and what follows it: large and light enough to
-     read over the graph, which is what they're there for. */
-  #intro small { color: var(--lead); font-size: clamp(14px, 1.45vw, 19px); letter-spacing: .2em; text-transform: uppercase; }
-  #intro #explain { max-width: 32em; margin: 0; color: var(--lead); font-size: clamp(16px, 1.7vw, 23px);
-                    line-height: 1.65; letter-spacing: .02em; }
-  /* The one way past the opening: clicks and keys no longer skip it. */
-  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 2; background: var(--panel); color: var(--fg);
-          border: 1px solid var(--line); padding: 8px 18px; font: inherit; letter-spacing: .12em; cursor: pointer; }
-  #skip:hover { border-color: var(--accent); }
+  #hud, #guide, #bar, #end { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #guide, body.intro #bar { opacity: 0; pointer-events: none; }
+  /* Running back, the date runs back with it. */
+  body.intro.rewinding #hud { opacity: 1; }
+  body.intro #note { visibility: hidden; }
+  #intro { position: fixed; z-index: 2; inset: 0; pointer-events: none; }
+  /* The name, over today's graph -- a little shade behind it so it reads. */
+  /* Under where the speck lands, as the landing page sets its title under
+     the light. */
+  #introName { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+               gap: 22px; padding: calc(50vh + 52px) 24px 0; text-align: center; opacity: 0;
+               background: radial-gradient(ellipse 46% 22% at 50% calc(50% + 110px), color-mix(in srgb, var(--bg) 80%, transparent), transparent 80%); }
+  #intro small { color: var(--lead); font-size: clamp(13px, 1.3vw, 17px); letter-spacing: .2em; text-transform: uppercase; }
+  /* The one way past the opening: clicks and keys don't skip it. */
+  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 3; padding: 0 16px; letter-spacing: .22em;
+          text-transform: uppercase; font-size: 11px; }
+  /* At today: the whole graph lit once, and where to go from here. */
+  #end { position: fixed; z-index: 2; left: 50%; bottom: 112px; transform: translateX(-50%); display: flex; gap: 10px; opacity: 0; pointer-events: none; }
+  #end .chrome { padding: 0 16px 0 14px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+  body.ended #end { opacity: 1; pointer-events: auto; transition-delay: 1.4s; }
   /* The name as the landing page sets it: the same face, weights, sizes and
      the metal on ATRIUM, in its dark theme. */
   #intro h1 { margin: 0; font: 300 1em/0.86 Consolas, Monaco, 'Lucida Console', 'Liberation Mono', monospace; letter-spacing: -0.02em; }
@@ -129,28 +174,36 @@
 </style>
 </head>
 <body class="intro">
+<div id="sky" aria-hidden="true"></div>
 <canvas id="c"></canvas>
+<div id="seed" aria-hidden="true"></div>
 <header id="top">
-  <a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
+  <a id="back" class="chrome home" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
   <div id="title"><i></i><span data-t="title">Code history</span><span>The Digital Atrium</span></div>
   <div class="end">
     <label id="langWrap" class="chrome"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/></svg><span id="langName"></span><select id="lang"></select></label>
     <button id="mode" class="chrome" type="button"></button>
   </div>
 </header>
-<div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div><div id="introNext"><p id="explain" data-t="explain"></p></div></div>
-<button id="skip" data-t="skip">Skip intro</button>
+<div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div></div>
+<button id="skip" class="chrome" type="button" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
-<div id="side">
-  <section id="legend" class="panel"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
-  <section id="controls" class="panel"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
-</div>
+<details id="guide">
+  <summary class="chrome" data-t="legendTitle">Legend</summary>
+  <div class="panel">
+    <p id="about" data-t="explain"></p>
+    <section id="legend"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
+    <section id="controls"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
+  </div>
+</details>
+<div id="hints"></div>
+<div id="end"><button id="again" class="chrome" type="button" data-t="replay">Replay</button><a class="chrome home" href="/"><b>←</b><span data-t="back">Back to homepage</span></a></div>
 <div id="tip"></div>
 <div id="bar">
   <button id="play" class="chrome" type="button">Pause</button>
-  <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
+  <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><div id="marks"></div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" class="chrome" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
-<script src="growth.js?v=b5c319685217"></script>
+<script src="growth.js?v=da32e345045b"></script>
 </body>
 </html>

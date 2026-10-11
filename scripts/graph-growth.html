@@ -15,9 +15,33 @@
           --panel: #fbfaf6; --strong: #161412; --metal: linear-gradient(100deg, #1A1714 0%, #55504A 100%); --lead: rgb(46 42 37 / .82); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.45 ui-monospace, Consolas, monospace; overflow: hidden; }
-  #c { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  /* The graph is drawn on glass: the room behind it shows through. */
+  #c { position: relative; z-index: 1; display: block; width: 100vw; height: 100vh; cursor: grab; }
   #c.dragging { cursor: grabbing; }
-  #hud { position: fixed; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
+  /* The landing page's light from above, and the dust drifting down in it
+     (its Atmosphere): the same room, behind the graph. */
+  #sky { position: fixed; inset: 0; pointer-events: none; overflow: hidden;
+         background: radial-gradient(ellipse 55% 60% at 50% -12%, rgb(255 236 205 / .11), transparent 70%),
+                     radial-gradient(ellipse 30% 40% at 50% -6%, rgb(255 236 205 / .08), transparent 70%);
+         animation: breathe 12s ease-in-out infinite; }
+  :root[data-theme='light'] #sky { background: radial-gradient(ellipse 60% 65% at 50% -10%, rgb(255 255 255 / .85), transparent 72%),
+                                               radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgb(46 42 37 / .06)); }
+  @keyframes breathe { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+  #sky i { position: absolute; top: 0; border-radius: 50%; background: rgb(255 236 205 / .75); box-shadow: 0 0 6px rgb(255 236 205 / .5);
+           opacity: 0; animation: mote linear infinite; }
+  :root[data-theme='light'] #sky i { background: rgb(46 42 37 / .5); box-shadow: none; }
+  @keyframes mote { 0% { transform: translate3d(0, -4vh, 0); opacity: 0; } 12% { opacity: .45; } 70% { opacity: .3; }
+                    100% { transform: translate3d(var(--drift), 96vh, 0); opacity: 0; } }
+  /* The speck of light the history grows from: it falls from above at the
+     opening, a thread of light behind it, and the first files come out of it. */
+  #seed { position: fixed; left: 0; top: 0; z-index: 2; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%;
+          pointer-events: none; opacity: 0; background: #fff; will-change: transform, opacity;
+          box-shadow: 0 0 12px 3px rgb(255 236 205 / .7), 0 0 50px 14px rgb(255 236 205 / .2); }
+  #seed::before { content: ''; position: absolute; left: 3px; bottom: 3.5px; width: 1px; height: 38vh; transform-origin: bottom;
+                  transform: scaleY(var(--trail, 0)); background: linear-gradient(to top, rgb(255 236 205 / .75), transparent); }
+  :root[data-theme='light'] #seed { background: var(--strong); box-shadow: 0 0 0 5px rgb(22 20 18 / .07); }
+  :root[data-theme='light'] #seed::before { background: linear-gradient(to top, rgb(22 20 18 / .5), transparent); }
+  #hud { position: fixed; z-index: 2; left: 18px; top: 76px; pointer-events: none; max-width: min(640px, calc(100vw - 80px)); }
   /* The bar along the top, as the landing page has one: the way back on the
      left, what this is in the middle, the language and light or dark on the
      right -- the site's own buttons, bordered, a corner cut. */
@@ -36,8 +60,8 @@
             transition: border-color .25s ease, color .25s ease, background .25s ease; }
   .chrome:hover { border-color: var(--accent); color: var(--strong); }
   #back { padding: 0 16px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
-  #back b { font-weight: normal; transition: transform .25s ease; }
-  #back:hover b { transform: translateX(-3px); }
+  .home b { font-weight: normal; transition: transform .25s ease; }
+  .home:hover b { transform: translateX(-3px); }
   #mode { width: 34px; justify-content: center; padding: 0; }
   .chrome svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   /* The language: the select itself, the whole button wide, so its own list opens. */
@@ -57,12 +81,20 @@
   ::view-transition-new(root) { animation: 650ms cubic-bezier(.65, 0, .35, 1) both slide-in-right; }
   @keyframes slide-off-left { to { transform: translateX(-100%); } }
   @keyframes slide-in-right { from { transform: translateX(100%); } }
-  #date { font-size: 30px; letter-spacing: .06em; }
-  #stats { color: var(--dim); margin-top: 2px; }
-  #note { color: var(--fg); opacity: .8; margin-top: 6px; font-style: italic; }
-  /* What's what, and how to move about: two panels down the right, the
-     legend's marks drawn as the graph draws them, in its colours. */
-  #side { position: fixed; right: 18px; top: 74px; z-index: 2; width: 264px; display: flex; flex-direction: column; gap: 12px; }
+  /* When it is, large and light; what's there, in the landing page's small
+     spaced capitals; and what changed, the commit's own words, set off by a
+     thread of its light. */
+  #date { font-size: clamp(22px, 2.6vw, 34px); font-weight: 300; letter-spacing: .08em; color: var(--strong); }
+  #stats { margin-top: 6px; color: var(--dim); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; }
+  #note { margin-top: 12px; padding-left: 12px; border-left: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); color: var(--lead); font-style: italic; }
+  /* What's what, and how to move about: one pane of glass, folded away behind
+     its button until asked for, so the graph has the whole screen. */
+  #guide { position: fixed; right: 18px; top: 74px; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  #guide summary { list-style: none; padding: 0 14px 0 12px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; }
+  #guide summary::-webkit-details-marker { display: none; }
+  #guide[open] summary { border-color: var(--accent); color: var(--strong); }
+  #guide .panel { width: min(290px, calc(100vw - 36px)); max-height: calc(100vh - 210px); overflow: auto; display: grid; gap: 16px; }
+  #about { margin: 0; color: var(--lead); line-height: 1.6; }
   .panel { padding: 12px 14px 13px; border: 1px solid var(--line);
            background: linear-gradient(150deg, color-mix(in srgb, var(--fg) 9%, transparent), color-mix(in srgb, var(--fg) 2%, transparent) 45%, color-mix(in srgb, var(--fg) 5%, transparent)),
                        color-mix(in srgb, var(--panel) 86%, transparent);
@@ -79,9 +111,15 @@
   kbd { justify-self: start; padding: 1px 7px; font: inherit; font-size: 11px; color: var(--fg); background: var(--bg);
         border: 1px solid var(--line); border-bottom-width: 2px; white-space: nowrap; }
   #controls span { color: var(--dim); }
-  @media (max-width: 760px), (max-height: 560px) { #side { display: none; } }
   @media (min-width: 761px) { #hud { max-width: min(640px, calc(100vw - 340px)); } }
-  #bar { position: fixed; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  /* How to move about, said once over the graph as it starts, then gone --
+     where there's a mouse and keys to do it with. */
+  #hints { position: fixed; z-index: 2; left: 50%; bottom: 100px; transform: translateX(-50%); display: flex; gap: 18px; white-space: nowrap;
+           color: var(--dim); pointer-events: none; opacity: 0; transition: opacity 1.2s ease; }
+  #hints span { display: flex; align-items: center; gap: 7px; }
+  body.hinting #hints { opacity: 1; }
+  @media (hover: none), (max-width: 900px) { #hints { display: none; } }
+  #bar { position: fixed; z-index: 2; left: 18px; right: 18px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
   #play { min-width: 84px; justify-content: center; padding: 0 14px; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; }
   #speed { padding: 0 10px; appearance: none; -webkit-appearance: none; text-align: center; }
   #track { flex: 1; position: relative; }
@@ -95,29 +133,36 @@
   #slider::-moz-range-progress { height: 2px; background: var(--accent); }
   #slider::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--accent); }
   #slider:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
-  #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
+  /* The releases along the timeline: a notch each, the minor ones named
+     where there's room. */
+  #marks { position: absolute; inset: 0; pointer-events: none; }
+  #marks i { position: absolute; top: -15px; width: 1px; height: 6px; background: color-mix(in srgb, var(--fg) 30%, transparent); }
+  #marks i[data-v] { top: -18px; height: 9px; background: var(--dim); }
+  #marks i[data-v]::after { content: attr(data-v); position: absolute; bottom: 12px; left: 0; transform: translateX(-50%);
+                            font-size: 10px; letter-spacing: .06em; color: var(--dim); }
+  @media (max-width: 760px) { #marks i[data-v]::after { display: none; } }
+  #tip { position: fixed; z-index: 3; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 4px 8px; display: none; max-width: 60vw; }
   #tip small { color: var(--dim); display: block; }
-  #hud, #side, #bar { transition: opacity 1.2s ease; }
-  body.intro #hud, body.intro #side, body.intro #bar { opacity: 0; pointer-events: none; }
-  :root[data-theme='light'] body.intro canvas { filter: brightness(1.05) saturate(0.35) blur(1.5px); }
-  /* Behind the title the graph is texture, not content: darker, greyer and a
-     little soft, so the name stands clear of it. The canvas is empty by the
-     time the filter comes off, so the switch never shows. */
-  body.intro canvas { filter: brightness(0.6) saturate(0.35) blur(1.5px); }
-  #intro { position: fixed; inset: 0; pointer-events: none; }
-  /* Two moments, one over the other: the name; then, once it has gone, what
-     follows. */
-  #intro > div { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-                 gap: 22px; padding: 0 24px; text-align: center; opacity: 0; }
-  /* The line before the name, and what follows it: large and light enough to
-     read over the graph, which is what they're there for. */
-  #intro small { color: var(--lead); font-size: clamp(14px, 1.45vw, 19px); letter-spacing: .2em; text-transform: uppercase; }
-  #intro #explain { max-width: 32em; margin: 0; color: var(--lead); font-size: clamp(16px, 1.7vw, 23px);
-                    line-height: 1.65; letter-spacing: .02em; }
-  /* The one way past the opening: clicks and keys no longer skip it. */
-  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 2; background: var(--panel); color: var(--fg);
-          border: 1px solid var(--line); padding: 8px 18px; font: inherit; letter-spacing: .12em; cursor: pointer; }
-  #skip:hover { border-color: var(--accent); }
+  #hud, #guide, #bar, #end { transition: opacity 1.2s ease; }
+  body.intro #hud, body.intro #guide, body.intro #bar { opacity: 0; pointer-events: none; }
+  /* Running back, the date runs back with it. */
+  body.intro.rewinding #hud { opacity: 1; }
+  body.intro #note { visibility: hidden; }
+  #intro { position: fixed; z-index: 2; inset: 0; pointer-events: none; }
+  /* The name, over today's graph -- a little shade behind it so it reads. */
+  /* Under where the speck lands, as the landing page sets its title under
+     the light. */
+  #introName { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+               gap: 22px; padding: calc(50vh + 52px) 24px 0; text-align: center; opacity: 0;
+               background: radial-gradient(ellipse 46% 22% at 50% calc(50% + 110px), color-mix(in srgb, var(--bg) 80%, transparent), transparent 80%); }
+  #intro small { color: var(--lead); font-size: clamp(13px, 1.3vw, 17px); letter-spacing: .2em; text-transform: uppercase; }
+  /* The one way past the opening: clicks and keys don't skip it. */
+  #skip { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 3; padding: 0 16px; letter-spacing: .22em;
+          text-transform: uppercase; font-size: 11px; }
+  /* At today: the whole graph lit once, and where to go from here. */
+  #end { position: fixed; z-index: 2; left: 50%; bottom: 112px; transform: translateX(-50%); display: flex; gap: 10px; opacity: 0; pointer-events: none; }
+  #end .chrome { padding: 0 16px 0 14px; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+  body.ended #end { opacity: 1; pointer-events: auto; transition-delay: 1.4s; }
   /* The name as the landing page sets it: the same face, weights, sizes and
      the metal on ATRIUM, in its dark theme. */
   #intro h1 { margin: 0; font: 300 1em/0.86 Consolas, Monaco, 'Lucida Console', 'Liberation Mono', monospace; letter-spacing: -0.02em; }
@@ -129,26 +174,34 @@
 </style>
 </head>
 <body class="intro">
+<div id="sky" aria-hidden="true"></div>
 <canvas id="c"></canvas>
+<div id="seed" aria-hidden="true"></div>
 <header id="top">
-  <a id="back" class="chrome" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
+  <a id="back" class="chrome home" href="/"><b>←</b><span data-t="back">Back to homepage</span></a>
   <div id="title"><i></i><span data-t="title">Code history</span><span>The Digital Atrium</span></div>
   <div class="end">
     <label id="langWrap" class="chrome"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18"/></svg><span id="langName"></span><select id="lang"></select></label>
     <button id="mode" class="chrome" type="button"></button>
   </div>
 </header>
-<div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div><div id="introNext"><p id="explain" data-t="explain"></p></div></div>
-<button id="skip" data-t="skip">Skip intro</button>
+<div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div></div>
+<button id="skip" class="chrome" type="button" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
-<div id="side">
-  <section id="legend" class="panel"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
-  <section id="controls" class="panel"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
-</div>
+<details id="guide">
+  <summary class="chrome" data-t="legendTitle">Legend</summary>
+  <div class="panel">
+    <p id="about" data-t="explain"></p>
+    <section id="legend"><h2 data-t="legendTitle">Legend</h2><ul></ul></section>
+    <section id="controls"><h2 data-t="controlsTitle">Controls</h2><ul></ul></section>
+  </div>
+</details>
+<div id="hints"></div>
+<div id="end"><button id="again" class="chrome" type="button" data-t="replay">Replay</button><a class="chrome home" href="/"><b>←</b><span data-t="back">Back to homepage</span></a></div>
 <div id="tip"></div>
 <div id="bar">
   <button id="play" class="chrome" type="button">Pause</button>
-  <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
+  <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><div id="marks"></div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" class="chrome" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
 <script>
@@ -244,8 +297,8 @@ for (const code of Object.keys(T).sort((a, b) => ENDONYMS[a].localeCompare(ENDON
 // As the landing page has it -- its key, in this tab -- and switched here too,
 // telling the landing page behind (framed over it) so the two stay one.
 const THEMES = {
-  dark: { bg: '#07070b', tree: 'rgba(190,190,215,0.09)', blend: 'lighter', fresh: '255,255,255', removed: '255,90,79', folder: '#cfcfe0', other: '#9a9aab', ring: '#fff', label: '#e8e8f0' },
-  light: { bg: '#f2efe8', tree: 'rgba(70,64,55,0.16)', blend: 'multiply', fresh: '40,35,30', removed: '200,50,40', folder: '#6e685f', other: '#8a847a', ring: '#2e2a25', label: '#2e2a25' },
+  dark: { tree: 'rgba(190,190,215,0.09)', blend: 'lighter', fresh: '255,255,255', removed: '255,90,79', folder: '#cfcfe0', other: '#9a9aab', ring: '#fff', label: '#e8e8f0' },
+  light: { tree: 'rgba(70,64,55,0.16)', blend: 'multiply', fresh: '40,35,30', removed: '200,50,40', folder: '#6e685f', other: '#8a847a', ring: '#2e2a25', label: '#2e2a25' },
 }
 const THEME_KEY = 'atrium_landing_theme'
 const ICONS = {
@@ -302,6 +355,7 @@ function drawSide() {
   ]
   document.querySelector('#legend ul').innerHTML = tr.legend.map((w, i) => `<li><svg viewBox="0 0 26 14">${marks[i]}</svg>${esc(w)}</li>`).join('')
   document.querySelector('#controls ul').innerHTML = tr.controls.map(([key, what]) => `<li><kbd>${esc(key)}</kbd><span>${esc(what)}</span></li>`).join('')
+  document.getElementById('hints').innerHTML = tr.controls.slice(0, 4).map(([key, what]) => `<span><kbd>${esc(key)}</kbd>${esc(what)}</span>`).join('')
 }
 setTheme(theme, false)
 document.getElementById('mode').onclick = () => setTheme(theme === 'dark' ? 'light' : 'dark', true)
@@ -342,6 +396,24 @@ const counts = D.stages.map((_, s) => {
 const preGit = D.stages.findIndex(s => s.git)
 if (preGit > 0) document.getElementById('era').style.width = (preGit / last * 100) + '%'
 else { document.getElementById('era').remove(); document.getElementById('eraLabel').remove() }
+{
+  let named = -Infinity
+  for (const [i, stage] of D.stages.entries()) {
+    const v = /^Release (v\d+\.\d+\.\d+)/.exec(stage.note || '')?.[1]
+    if (!v) continue
+    const at = i / last * 100, mark = document.createElement('i')
+    mark.style.left = at + '%'
+    if ((named === -Infinity || v.endsWith('.0')) && at - named >= 4.5) { mark.dataset.v = v; named = at }
+    document.getElementById('marks').append(mark)
+  }
+}
+
+// The room behind the graph: its dust, as the landing page scatters it.
+for (let i = 0; i < 24; i++) {
+  const mote = document.createElement('i'), size = 1 + (i % 3) * 0.7
+  mote.style.cssText = `left:${28 + (i * 37) % 44}%;width:${size}px;height:${size}px;animation-duration:${18 + (i * 7) % 13}s;animation-delay:${-((i * 2.3) % 30)}s;--drift:${(i * 13) % 9 - 4}vw`
+  document.getElementById('sky').append(mote)
+}
 
 // Colours are graphify's (or the script's own when it laid things out itself).
 const rgb = hex => [1, 3, 5].map(k => parseInt(hex.slice(k, k + 2), 16)).join(',')
@@ -368,14 +440,30 @@ edges.forEach(([a, b], i) => {
   rest[i] = Math.hypot(TX[a] - TX[b], TY[a] - TY[b])
 })
 
+// When each dot first appears, and where the history starts: the speck of
+// light the opening lands in the middle of today's graph, which the first
+// files come out of.
+const born = nodeIn.map(p => p.indexOf(1))
+const FIRST = Math.min(...born.filter(b => b >= 0))
+let SEEDX, SEEDY
+{
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (let i = 0; i < N; i++) {
+    if (!nodeIn[i][S - 1]) continue
+    minX = Math.min(minX, TX[i]); maxX = Math.max(maxX, TX[i]); minY = Math.min(minY, TY[i]); maxY = Math.max(maxY, TY[i])
+  }
+  SEEDX = (minX + maxX) / 2; SEEDY = (minY + maxY) / 2
+}
+
 function spawn(i) {
   // Out of something already there that it connects to, as Gource's files
-  // come out of their folder; failing that, near its own home.
+  // come out of their folder; failing that, the first out of the speck they
+  // start from, and later ones near their own home.
   let from = -1
   for (const j of neighbours[i]) if (live[j]) { from = j; break }
-  const a = Math.random() * Math.PI * 2
-  const ox = from >= 0 ? X[from] : TX[i] + Math.cos(a) * 0.04
-  const oy = from >= 0 ? Y[from] : TY[i] + Math.sin(a) * 0.04
+  const a = Math.random() * Math.PI * 2, first = Math.floor(pos) <= FIRST
+  const ox = from >= 0 ? X[from] : first ? SEEDX : TX[i] + Math.cos(a) * 0.04
+  const oy = from >= 0 ? Y[from] : first ? SEEDY : TY[i] + Math.sin(a) * 0.04
   X[i] = ox + Math.cos(a) * 0.002; Y[i] = oy + Math.sin(a) * 0.002
   VX[i] = Math.cos(a) * 0.006; VY[i] = Math.sin(a) * 0.006
 }
@@ -433,12 +521,10 @@ function step(s) {
 }
 
 // ---- Camera ----------------------------------------------------------------
-let W, H, dpr, home, view, follow = true, sideW = 0
+let W, H, dpr, home, view, follow = true, ended = false
 function resize() {
   dpr = window.devicePixelRatio || 1
   W = innerWidth; H = innerHeight
-  const side = document.getElementById('side')
-  sideW = side.offsetWidth ? side.offsetWidth + 30 : 0
   canvas.width = W * dpr; canvas.height = H * dpr
   home = { x: W / 2, y: H / 2 - 10, s: Math.min(W, H - 110) * 0.47 }
   view = view || { ...home }
@@ -448,7 +534,7 @@ const sx = i => view.x + X[i] * view.s, sy = i => view.y + Y[i] * view.s
 const zoom = () => Math.min(2.2, Math.sqrt(view.s / home.s))
 
 // Framing what exists, easing toward it: close in at the start, pulling back
-// as the project grows.
+// as the project grows -- and a little further once it's all there.
 function frameCamera(snap = false) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   for (let i = 0; i < N; i++) {
@@ -457,9 +543,12 @@ function frameCamera(snap = false) {
     if (Y[i] < minY) minY = Y[i]; if (Y[i] > maxY) maxY = Y[i]
   }
   if (minX === Infinity) return
-  const w = Math.max(maxX - minX, 0.25), h = Math.max(maxY - minY, 0.25)
-  const s = Math.min((W - 80 - sideW) / w, (H - 230) / h)
-  const target = { s, x: (W - sideW) / 2 - (minX + maxX) / 2 * s, y: (H + 10) / 2 - (minY + maxY) / 2 * s }
+  // Never closer than this much of the graph: less close over the opening,
+  // which ends on the speck alone.
+  const least = introDone ? 0.25 : 0.7
+  const w = Math.max(maxX - minX, least), h = Math.max(maxY - minY, least)
+  const s = Math.min((W - 80) / w, (H - 230) / h) * (ended ? 0.86 : 1)
+  const target = { s, x: W / 2 - (minX + maxX) / 2 * s, y: (H + 10) / 2 - (minY + maxY) / 2 * s }
   const k = snap ? 1 : 0.035
   view.s += (target.s - view.s) * k
   view.x += (target.x - view.x) * k
@@ -485,26 +574,30 @@ function fade(p, s, t) {
 function frame(now) {
   if (playing) {
     pos = Math.min(last, pos + (now - prev) / perStage())
-    if (pos >= last) { playing = false; playLabel() }
+    if (pos >= last) { playing = false; playLabel(); finish(now) }
     slider.value = pos
     slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%')
   }
-  if (!introDone) opening(now)
-  // Edits land as their stage starts arriving, with the new code beside them.
-  for (let f = Math.floor(pos); introDone && lastFloor < f; ) {
-    lastFloor++
-    for (const i of changes[lastFloor + 1] || []) pulseAt[i] = now
-  }
-  // Physics on a fixed step, so it behaves the same at any frame rate.
   lag = Math.min(lag + (now - prev), 100)
   prev = now
-  const s = Math.floor(pos)
-  for (let i = 0; i < N; i++) {
-    const on = nodeIn[i][s] || (s < last && nodeIn[i][s + 1])
-    if (on && !live[i]) spawn(i)
-    live[i] = on ? 1 : 0
+  if (!introDone) opening(now)
+  else {
+    // Edits land as their stage starts arriving, with the new code beside them.
+    for (let f = Math.floor(pos); lastFloor < f; ) {
+      lastFloor++
+      for (const i of changes[lastFloor + 1] || []) pulseAt[i] = now
+    }
+    // Physics on a fixed step, so it behaves the same at any frame rate.
+    const s = Math.floor(pos)
+    for (let i = 0; i < N; i++) {
+      const on = nodeIn[i][s] || (s < last && nodeIn[i][s + 1])
+      if (on && !live[i]) spawn(i)
+      live[i] = on ? 1 : 0
+    }
+    while (lag >= 16) { step(s); lag -= 16 }
+    // The speck, there until the first files have come out of it.
+    placeSeed(clamp(1 - pos / 1.5))
   }
-  while (lag >= 16) { step(s); lag -= 16 }
   if (follow) frameCamera()
   draw()
   requestAnimationFrame(frame)
@@ -522,7 +615,7 @@ function draw() {
   const s = Math.floor(pos), t = ease(pos - s), z = zoom()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.globalCompositeOperation = 'source-over'
-  ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H)
+  ctx.clearRect(0, 0, W, H)
 
   // The file and folder tree first, faint, beneath the code.
   const width = 0.6 * z
@@ -531,7 +624,8 @@ function draw() {
   ctx.beginPath()
   const batches = new Map(), changing = []
   for (let e = 0; e < edges.length; e++) {
-    const [alpha, state] = fade(edgeIn[e], s, t)
+    // Over the opening, today's connections, while both ends are still there.
+    const [alpha, state] = introDone ? fade(edgeIn[e], s, t) : edgeIn[e][last] && live[edges[e][0]] && live[edges[e][1]] ? [1, 0] : [0, 0]
     if (!alpha) continue
     if (state) { changing.push([e, alpha, state]); continue }
     if (edges[e][2]) { const [a, b] = edges[e]; ctx.moveTo(sx(a), sy(a)); ctx.lineTo(sx(b), sy(b)); continue }
@@ -563,11 +657,11 @@ function draw() {
   ctx.globalCompositeOperation = 'source-over'
   const arriving = []
   for (let i = 0; i < N; i++) {
-    const [alpha, state] = fade(nodeIn[i], s, t)
+    const [alpha, state] = introDone ? fade(nodeIn[i], s, t) : [live[i] ? 1 - gone[i] : 0, 0]
     if (!alpha) continue
     // An edited piece swells a little and settles back -- up and down once,
     // over the pulse -- glowing while it does.
-    const age = performance.now() - pulseAt[i], k = age < PULSE ? 1 - age / PULSE : 0
+    const age = performance.now() - pulseAt[i], k = age >= 0 && age < PULSE ? 1 - age / PULSE : 0
     const swell = k ? Math.sin(Math.PI * age / PULSE) : 0
     const kind = kindOf[i], x = sx(i), y = sy(i)
     const r = (kind === 2 ? 1.6 + Math.sqrt(nodes[i][3]) * 0.25 : kind === 1 ? 1 : 1 + Math.sqrt(nodes[i][3]) * 0.4) * z * (1 + 0.6 * swell)
@@ -586,9 +680,13 @@ function draw() {
       ctx.globalAlpha = 0.45 * swell
       ctx.fillStyle = kind === 2 ? P.folder : colourOf[i]
       ctx.beginPath(); ctx.arc(x, y, r + 4 * swell * z, 0, Math.PI * 2); ctx.fill()
-      ctx.globalAlpha = 0.8 * swell
-      ctx.fillStyle = P.ring
-      ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill()
+      // A white heart to an edit -- not to the ripple at the end, where
+      // thousands together would only be a white blur.
+      if (!ended) {
+        ctx.globalAlpha = 0.8 * swell
+        ctx.fillStyle = P.ring
+        ctx.beginPath(); ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.fill()
+      }
       ctx.globalCompositeOperation = 'source-over'
     }
     if (state > 0) {
@@ -608,9 +706,6 @@ function draw() {
   }
   ctx.globalAlpha = 1
 
-  // Over the opening, the canvas is dimmed toward the background.
-  if (veil) { ctx.globalAlpha = veil; ctx.fillStyle = P.bg; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1 }
-
   const shown = Math.round(pos), stage = D.stages[shown]
   dateEl.textContent = new Date(stage.t * 1000).toISOString().slice(0, 16).replace('T', '  ')
   statsEl.textContent = tr.stats(...counts[shown])
@@ -623,13 +718,16 @@ function toggle() {
   if (pos >= last) { pos = 0; lastFloor = 0; live.fill(0); follow = true }
   playing = !playing
   playLabel()
+  unend()
 }
+function unend() { ended = false; document.body.classList.remove('ended') }
 playBtn.onclick = toggle
+document.getElementById('again').onclick = toggle
 addEventListener('keydown', e => {
   if (!introDone) return
   if (e.code === 'Space') { e.preventDefault(); toggle() }
 })
-slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel(); slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%') }
+slider.oninput = () => { pos = Number(slider.value); lastFloor = Math.floor(pos); playing = false; playLabel(); unend(); slider.style.setProperty('--at', (last ? pos / last * 100 : 0) + '%') }
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault()
@@ -677,53 +775,105 @@ if (window.parent !== window) {
     if (now && now !== lang) setLang(now, false)
     start()
   })
-  document.getElementById('back').onclick = e => { e.preventDefault(); parent.postMessage('code-history:back', location.origin) }
+  for (const home of document.querySelectorAll('.home')) home.onclick = e => { e.preventDefault(); parent.postMessage('code-history:back', location.origin) }
   parent.postMessage('code-history:ready', location.origin)
 } else start()
 
-// The opening: the finished graph -- today's -- dimmed under two moments. First
-// the name ("You're about to see the code history of THE DIGITAL ATRIUM"),
-// in, held, out; then what follows, the same way; then an empty canvas, and
-// from there the history grows, with the controls fading in. Only the Skip button cuts it short: a click anywhere, or
-// a key, used to, which ended it for anyone who so much as touched the page.
-const intro = document.getElementById('intro')
-const introName = document.getElementById('introName'), introNext = document.getElementById('introNext')
-// Each moment: in, held, out (ms) -- the name two seconds in all, what
-// follows five.
-const NAME = [450, 1150, 400], NEXT = [500, 4000, 500]
-const NAME_END = NAME[0] + NAME[1] + NAME[2], OPEN_END = NAME_END + NEXT[0] + NEXT[1] + NEXT[2]
-const shownAt = (t, [inn, hold, out]) => t < 0 ? 0 : t < inn ? ease(t / inn) : t < inn + hold ? 1 : ease(Math.max(0, 1 - (t - inn - hold) / out))
-let introDone = false, openedAt = null, veil = 0
+// The opening. A speck of light falls from above -- the landing page's light
+// -- and where it lands, today's graph comes up around it, under the name.
+// Then the graph runs back: each dot drawn into the one it grew out of, the
+// newest first, the date running back with it, until only the speck is left
+// -- the empty folder it all began in -- and from there the history plays.
+// Only Skip cuts it short.
+const intro = document.getElementById('intro'), introName = document.getElementById('introName')
+// When each part starts, and for how long (ms).
+const FALL = 1300, BLOOM = [1100, 700], NAME = [1500, 600, 3700, 500], REWIND = [3800, 3600], OPEN_END = 7700
+let introDone = false, openedAt = null
+const clamp = v => Math.min(1, Math.max(0, v))
+const inOut = t => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
+
+// Today's dots, oldest first, and what each runs back into: the oldest it
+// connects to of those before it -- the speck, where there's none.
+const today = [...Array(N).keys()].filter(i => nodeIn[i][last]).sort((a, b) => born[a] - born[b] || a - b)
+const rank = new Int32Array(N).fill(-1)
+today.forEach((i, r) => { rank[i] = r })
+const into = today.map(i => {
+  let best = -1
+  for (const j of neighbours[i]) if (rank[j] >= 0 && rank[j] < rank[i] && (best < 0 || rank[j] < rank[best])) best = j
+  return best
+})
+// How far each is on its way back (0 home, 1 gone into what it came from);
+// each takes this much of the run, so it's seen to go.
+const gone = new Float32Array(N)
+const SPAN = Math.max(8, today.length * 0.05)
+
+const seedEl = document.getElementById('seed')
+let seedShown = 0
+function placeSeed(opacity, y = view.y + SEEDY * view.s, trail = 0) {
+  if (!opacity && !seedShown) return
+  seedShown = opacity
+  seedEl.style.opacity = opacity
+  seedEl.style.transform = `translate(${view.x + SEEDX * view.s}px, ${y}px)`
+  seedEl.style.setProperty('--trail', trail)
+}
 
 function opening(now) {
   if (openedAt === null) {
     openedAt = now
+    for (const i of today) { live[i] = 1; X[i] = TX[i]; Y[i] = TY[i]; VX[i] = VY[i] = 0 }
     pos = last
-    for (let i = 0; i < N; i++) { live[i] = nodeIn[i][last]; X[i] = TX[i]; Y[i] = TY[i]; VX[i] = VY[i] = 0 }
     frameCamera(true)
   }
   const t = now - openedAt
-  const name = shownAt(t, NAME), next = shownAt(t - NAME_END, NEXT)
-  introName.style.opacity = name
-  introNext.style.opacity = next
-  // The graph stays a little dim behind the words, so they read, and sinks
-  // back between the two moments as one goes and the other comes.
-  veil = 1 - 0.55 * Math.max(name, next)
+  // The speck falling, its thread of light longest while it's quickest; then
+  // where it landed, wherever the view takes that.
+  const fall = clamp(t / FALL), ground = view.y + SEEDY * view.s
+  placeSeed(clamp(t / 250), fall < 1 ? -20 + (ground + 20) * inOut(fall) : ground, Math.sin(Math.PI * fall))
+  // Today's graph, faint under the name; whole as it runs back.
+  canvas.style.opacity = clamp((t - BLOOM[0]) / BLOOM[1]) * (0.5 + 0.5 * clamp((t - REWIND[0]) / 600))
+  introName.style.opacity = Math.min(ease(clamp((t - NAME[0]) / NAME[1])), 1 - ease(clamp((t - NAME[2]) / NAME[3])))
+  if (t >= REWIND[0]) {
+    document.body.classList.add('rewinding')
+    // Where the run back is, in dots: from past the newest to before the oldest.
+    const R = (today.length + SPAN) * (1 - inOut(clamp((t - REWIND[0]) / REWIND[1])))
+    for (let r = 0; r < today.length; r++) {
+      const i = today[r], j = into[r], k = clamp((r + SPAN - R) / SPAN), e = ease(k)
+      gone[i] = k
+      live[i] = k < 1 ? 1 : 0
+      X[i] = TX[i] + ((j >= 0 ? X[j] : SEEDX) - TX[i]) * e
+      Y[i] = TY[i] + ((j >= 0 ? Y[j] : SEEDY) - TY[i]) * e
+    }
+    pos = R > 0 ? born[today[Math.max(0, Math.min(today.length - 1, Math.floor(R - SPAN / 2)))]] : 0
+  }
   if (t >= OPEN_END) endIntro()
 }
 
 function endIntro() {
   if (introDone) return
   introDone = true
-  veil = 0
   intro.remove()
   skipBtn.remove()
-  pos = 0; lastFloor = 0; live.fill(0); view = { ...home }; follow = true
-  document.body.classList.remove('intro')
+  canvas.style.opacity = ''
+  pos = 0; lastFloor = 0; live.fill(0); follow = true
+  document.body.classList.remove('intro', 'rewinding')
   if (!playing) toggle()
+  // How to move about, said once as it starts.
+  document.body.classList.add('hinting')
+  setTimeout(() => document.body.classList.remove('hinting'), 8000)
 }
 const skipBtn = document.getElementById('skip')
 skipBtn.onclick = endIntro
+
+// At today: a ripple of light out from where it began across all of it, the
+// view drawn back to take it in, and where to go from here.
+function finish(now) {
+  ended = true
+  document.body.classList.add('ended')
+  const far = i => Math.hypot(TX[i] - SEEDX, TY[i] - SEEDY)
+  let reach = 1e-6
+  for (let i = 0; i < N; i++) if (live[i]) reach = Math.max(reach, far(i))
+  for (let i = 0; i < N; i++) if (live[i]) pulseAt[i] = now + 1600 * far(i) / reach
+}
 
 // The words, now that everything they go into is here.
 setLang(lang, false)
