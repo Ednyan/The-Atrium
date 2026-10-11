@@ -764,25 +764,15 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .scroll-cue-line { display: block; width: 1px; height: 44px; background: linear-gradient(rgb(var(--c-fg) / 0.7), transparent); transform-origin: top; animation: landingCue 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
         @keyframes landingCue { 0% { transform: scaleY(0); opacity: 1; } 55% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
 
-        /* The film: its screen dark in either theme, and the orb's glow it opens from. */
+        /* The film: its screen dark in either theme. */
         [data-landing-theme] .film-screen .landing-orb { background: #fff; box-shadow: 0 0 24px 6px rgb(255 236 205 / 0.55), 0 0 80px 20px rgb(255 236 205 / 0.2); }
-        .film-glow { z-index: 2; background: radial-gradient(circle, #fff 0%, rgb(var(--landing-light)) 28%, rgb(var(--landing-light) / 0.35) 52%, transparent 72%); box-shadow: 0 0 80px 30px rgb(var(--landing-light) / 0.35); }
-        /* The film coming on (FilmChapter): the orb's light flares out as the
-           screen draws a line across and opens to its height; closed again,
-           unseen, once out of view, to come on again next time. */
-        .film-stage.is-moving .film-screen { opacity: 0; transform: scale(0.04, 0.006); }
-        .film-stage.is-moving[data-open] .film-screen { animation: film-on 1s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
-        @keyframes film-on {
-          0% { opacity: 0; transform: scale(0.04, 0.006); }
-          12% { opacity: 1; }
-          45% { opacity: 1; transform: scale(1, 0.006); }
-          100% { opacity: 1; transform: none; }
-        }
-        .film-stage .film-glow { transition: transform 0.7s cubic-bezier(0.4, 0, 1, 1), opacity 0.7s ease-in; }
-        .film-stage[data-open] .film-glow { opacity: 0; transform: scale(5); }
+        /* The film coming on (FilmChapter): the screen rises into place as it
+           fades in; put back at once, unseen, once out of view, to come on
+           again next time. */
+        .film-stage.is-moving .film-screen { opacity: 0; transform: translateY(40px) scale(0.96); }
+        .film-stage.is-moving[data-open] .film-screen { opacity: 1; transform: none; transition: opacity 0.8s ease-out, transform 1.1s cubic-bezier(0.22, 1, 0.36, 1); }
         .film-stage.is-moving .film-label { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
         .film-stage.is-moving[data-open] .film-label { opacity: 1; transform: none; transition-delay: 0.45s; }
-        [data-landing-theme='light'] .film-glow { background: radial-gradient(circle, rgb(var(--c-strong)) 0%, rgb(var(--c-strong) / 0.5) 40%, transparent 72%); box-shadow: none; }
 
         /* The ribbon of traces (landing/TraceRibbon): cards of glass on a ring. */
         .ribbon-stage { --ribbon-card-w: clamp(190px, 20vw, 290px); --ribbon-radius: calc(var(--ribbon-card-w) * 2.1); height: calc(var(--ribbon-card-w) * 1.8); max-width: 1600px; perspective: 1700px; perspective-origin: 50% 35%; cursor: grab; }

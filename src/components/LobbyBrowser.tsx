@@ -25,16 +25,50 @@ import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
+import type { PreviewDetail } from '../lib/atriumPreview'
 
-// An atrium in the browser's lists, the same in each: its name and what's
-// known of it, and what can be done with it -- beside it where there's room,
-// under it, wrapping, on a phone.
-const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors'
-const ROW_LAYOUT = 'flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start'
+// An atrium in the browser's lists, the same in each: a card -- its picture
+// (AtriumPreview), its name and what's known of it, and what can be done with
+// it, under it, wrapping -- two to a row where there's room.
+const ROW_GRID = 'grid gap-3 sm:grid-cols-2'
+const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors overflow-hidden'
+const ROW_LAYOUT = 'flex flex-col gap-3'
 const ROW_META = 'flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase'
 const ROW_ACTIONS = 'flex flex-wrap gap-2 sm:shrink-0'
 const ROW_BUTTON = 'px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors'
+
+// An atrium's picture on its card (lib/atriumPreview) -- read from the vault
+// first, on desktop -- and the atrium's mark on its grid where there isn't
+// one yet. Edge to edge across the top of the card.
+function AtriumPreview({ url }: { url?: string | null }) {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    if (!url) { setSrc(null); return }
+    if (!url.startsWith('local://')) { setSrc(url); return }
+    let live = true
+    void import('../lib/localDb').then(m => m.resolveLocalUrl(url)).then(resolved => { if (live) setSrc(resolved.startsWith('local://') ? null : resolved) })
+    return () => { live = false }
+  }, [url])
+  return (
+    <div className="relative -mx-4 -mt-4 mb-3 aspect-[16/10] overflow-hidden border-b border-nier-border/20 bg-nier-blackLight">
+      {src ? (
+        <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(null)} />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 grid place-items-center"
+          style={{ backgroundImage: 'linear-gradient(rgb(var(--c-fg) / 0.06) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.06) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+        >
+          <span
+            className="w-10 h-10 bg-nier-bg/20"
+            style={{ WebkitMaskImage: 'url(/atrium-mark.png)', maskImage: 'url(/atrium-mark.png)', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center' }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
@@ -55,6 +89,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   // settings, everything except the owner-only Admins tab) from the browser
   // too, without needing to enter the atrium first.
   const [adminLobbies, setAdminLobbies] = useState<LobbyWithOwner[]>([])
+  useEffect(() => {
+    const landed = (e: Event) => {
+      const { lobbyId, url, at } = (e as CustomEvent<PreviewDetail>).detail
+      const update = (list: LobbyWithOwner[]) => list.map(l => (l.id === lobbyId ? { ...l, previewUrl: url, previewAt: at } : l))
+      setUserLobbies(update); setAdminLobbies(update); setLobbies(update)
+    }
+    window.addEventListener('atrium:preview', landed)
+    return () => window.removeEventListener('atrium:preview', landed)
+  }, [])
   const [loading, setLoading] = useState(true)
   const [showCreateLobby, setShowCreateLobby] = useState(false)
   const [managingLobbyId, setManagingLobbyId] = useState<string | null>(null)
@@ -401,6 +444,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         updatedAt: lobby.updated_at,
         adminUserIds: lobby.admin_user_ids ?? [],
         editPermissionMode: lobby.edit_permission_mode ?? 'all',
+        previewUrl: lobby.preview_url ?? null,
+        previewAt: lobby.preview_at ?? null,
         ownerUsername: profile?.username || 'Unknown',
         playerCount: count || 0,
       }
@@ -966,9 +1011,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   {isDesktop ? userLobbies.length : `${userLobbies.length}/3`}
                 </span>
               </div>
-              <div className="grid gap-3">
+              <div className={ROW_GRID}>
                 {userLobbies.map(lobby => (
                   <div key={lobby.id} className={`${ROW} group`}>
+                    <AtriumPreview url={lobby.previewUrl} />
                     <div className={ROW_LAYOUT}>
                       <div className="flex-1 min-w-0">
                         {editingLobbyId === lobby.id ? (
@@ -1073,9 +1119,10 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.administeredAtriums')}</span>
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
-              <div className="grid gap-3">
+              <div className={ROW_GRID}>
                 {adminLobbies.map(lobby => (
                   <div key={lobby.id} className={`${ROW} group`}>
+                    <AtriumPreview url={lobby.previewUrl} />
                     <div className={ROW_LAYOUT}>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
@@ -1205,14 +1252,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               </div>
             </div>
             
-            <div className="grid gap-3">
+            <div className={ROW_GRID}>
               {lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
-                <div className="text-nier-bg/70 text-center py-12 text-xs tracking-wider uppercase">
+                <div className="sm:col-span-2 text-nier-bg/70 text-center py-12 text-xs tracking-wider uppercase">
                   {searchQuery ? t('browser.noMatch') : t('browser.noneAvailable')}
                 </div>
               ) : (
                 lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).map(lobby => (
                   <div key={lobby.id} className={ROW}>
+                    <AtriumPreview url={lobby.previewUrl} />
                     <div className={ROW_LAYOUT}>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-nier-bg text-sm tracking-wide">

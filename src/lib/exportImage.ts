@@ -43,6 +43,11 @@ export interface ImageExportOptions {
   scale: ExportScale
   // The atrium's background behind the traces, or none (transparent).
   background: string | null
+  // A picture no bigger than this on its longest side (a preview: lib/atriumPreview),
+  // and in this format, at this quality -- PNG unless asked.
+  maxSide?: number
+  type?: 'image/png' | 'image/webp'
+  quality?: number
 }
 
 // Browsers refuse canvases past these; a picture that would be bigger is made
@@ -742,7 +747,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
 
   // As big as asked, or as big as a canvas may be.
   const maxScale = Math.min(MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)))
-  const scale = options.format === 'png' ? Math.min(options.scale, maxScale) : options.scale
+  const scale = options.format === 'png' ? Math.min(options.scale, maxScale, options.maxSide ? options.maxSide / Math.max(width, height) : Infinity) : options.scale
 
   // Bottom first, as the atrium stacks them; a connection just under the
   // lower of its two traces, as the canvas draws it.
@@ -794,7 +799,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
   const ctx = canvas.getContext('2d')!
   ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale)
   paint(canvasPainter(ctx, scale))
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, options.type ?? 'image/png', options.quality))
   if (!blob) throw new Error('The picture could not be made')
   return { blob, scale, width: pixelWidth, height: pixelHeight, maxScale }
 }

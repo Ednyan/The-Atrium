@@ -1,8 +1,6 @@
-// The film, straight after the hall: the portal's light opening into it. Once
-// about half of it is in view, the screen comes on out of a flare of the orb's
-// light -- a line drawn across, then opening to its height -- and what plays in
-// it starts from its beginning; each time it's come back to after leaving
-// view, again. Transform and opacity only, so the compositor does it all
+// The film, straight after the hall. Once about half of it is in view, the
+// screen rises into place as it fades in, and what plays in it starts from its
+// beginning; each time it's come back to after leaving view, again. Transform and opacity only, so the compositor does it all
 // (LandingPage's styles). Without motion, it's simply there, open.
 //
 // What plays in it: the film once it's made; a teaser of the app until then;
@@ -56,7 +54,6 @@ const FilmChapter = forwardRef<HTMLElement, { index: number; still: boolean }>(f
           </div>
           <div className="relative mx-auto" style={{ width: 'min(100%, calc((100vh - 13rem) * 16 / 9))' }}>
             <Brackets inset="-0.75rem" />
-            {!still && <div aria-hidden="true" className="film-glow absolute left-1/2 top-1/2 w-16 h-16 -ml-8 -mt-8 rounded-full pointer-events-none" />}
             <Screen ref={frame} still={still} />
           </div>
         </div>

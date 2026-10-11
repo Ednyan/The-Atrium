@@ -18,6 +18,7 @@ import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
 import { contentView, createWorldCamera, edgeInsets } from '../lib/worldCamera'
 import { boundsOf, traceBox } from '../lib/traceGeometry'
 import { type Box } from '../lib/traceLinks'
+import { captureAtriumPreview } from '../lib/atriumPreview'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation, ThemeSettings } from '../types/database'
@@ -867,8 +868,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const leaveToRef = useRef<string | undefined>(undefined)
   const leaveWithTransition = useCallback(() => {
     setLeaving(true)
+    // Its picture for the atrium browser, from what's on screen now -- by
+    // whoever may change the atrium (lib/atriumPreview), made after leaving.
+    if (isLobbyOwner || currentLobby?.adminUserIds?.includes(userId)) {
+      const { traces, links, layers } = useGameStore.getState()
+      captureAtriumPreview(lobbyId, traces, links, layers, viewTheme?.backgroundColor || '#0a0a0f')
+    }
     setTimeout(() => onLeaveLobby(leaveToRef.current), 210)
-  }, [onLeaveLobby])
+  }, [onLeaveLobby, isLobbyOwner, currentLobby, userId, lobbyId, viewTheme])
   const askToLeave = (to?: string) => {
     leaveToRef.current = to
     // Changes not saved: asked whether to save them first.

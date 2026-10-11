@@ -289,6 +289,9 @@ export interface Lobby {
   // unaffected by this; it only gates writes, enforced server-side via
   // user_can_edit_lobby (see add_edit_permissions.sql).
   editPermissionMode?: 'all' | 'none' | 'selected'
+  // Its picture for the atrium browser (lib/atriumPreview), and when it was made.
+  previewUrl?: string | null
+  previewAt?: string | null
 }
 
 export interface LobbyAccessList {

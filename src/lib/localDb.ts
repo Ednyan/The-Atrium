@@ -1493,6 +1493,14 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
+  // The atrium's picture for the browser's cards (lib/atriumPreview).
+  for (const column of ['preview_url TEXT', 'preview_at TEXT']) {
+    try {
+      await db.execute(`ALTER TABLE lobbies ADD COLUMN ${column}`)
+    } catch {
+      // Column already exists — ignore
+    }
+  }
   try {
     await db.execute('ALTER TABLE lobbies ADD COLUMN admin_user_ids TEXT')
   } catch {
