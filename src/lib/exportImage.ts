@@ -43,11 +43,17 @@ export interface ImageExportOptions {
   scale: ExportScale
   // The atrium's background behind the traces, or none (transparent).
   background: string | null
-  // A picture no bigger than this on its longest side (a preview: lib/atriumPreview),
-  // and in this format, at this quality -- PNG unless asked.
+  // A picture this many pixels on its longest side, whatever `scale` says (a
+  // preview: lib/atriumPreview), and in this format, at this quality -- PNG
+  // unless asked.
   maxSide?: number
   type?: 'image/png' | 'image/webp'
   quality?: number
+  // Exactly this part of the world, the traces cut off at its edges, rather
+  // than all of them and some room around -- and under them, stretched over
+  // it, this picture of the room in place of `background` (PNG only).
+  frame?: { x: number; y: number; width: number; height: number }
+  underlay?: CanvasImageSource
 }
 
 // Browsers refuse canvases past these; a picture that would be bigger is made
@@ -333,7 +339,7 @@ export async function fetchMedia(url: string): Promise<Blob | null> {
   return null
 }
 
-async function loadPicture(url: string): Promise<Picture | null> {
+export async function loadPicture(url: string): Promise<Picture | null> {
   const blob = await fetchMedia(url)
   return blob ? pictureOf(blob) : null
 }
@@ -741,13 +747,18 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
     const box = traceBox(trace, size)
     ends.set(trace.id, { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn: box.turn, colour: trace.borderColor || borderColourOf(trace.type) })
   }
-  if (!isFinite(minX)) throw new Error('Nothing to export')
-  minX -= MARGIN; minY -= MARGIN; maxX += MARGIN; maxY += MARGIN
+  if (options.frame) {
+    minX = options.frame.x; minY = options.frame.y
+    maxX = minX + options.frame.width; maxY = minY + options.frame.height
+  } else {
+    if (!isFinite(minX)) throw new Error('Nothing to export')
+    minX -= MARGIN; minY -= MARGIN; maxX += MARGIN; maxY += MARGIN
+  }
   const width = maxX - minX, height = maxY - minY
 
   // As big as asked, or as big as a canvas may be.
   const maxScale = Math.min(MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)))
-  const scale = options.format === 'png' ? Math.min(options.scale, maxScale, options.maxSide ? options.maxSide / Math.max(width, height) : Infinity) : options.scale
+  const scale = options.format === 'png' ? Math.min(maxScale, options.maxSide ? options.maxSide / Math.max(width, height) : options.scale) : options.scale
 
   // Bottom first, as the atrium stacks them; a connection just under the
   // lower of its two traces, as the canvas draws it.
@@ -762,7 +773,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
 
   const measure = document.createElement('canvas').getContext('2d')!
   const paint = (p: Painter) => {
-    if (options.background) p.rect(minX, minY, width, height, 0, { fill: options.background })
+    if (options.background && !options.underlay) p.rect(minX, minY, width, height, 0, { fill: options.background })
     for (const trace of ordered) {
       for (const link of linksUnder.get(trace.id) ?? []) drawLink(p, link, ends.get(link.from)!, ends.get(link.to)!, measure)
       // Its light, just under it.
@@ -798,6 +809,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
   canvas.height = pixelHeight
   const ctx = canvas.getContext('2d')!
   ctx.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale)
+  if (options.underlay) ctx.drawImage(options.underlay, minX, minY, width, height)
   paint(canvasPainter(ctx, scale))
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, options.type ?? 'image/png', options.quality))
   if (!blob) throw new Error('The picture could not be made')

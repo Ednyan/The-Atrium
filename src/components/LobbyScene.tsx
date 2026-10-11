@@ -6,7 +6,7 @@ import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground
 import { useLandingTheme } from '../lib/useLandingTheme'
 import { customThemesNow, lastThemeOf, loadCustomThemes, readView, rememberLast, themeModeOf, themeOf, useCustomThemes, writeView, type ThemeRef } from '../lib/customThemes'
 import { flushSync } from 'react-dom'
-import { Application, Graphics, Text, Container, TilingSprite, Texture } from 'pixi.js'
+import { Application, Graphics, Text, Container, TilingSprite, Texture, Rectangle } from 'pixi.js'
 import '@pixi/unsafe-eval'
 import { useGameStore, LOBBY_SIZE_LIMIT, lobbyFullMessage, unsavedActions, useGamePick, AUTO_SAVE_CONSTANT_MS } from '../store/gameStore'
 import ThemeToggle from './ThemeToggle'
@@ -18,7 +18,7 @@ import TraceOverlay, { CULL_MARGIN } from './TraceOverlay'
 import { contentView, createWorldCamera, edgeInsets } from '../lib/worldCamera'
 import { boundsOf, traceBox } from '../lib/traceGeometry'
 import { type Box } from '../lib/traceLinks'
-import { captureAtriumPreview } from '../lib/atriumPreview'
+import { captureAtriumPreview, type RoomSnapshot } from '../lib/atriumPreview'
 import LayerPanel from './LayerPanel'
 import LocationsPanel, { LOCATION_DRAG_DATA_KEY } from './LocationsPanel'
 import type { LobbyLocation, ThemeSettings } from '../types/database'
@@ -459,7 +459,9 @@ function refreshGround(theme: ThemeSettings | null | undefined) {
 // movement (none, staying still, with parallax off) -- or, as `fill`, one
 // picture always covering the view (see drawGrid); placed in drawGrid, which
 // `version` tells to place it again. Switched off, it keeps its picture.
-const backdrop = { el: null as HTMLDivElement | null, url: '', src: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0 }
+// `place`: where drawGrid last put the picture, in screen pixels.
+const backdrop = { el: null as HTMLDivElement | null, url: '', src: '', w: 0, h: 0, scale: 1, parallax: 0.3, fill: false, version: 0,
+  place: null as { x: number; y: number; w: number; h: number } | null }
 function paintBackdrop(el: HTMLDivElement, theme: ThemeSettings | null | undefined) {
   const room = theme?.backgroundColor ?? '#0a0a0f'
   const veil = rgbaOf(room, 1 - (theme?.backgroundImageOpacity ?? 1))
@@ -866,13 +868,53 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Where leaving goes: the atrium browser, unless the way out pressed was
   // Back to Developers.
   const leaveToRef = useRef<string | undefined>(undefined)
+  // The room as it's seen, for the atrium's preview (lib/atriumPreview): its
+  // colour, its picture as drawGrid placed it, and the canvas's own layers --
+  // ground, grid, particles -- without the arrows to traces off screen, which
+  // are there to be used, not seen. Read as the atrium is left: the canvas is
+  // gone after.
+  const snapshotRoom = (maxSide: number): RoomSnapshot | null => {
+    const app = appRef.current, world = worldContainerRef.current
+    if (!app || !world) return null
+    const width = app.screen.width, height = app.screen.height
+    const theme = themeSettingsRef.current
+    const arrows = traceIndicatorsRef.current, arrowsShown = arrows?.visible ?? false
+    let layer: HTMLCanvasElement | null = null
+    try {
+      if (arrows) arrows.visible = false
+      const drawn = app.renderer.extract.canvas(app.stage, new Rectangle(0, 0, width, height)) as HTMLCanvasElement
+      const k = Math.min(1, maxSide / Math.max(width, height))
+      layer = document.createElement('canvas')
+      layer.width = Math.max(1, Math.round(width * k))
+      layer.height = Math.max(1, Math.round(height * k))
+      layer.getContext('2d')!.drawImage(drawn, 0, 0, layer.width, layer.height)
+    } catch {
+      layer = null
+    } finally {
+      if (arrows) arrows.visible = arrowsShown
+    }
+    return {
+      width, height,
+      view: { x: world.x, y: world.y, zoom: zoomRef.current },
+      colour: theme?.backgroundColor ?? '#0a0a0f',
+      picture: backdrop.url && backdrop.place
+        ? { url: backdrop.url, ...backdrop.place, repeat: !backdrop.fill, opacity: theme?.backgroundImageOpacity ?? 1 }
+        : null,
+      layer,
+    }
+  }
   const leaveWithTransition = useCallback(() => {
     setLeaving(true)
     // Its picture for the atrium browser, from what's on screen now -- by
     // whoever may change the atrium (lib/atriumPreview), made after leaving.
     if (isLobbyOwner || currentLobby?.adminUserIds?.includes(userId)) {
       const { traces, links, layers } = useGameStore.getState()
-      captureAtriumPreview(lobbyId, traces, links, layers, viewTheme?.backgroundColor || '#0a0a0f')
+      captureAtriumPreview(lobbyId, {
+        traces, links, layers,
+        look: JSON.stringify(viewTheme ?? null),
+        background: viewTheme?.backgroundColor || '#0a0a0f',
+        room: snapshotRoom,
+      })
     }
     setTimeout(() => onLeaveLobby(leaveToRef.current), 210)
   }, [onLeaveLobby, isLobbyOwner, currentLobby, userId, lobbyId, viewTheme])
@@ -3177,6 +3219,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           // The veil over all of it; the picture as placed.
           backdrop.el.style.backgroundSize = `100% 100%, ${w}px ${h}px`
           backdrop.el.style.backgroundPosition = `0 0, ${x}px ${y}px`
+          backdrop.place = { x, y, w, h }
         }
         grid.clear()
         const style = gridStyleOf(theme)
