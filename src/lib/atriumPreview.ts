@@ -9,10 +9,11 @@
 // after leaving, once the browser is idle. Everything it needs is taken as the
 // atrium is left, since the canvas and the store are gone straight after.
 //
-// One file an atrium, <id>/preview.webp, rewritten each time (on the web the
-// atrium's owner and admins may overwrite it -- add_lobby_preview.sql), so no
-// old picture is left behind. Its web address carries when it was made, so
-// what's cached of the last one isn't shown for it.
+// On the web each picture is a new file, <id>/preview-<time>.webp -- the CDN
+// keeps a file an hour whatever its query string, so a file written over
+// would go on showing the old picture -- and the one it replaces is removed
+// (by the atrium's owner or an admin, whoever uploaded it: add_lobby_preview.sql),
+// so none is left behind. In a vault, one file an atrium, rewritten.
 
 import { supabase, isDesktop } from './supabase'
 import { exportImage, loadPicture } from './exportImage'
@@ -51,14 +52,18 @@ export interface AtriumAsLeft {
   room: (maxSide: number) => RoomSnapshot | null
 }
 
-// What the atrium holds and how it looks, as one number: a change to any
-// trace, or to its look, changes it.
+// What the atrium holds and how it looks, as one number: a change to anything
+// about any trace -- where it is, its words, its colours, its style -- or to
+// the atrium's look, changes it. A drawing counts by its revision, not its
+// every point.
 function fingerprint(traces: Trace[], look: string): string {
   let hash = 0x811c9dc5
   const add = (text: string) => {
     for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
   }
-  for (const t of traces) add(`${t.id}|${t.x}|${t.y}|${t.width}|${t.height}|${t.scaleX ?? t.scale}|${t.scaleY ?? t.scale}|${t.rotation}|${t.content?.length}|${t.mediaUrl ?? ''}|`)
+  const drawingByRevision = (key: string, value: unknown) =>
+    key === 'strokeData' && value && typeof value === 'object' ? (value as { rev?: number }).rev ?? 1 : value
+  for (const t of traces) add(JSON.stringify(t, drawingByRevision))
   add(look)
   return `${traces.length}:${(hash >>> 0).toString(36)}`
 }
@@ -101,17 +106,28 @@ async function makePreview(lobbyId: string, traces: Trace[], links: TraceLink[],
         underlay: await roomPicture(room),
       }),
     })
-    const path = `${lobbyId}/preview.webp`
-    const { error } = await supabase.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: true })
-    if (error) return
-    const stored: string = supabase.storage.from('traces').getPublicUrl(path).data.publicUrl
+    const path = isDesktop ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
+    const { error } = await supabase.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: isDesktop })
+    if (error) { console.warn('[preview] not uploaded:', error); return }
+    const url: string = supabase.storage.from('traces').getPublicUrl(path).data.publicUrl
     // The vault's file was rewritten in place: what it's read as, read again.
-    if (isDesktop) await (await import('./localDb')).refreshLocalUrl(stored)
-    const url = isDesktop ? stored : `${stored}?v=${Date.now()}`
+    if (isDesktop) await (await import('./localDb')).refreshLocalUrl(url)
+    const { data: before } = await (supabase.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
     const at = new Date().toISOString()
     const { error: saved } = await (supabase.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
-    if (saved) return
+    // Not kept: the file goes too.
+    if (saved) {
+      console.warn('[preview] not kept:', saved)
+      if (!isDesktop) void supabase.storage.from('traces').remove([path])
+      return
+    }
     try { localStorage.setItem(memoryKey(lobbyId), JSON.stringify({ print, at: Date.now() })) } catch { /* the next leave tries again */ }
+    // The one it replaces, gone (its address, less any query an earlier
+    // version gave it).
+    const previous = !isDesktop && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
+    if (previous && previous !== path) {
+      void supabase.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
+    }
     window.dispatchEvent(new CustomEvent<PreviewDetail>('atrium:preview', { detail: { lobbyId, url, at } }))
   } catch (error) {
     console.warn('[preview] not made:', error)
