@@ -14,7 +14,8 @@ const GROUND = { backgroundColor: 'rgb(var(--c-ground) / 0.94)' }
 
 export function AtriumName({ name }: { name: string }) {
   return (
-    <div data-atrium-name="" title={name} className={`${CHIP} max-w-[16rem] text-nier-strong pointer-events-auto`} style={GROUND}>
+    // On a phone, what's left between the menu's button and the session's.
+    <div data-atrium-name="" title={name} className={`${CHIP} max-w-[16rem] max-sm:max-w-[calc(100vw-14.5rem)] text-nier-strong pointer-events-auto`} style={GROUND}>
       <span className="truncate">{name}</span>
     </div>
   )
@@ -54,18 +55,20 @@ export function ViewReadout({ zoom, onZoom, onZoomReset, holding, onHold }: {
         // A button's text isn't the chip's: uppercase and spacing again.
         className="flex items-center gap-2 uppercase tracking-[0.15em] hover:text-nier-strong"
       >
-        <span className="text-nier-bg/60">{t('atrium.hud.zoom')}</span>
+        <span className="text-nier-bg/60 max-sm:hidden">{t('atrium.hud.zoom')}</span>
         <span className="text-nier-strong tabular-nums tracking-wider min-w-[2.5rem]">{Math.round(zoom * 100)}%</span>
       </button>
       <button type="button" data-zoom="in" onClick={() => onZoom(1)} aria-label={t('atrium.hud.zoomIn')} title={`${t('atrium.hud.zoomIn')} (+)`} className={STEP}>
         <MenuIcon d="M12 5v14M5 12h14" size={14} />
       </button>
-      <span className="w-px self-stretch my-2 bg-nier-border/30" />
-      <span className="text-nier-bg/60">X</span>
-      <span className="text-nier-strong tabular-nums tracking-wider -ml-1">{Math.round(position.x)}</span>
-      <span className="text-nier-bg/60">Y</span>
-      <span className="text-nier-strong tabular-nums tracking-wider -ml-1">{Math.round(position.y)}</span>
-      <span className="w-px self-stretch my-2 bg-nier-border/30" />
+      {/* A phone has no pointer to give a place for, and moves the view with a
+          finger: the zoom alone. */}
+      <span className="w-px self-stretch my-2 bg-nier-border/30 max-sm:hidden" />
+      <span className="text-nier-bg/60 max-sm:hidden">X</span>
+      <span className="text-nier-strong tabular-nums tracking-wider -ml-1 max-sm:hidden">{Math.round(position.x)}</span>
+      <span className="text-nier-bg/60 max-sm:hidden">Y</span>
+      <span className="text-nier-strong tabular-nums tracking-wider -ml-1 max-sm:hidden">{Math.round(position.y)}</span>
+      <span className="w-px self-stretch my-2 bg-nier-border/30 max-sm:hidden" />
       <button
         type="button"
         data-pan-hold=""
@@ -73,7 +76,7 @@ export function ViewReadout({ zoom, onZoom, onZoomReset, holding, onHold }: {
         aria-pressed={holding}
         aria-label={t('atrium.hud.panHold')}
         title={t('atrium.hud.panHold')}
-        className={holding ? 'w-6 h-6 flex items-center justify-center border bg-nier-bg text-nier-black border-nier-bg' : STEP}
+        className={`${holding ? 'w-6 h-6 flex items-center justify-center border bg-nier-bg text-nier-black border-nier-bg' : STEP} max-sm:hidden`}
       >
         <MenuIcon d={PAN_ICON} size={15} />
       </button>

@@ -994,6 +994,23 @@ body.dragging * {
 }
 .panel-in-right { animation: panel-in-right 280ms cubic-bezier(0.22, 1, 0.36, 1); }
 
+/* Where a docked panel stands (a trace's, the Layers', Locations'): on the
+   right -- or, on a phone, a sheet across the screen above the tools at its
+   foot (LobbyScene), rising from them, half the screen at most. After the
+   utilities, so a phone's place wins over each panel's own. */
+.docked-panel { right: var(--right-rail); }
+@keyframes sheet-in {
+  from { opacity: 0.4; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 639px) {
+  .docked-panel {
+    left: 0.5rem; right: 0.5rem; top: auto; bottom: 7.25rem;
+    width: auto; height: auto; max-height: 50vh;
+    animation-name: sheet-in;
+  }
+}
+
 /* A colour input that actually shows its colour.
    Tailwind's reset makes every input transparent, which on a native colour
    control leaves a bordered rectangle with nothing in it -- the swatch is a

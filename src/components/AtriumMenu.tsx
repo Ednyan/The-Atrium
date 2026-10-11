@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
+import { useNarrow } from '../lib/useNarrow'
 
 // Each icon one path on a 24-unit grid, stroked like the quick bar's
 // (after Tabler's, MIT).
@@ -156,6 +157,7 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
   items: MenuItem[]
 }) {
   const { t } = useTranslation()
+  const narrow = useNarrow()
   const rootRef = useRef<HTMLDivElement>(null)
   const openChange = useRef(onOpenChange)
   openChange.current = onOpenChange
@@ -230,7 +232,9 @@ export default function AtriumMenu({ open, onOpenChange, items }: {
                 <MenuIcon d={item.icon} />
               </button>
               {/* Not while the item's panel is open, which stands in its place. */}
-              {!item.open && <SlideLabel text={item.label} hint={item.hint} onPress={item.disabled ? undefined : item.onSelect} />}
+              {/* On a phone, named all the while: there's no hovering to draw a
+                  name out, and no keys for its shortcut. */}
+              {!item.open && <SlideLabel text={item.label} hint={narrow ? undefined : item.hint} shown={narrow} onPress={item.disabled ? undefined : item.onSelect} />}
               {item.open && item.panel}
             </div>
           ))}

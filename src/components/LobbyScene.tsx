@@ -58,7 +58,8 @@ import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type Q
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
-import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar } from './AtriumMenu'
+import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar, type MenuItem } from './AtriumMenu'
+import { useNarrow } from '../lib/useNarrow'
 import { ACTION_ICONS, CustomizationPanel, PanelAction, Section } from './Customization'
 import ShapeStyleControls from './ShapeStyleControls'
 import { AtriumName, ViewReadout } from './AtriumInfo'
@@ -835,6 +836,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }, [isSavingChanges])
 
   // The atrium's menu, and the two panels it opens beside itself.
+  // A phone's width: the interface laid out for a thumb (lib/useNarrow).
+  const narrow = useNarrow()
   const [menuOpen, setMenuOpenState] = useState(false)
   const [showLanguages, setShowLanguages] = useState(false)
   const [showControls, setShowControls] = useState(false)
@@ -4607,6 +4610,72 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('message', onMessage)
   }, [canEdit])
 
+  // The parts of the interface a phone lays out differently (narrow): made
+  // once, and placed where the layout puts them.
+  const viewItems: MenuItem[] = [
+    { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
+    { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
+    { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
+    { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
+    { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
+    // Docked where a trace's panel and the Layer panel are: it takes
+    // their place, and lets go of the selection.
+    { id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, open: showThemeCustomization, onSelect: () => {
+      if (showThemeCustomization) { setShowThemeCustomization(false); return }
+      setShowProfileCustomization(false)
+      closeSidePanels()
+      setSelectedTraceId(null)
+      setMultiSelectRequest([])
+      setShowThemeCustomization(true)
+    } },
+    { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
+      if (showProfileCustomization) { setShowProfileCustomization(false); return }
+      closeSidePanels()
+      setSelectedTraceId(null)
+      setMultiSelectRequest([])
+      setShowProfileCustomization(true)
+    } },
+  ]
+  const history = <HistoryButtons onStep={direction => void stepHistory(direction)} />
+  const quickBar = (
+    <QuickBar
+      panning={panTool}
+      armed={placeTool}
+      drawing={isDrawingMode}
+      laser={laserActive}
+      laserSettings={laserSettings}
+      kinds={{ select: directSelect, text: plainText, marquee: selectLasso }}
+      selecting={selectTool}
+      shapeKind={shapeKind}
+      onShapeKind={setShapeKind}
+      onAction={quickAction}
+      onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : tool === 'marquee' ? setSelectLasso(second) : setPlainText(second))}
+      onLaserSettings={changeLaserSettings}
+      onCustomize={() => {
+        closeSidePanels()
+        setSelectedTraceId(null)
+        setMultiSelectRequest([])
+        setShowQuickBarEditor(true)
+      }}
+      horizontal={narrow}
+    />
+  )
+  const readout = (
+    <ViewReadout
+      zoom={zoom}
+      // To the next tenth, as Excalidraw's buttons go: 84% → 90%, → 80%.
+      onZoom={direction => {
+        const tenths = targetZoomRef.current * 10
+        const next = (direction > 0 ? Math.floor(tenths + 1e-6) + 1 : Math.ceil(tenths - 1e-6) - 1) / 10
+        cameraFlyToRef.current = null
+        targetZoomRef.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next))
+      }}
+      onZoomReset={() => { cameraFlyToRef.current = null; targetZoomRef.current = 1 }}
+      holding={holdPanning}
+      onHold={holdToPan}
+    />
+  )
+
   return (
     <div
       className={`fixed inset-0 bg-nier-black lobby-scene ${uiHidden ? 'ui-hidden' : ''} ${leaving ? 'screen-recede' : 'screen-rise'}`}
@@ -4845,36 +4914,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </div>
 
       {/* The viewing tools, a row along the top in the middle (AtriumMenu's
-          ViewBar); and in the bottom-right corner, the usage. */}
-      {!uiHidden && (
+          ViewBar) -- on a phone, in the menu, where the top has no room for
+          them beside the atrium's name -- and in the bottom-right corner, the
+          usage, which a phone does without. */}
+      {!uiHidden && !narrow && (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
-        <ViewBar items={[
-          { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
-          { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
-          { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
-          { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
-          { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
-          // Docked where a trace's panel and the Layer panel are: it takes
-          // their place, and lets go of the selection.
-          { id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, open: showThemeCustomization, onSelect: () => {
-            if (showThemeCustomization) { setShowThemeCustomization(false); return }
-            setShowProfileCustomization(false)
-            closeSidePanels()
-            setSelectedTraceId(null)
-            setMultiSelectRequest([])
-            setShowThemeCustomization(true)
-          } },
-          { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
-            if (showProfileCustomization) { setShowProfileCustomization(false); return }
-            closeSidePanels()
-            setSelectedTraceId(null)
-            setMultiSelectRequest([])
-            setShowProfileCustomization(true)
-          } },
-        ]} />
+        <ViewBar items={viewItems} />
       </div>
       )}
-      {!uiHidden && (
+      {!uiHidden && !narrow && (
       <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
         {/* How much the atrium holds: the size alone, in the unit it has
             reached (lib/size); its limit, on the web, when pointed at -- and
@@ -4914,7 +4962,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           bar in what's left, Controls at the bottom. Each was placed on the
           screen by itself, so the menu opened over the quick bar, and Controls
           opened under it; in one column, each opening makes room. */}
-      <div className="fixed top-4 bottom-4 left-4 z-[9999] flex flex-col items-start gap-2 pointer-events-none">
+      <div className={`fixed top-4 left-4 z-[9999] flex flex-col items-start gap-2 pointer-events-none ${narrow ? 'right-4' : 'bottom-4'}`}>
       {/* HUD + presentation quick-toggle, in one row so the toggle always
           sits just to the right of the HUD regardless of its width. */}
       <div data-hud="true" className="shrink-0 flex items-start gap-2 pointer-events-none">
@@ -4990,6 +5038,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             id: 'report', icon: MENU_ICONS.report, label: t('atrium.hud.reportProblem'),
             onSelect: fromMenu(() => setShowReportForm(true)),
           },
+          ...(narrow ? viewItems.map((item, i) => ({ ...item, apart: i === 0 || item.apart, onSelect: fromMenu(item.onSelect) })) : []),
         ]}
       />
       {/* The atrium's name, beside the menu's button, with Save under it while
@@ -5058,7 +5107,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           </div>
         )}
       </div>
-      {canEdit && <HistoryButtons onStep={direction => void stepHistory(direction)} />}
+      {canEdit && !narrow && history}
 
       {/* Presentation quick-toggle -- only shown when locations exist. A fixed
           square matching the HUD header's height (so it stays that size even
@@ -5077,7 +5126,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         </button>
       )}
       </div>
-      {/* Never less than a row of tools: Controls gives way first. */}
+      {/* Never less than a row of tools: Controls gives way first. (On a
+          phone, all of this is at the foot instead: below.) */}
+      {!narrow && (<>
       {/* Dimmed while the menu is open over it: they are two things. Its room
           starts below where Save drops down (pt), which takes no room of its
           own: on a short screen the bar's top -- and the flyouts beside it --
@@ -5086,47 +5137,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {/* The quick bar: a tool for each kind of trace, in the middle of what
             the menu and the readout leave -- in more columns, when that is
             short. None, for an atrium that can only be looked at. */}
-        {canEdit && <QuickBar
-          panning={panTool}
-          armed={placeTool}
-          drawing={isDrawingMode}
-          laser={laserActive}
-          laserSettings={laserSettings}
-          kinds={{ select: directSelect, text: plainText, marquee: selectLasso }}
-          selecting={selectTool}
-          shapeKind={shapeKind}
-          onShapeKind={setShapeKind}
-          onAction={quickAction}
-          onKind={(tool, second) => (tool === 'select' ? setDirectSelect(second) : tool === 'marquee' ? setSelectLasso(second) : setPlainText(second))}
-          onLaserSettings={changeLaserSettings}
-          onCustomize={() => {
-            closeSidePanels()
-            setSelectedTraceId(null)
-            setMultiSelectRequest([])
-            setShowQuickBarEditor(true)
-          }}
-        />}
+        {canEdit && quickBar}
       </div>
         {/* At the foot of the column: the zoom and the pointer's place. */}
-        <ViewReadout
-          zoom={zoom}
-          // To the next tenth, as Excalidraw's buttons go: 84% → 90%, → 80%.
-          onZoom={direction => {
-            const tenths = targetZoomRef.current * 10
-            const next = (direction > 0 ? Math.floor(tenths + 1e-6) + 1 : Math.ceil(tenths - 1e-6) - 1) / 10
-            cameraFlyToRef.current = null
-            targetZoomRef.current = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next))
-          }}
-          onZoomReset={() => { cameraFlyToRef.current = null; targetZoomRef.current = 1 }}
-          holding={holdPanning}
-          onHold={holdToPan}
-        />
+        {readout}
+      </>)}
       </div>
+
+      {/* A phone's foot, within a thumb's reach: the zoom, undo and redo, and
+          under them the tools, across. */}
+      {narrow && (
+        <div className="fixed left-4 right-4 bottom-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+          <div className="flex items-end justify-between gap-2">
+            {readout}
+            {canEdit && history}
+          </div>
+          {canEdit && quickBar}
+        </div>
+      )}
 
       {/* At the foot of the screen, in the middle: what's true of this visit
           (hidden, view only), how many are selected, and what the tool in
           hand does (QuickBar's ToolHint). */}
-      <div data-hud="true" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1">
+      <div data-hud="true" className={`fixed ${narrow ? 'bottom-[7.75rem]' : 'bottom-4'} left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1`}>
             {previewDraft && (
               <button
                 type="button"

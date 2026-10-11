@@ -236,7 +236,7 @@ export function HistoryButtons({ onStep }: { onStep: (direction: 'undo' | 'redo'
   )
 }
 
-export default function QuickBar({ armed, drawing, laser, panning, selecting, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, onCustomize }: {
+export default function QuickBar({ armed, drawing, laser, panning, selecting, laserSettings, kinds, shapeKind, onAction, onKind, onShapeKind, onLaserSettings, onCustomize, horizontal = false }: {
   armed: PlaceTool | null
   drawing: boolean
   laser: boolean
@@ -254,6 +254,10 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
   onLaserSettings: (settings: LaserSettings) => void
   // Customize quick bar, from More: its editor opened (LobbyScene).
   onCustomize: () => void
+  // Along the foot of a phone's screen rather than down the left edge: as many
+  // tools across as it's wide, options opening above it -- on a press, as
+  // there's no hovering there -- and no names sliding out.
+  horizontal?: boolean
 }) {
   const { t } = useTranslation()
   const { quickBarOrder } = useGamePick('quickBarOrder')
@@ -262,9 +266,9 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
   // moment's grace for the gap between them.
   const [flyout, setFlyout] = useState<FlyoutTool | null>(null)
 
-  // As many tools down as the room it's in is tall, More taking the last
-  // place; the rest are under More. It used to go on in more columns, which
-  // on a short screen climbed up beside Save.
+  // As many tools down as the room it's in is tall (across, as it's wide),
+  // More taking the last place; the rest are under More. It used to go on in
+  // more columns, which on a short screen climbed up beside Save.
   const barRef = useRef<HTMLDivElement>(null)
   const [rows, setRows] = useState(tools.length + 1)
   useLayoutEffect(() => {
@@ -273,14 +277,16 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
     // A tool is 36px with 4 between; the bar adds 10 (padding and border).
     const fit = () => {
       const style = getComputedStyle(room)
-      const height = room.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
-      setRows(Math.max(1, Math.floor((height - 6) / 40)))
+      const length = horizontal
+        ? room.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+        : room.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+      setRows(Math.max(1, Math.floor((length - 6) / 40)))
     }
     fit()
     const observer = new ResizeObserver(fit)
     observer.observe(room)
     return () => observer.disconnect()
-  }, [])
+  }, [horizontal])
   const shown = tools.length + 1 <= rows ? tools : tools.slice(0, Math.max(0, rows - 1))
   const hidden = tools.slice(shown.length)
   // More's panel, open: apart from `flyout`, so a tool in it can open its own.
@@ -374,14 +380,15 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
       data-quick-bar=""
       role="toolbar"
       aria-label={t('atrium.tools.title')}
-      aria-orientation="vertical"
+      aria-orientation={horizontal ? 'horizontal' : 'vertical'}
       ref={barRef}
-      className="pointer-events-auto flex flex-col gap-1 p-1 border border-nier-border/40"
+      // Across, it's what its options open above, rather than each tool.
+      className={`pointer-events-auto flex ${horizontal ? 'relative flex-row self-start' : 'flex-col'} gap-1 p-1 border border-nier-border/40`}
       style={{ backgroundColor: 'rgb(var(--c-ground) / 0.92)' }}
     >
       {shown.map((action, i) => renderTool(action, i))}
       {/* More: what didn't fit, and Customize quick bar. */}
-      <div className="group relative" onMouseEnter={keepMore} onMouseLeave={letMoreGo}>
+      <div className={horizontal ? 'group' : 'group relative'} onMouseEnter={horizontal ? undefined : keepMore} onMouseLeave={horizontal ? undefined : letMoreGo}>
         <button
           type="button"
           data-quick="more"
@@ -395,11 +402,11 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">{MORE_ICON}</svg>
         </button>
-        {!moreOpen && <SlideLabel text={t('atrium.tools.more')} onPress={() => setMoreOpen(true)} />}
+        {!moreOpen && !horizontal && <SlideLabel text={t('atrium.tools.more')} onPress={() => setMoreOpen(true)} />}
         {moreOpen && (
           <div
             data-quick-more=""
-            className="slide-in absolute left-full bottom-0 ml-2 flex flex-col gap-1 p-1 border border-nier-border/40 z-10"
+            className={`slide-in absolute ${horizontal ? 'bottom-full right-0 mb-2' : 'left-full bottom-0 ml-2'} flex flex-col gap-1 p-1 border border-nier-border/40 z-10`}
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
           >
             <ToolName name={t('atrium.tools.more')} keyName={null} />
@@ -436,8 +443,9 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
           : action === 'laser' ? laser
           : armed === action
         const key = keyOf(action)
-        // Where its options open: beside it on the bar, at the foot beside More's panel.
-        const side = inPanel ? 'bottom-0' : 'top-0'
+        // Where its options open: beside it on the bar, at the foot beside More's
+        // panel -- or, the bar along the foot, above it.
+        const pop = horizontal ? 'bottom-full left-0 mb-2' : `left-full ${inPanel ? 'bottom-0' : 'top-0'} ml-2`
         const withKinds = kinded(action)
         const withFlyout = hasFlyout(action)
         const press = () => {
@@ -463,13 +471,13 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
             // Under More, not the anchor for its options: they open beside
             // the panel (the next one positioned), at its foot -- on a click,
             // as hovering on the way to them would cross the other tools.
-            className={inPanel ? 'group' : 'group relative'}
-            onMouseEnter={withFlyout && !inPanel ? () => keepFlyout(action) : undefined}
-            onMouseLeave={withFlyout && !inPanel ? letFlyoutGo : undefined}
+            className={inPanel || horizontal ? 'group' : 'group relative'}
+            onMouseEnter={withFlyout && !inPanel && !horizontal ? () => keepFlyout(action) : undefined}
+            onMouseLeave={withFlyout && !inPanel && !horizontal ? letFlyoutGo : undefined}
           >
             {/* In the gap above, so every tool keeps its row's height -- and
                 only with a tool above it to set it apart from. */}
-            {action === 'pinterest' && i !== 0 && !inPanel && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
+            {action === 'pinterest' && i !== 0 && !inPanel && !horizontal && <div className="absolute -top-[3px] inset-x-1 h-px bg-nier-border/30" />}
             <button
               type="button"
               data-quick={action}
@@ -495,12 +503,12 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
                 <span aria-hidden="true" className="absolute right-0.5 top-0.5 w-0 h-0 opacity-60" style={{ borderTop: '4px solid currentColor', borderLeft: '4px solid transparent' }} />
               )}
             </button>
-            {flyout !== action && !inPanel && <SlideLabel text={label[action]} hint={key ?? undefined} onPress={press} />}
+            {flyout !== action && !inPanel && !horizontal && <SlideLabel text={label[action]} hint={key ?? undefined} onPress={press} />}
             {withKinds && flyout === action && (
               <div
                 ref={flyoutRef}
                 data-quick-flyout={action}
-                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
+                className={`slide-in absolute ${pop} flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label[action]} keyName={key} />
@@ -536,7 +544,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="shape"
-                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
+                className={`slide-in absolute ${pop} flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={t('atrium.tools.shapes')} keyName={key} />
@@ -570,7 +578,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="other"
-                className={`slide-in absolute left-full ${side} ml-2 flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
+                className={`slide-in absolute ${pop} flex items-center gap-1 p-1 border border-nier-border/40 z-10`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label.other} keyName={null} />
@@ -597,7 +605,7 @@ export default function QuickBar({ armed, drawing, laser, panning, selecting, la
               <div
                 ref={flyoutRef}
                 data-quick-flyout="laser"
-                className={`slide-in absolute left-full ${side} ml-2 p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono`}
+                className={`slide-in absolute ${pop} p-2 border border-nier-border/40 z-10 flex flex-col gap-2 w-48 font-mono`}
                 style={{ backgroundColor: 'rgb(var(--c-ground) / 0.95)' }}
               >
                 <ToolName name={label.laser} keyName="K" />
