@@ -6,6 +6,13 @@ import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
 import { localDbReady, isDesktop } from './lib/supabase'
 import { languageReady } from './lib/i18n'
+import { resolveThemeNow } from './lib/useLandingTheme'
+
+// Light or dark from the first frame. The loading frame (index.html) and the
+// desktop intro are drawn in the theme's colours, and AppInner publishes the
+// theme only once React has run -- after the wait for the language below --
+// so until then a light desktop opened dark.
+document.documentElement.dataset.landingTheme = resolveThemeNow()
 
 // Into the desktop app's startup log (see main.rs).
 const noteStartup = (line: string) => {

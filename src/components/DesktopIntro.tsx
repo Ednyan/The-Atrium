@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import PortalLoop from './PortalLoop'
 import { useTranslation } from '../lib/i18n'
+import { resolveThemeNow } from '../lib/useLandingTheme'
 
 interface DesktopIntroProps {
   onDone: () => void
 }
 
 // The launch sequence: the portal opening over black before the title screen,
-// the way a game opens.
+// the way a game opens -- or, in the light theme, drawn in ink over the paper
+// the app opens onto.
 //
 // The emblem here is the portal animation itself, not a still of it -- the mark
 // this app is identified by is a moving one, and a launch is the one moment
@@ -38,6 +40,8 @@ type Phase = 'lead' | 'portal' | 'title' | 'out' | 'clear'
 export default function DesktopIntro({ onDone }: DesktopIntroProps) {
   const { t } = useTranslation()
   const [phase, setPhase] = useState<Phase>('lead')
+  // Read once: the intro is over before anyone could switch it.
+  const [light] = useState(() => resolveThemeNow() === 'light')
 
   useEffect(() => {
     const timers = [
@@ -71,17 +75,17 @@ export default function DesktopIntro({ onDone }: DesktopIntroProps) {
     <div
       className="fixed inset-0 z-[10000500] flex items-center justify-center cursor-pointer overflow-hidden"
       style={{
-        background: '#000',
+        background: light ? 'rgb(var(--c-ground))' : '#000',
         opacity: phase === 'clear' ? 0 : 1,
         transition: `opacity ${BACKDROP_OUT_MS}ms ease-out`,
       }}
     >
       {/* A faint pool of light under the portal, so it sits in the black
-          instead of floating on top of it. */}
+          instead of floating on top of it (on paper, a brighter patch). */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 55% 45% at 50% 45%, rgba(203,203,203,0.06), transparent 70%)',
+          background: `radial-gradient(ellipse 55% 45% at 50% 45%, ${light ? 'rgba(255,255,255,0.7)' : 'rgb(var(--c-fg) / 0.06)'}, transparent 70%)`,
           opacity: contentVisible && phase !== 'out' ? 1 : 0,
           transition: `opacity ${PORTAL_FADE_MS}ms ease-out`,
         }}
@@ -92,7 +96,7 @@ export default function DesktopIntro({ onDone }: DesktopIntroProps) {
         className="absolute inset-0 pointer-events-none opacity-[0.03]"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203,203,203,0.1) 2px, rgba(203,203,203,0.1) 4px)',
+            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgb(var(--c-fg) / 0.1) 2px, rgb(var(--c-fg) / 0.1) 4px)',
         }}
       />
 
@@ -113,7 +117,7 @@ export default function DesktopIntro({ onDone }: DesktopIntroProps) {
             transition: `opacity ${PORTAL_FADE_MS}ms ease-out, transform ${PORTAL_FADE_MS + 900}ms cubic-bezier(0.16, 1, 0.3, 1)`,
           }}
         >
-          <PortalLoop className="h-[clamp(11rem,42vh,26rem)]" playbackRate={0.6} />
+          <PortalLoop className="h-[clamp(11rem,42vh,26rem)]" playbackRate={0.6} ink={light} />
         </div>
 
         {/* The rules draw outward and the letters settle together -- the
