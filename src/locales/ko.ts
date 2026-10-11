@@ -521,6 +521,7 @@ const ko: Catalogue = {
   'atrium.hud.owner': '(소유자)',
   'atrium.hud.admin': '(관리자)',
   'atrium.hud.kick': '내보내기',
+  'atrium.hud.directLink': '직접 연결됨: 커서 실시간 표시',
   'atrium.hud.usage': '사용량',
   'atrium.hud.zoom': '배율',
   'atrium.hud.zoomIn': '확대',

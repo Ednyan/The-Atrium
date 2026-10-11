@@ -517,6 +517,7 @@ const ja: Catalogue = {
   'atrium.hud.owner': '（オーナー）',
   'atrium.hud.admin': '（管理者）',
   'atrium.hud.kick': '退出させる',
+  'atrium.hud.directLink': '直接接続：カーソルをリアルタイム表示',
   'atrium.hud.usage': '使用量',
   'atrium.hud.zoom': 'ズーム',
   'atrium.hud.zoomIn': '拡大',

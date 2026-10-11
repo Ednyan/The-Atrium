@@ -5,6 +5,8 @@
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
 import AudioBars from './AudioBars'
 import MediaControls, { overTrace } from './MediaControls'
+import RemoteCursors from './RemoteCursors'
+import { hexToRgb } from '../lib/cursorLook'
 import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
@@ -256,13 +258,6 @@ function strokeHits(kept: unknown): { d: string; width: number }[] | null {
   return hits
 }
 
-// A #rrggbb colour as numbers, white for anything else. For the cursors.
-function hexToRgb(hex: string) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result
-    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
-    : { r: 255, g: 255, b: 255 }
-}
 
 // A colour as the channels "r g b", for rgb(var(...) / alpha).
 const rgbChannels = (hex: string) => { const c = hexToRgb(hex); return `${c.r} ${c.g} ${c.b}` }
@@ -276,12 +271,6 @@ const rgbChannels = (hex: string) => { const c = hexToRgb(hex); return `${c.r} $
 const LIGHT_FALLOFF = [[0, 1], [31, 0.95], [44, 0.84], [62.5, 0.5], [81, 0.16], [90, 0.05], [100, 0]]
   .map(([at, a]) => `rgb(var(--light-rgb) / ${a}) ${at}%`).join(', ')
 
-// A cursor's outline, which is what separates it from the atrium: near-black
-// on a light one, white on a dark one.
-function cursorEdgeOn(background: string | undefined) {
-  const g = hexToRgb(background || '#0a0a0f')
-  return (0.2126 * g.r + 0.7152 * g.g + 0.0722 * g.b) / 255 > 0.5 ? '#1a1a1a' : '#ffffff'
-}
 
 // What Shift snaps a dragged trace onto when the atrium has no grid size of
 // its own. The same fallback LobbyScene draws with, so an atrium saved before
@@ -8082,79 +8071,12 @@ return (
           )
         })()}
 
-        {/* Other people's cursors, in the world layer: placed in the world,
-            they move with it while a pan or zoom scales the layer whole. */}
-        {!hideOtherCursors && Object.entries(otherUsers).map(([odUserId, user]) => {
-          const userScreenX = user.x * zoom + worldOffset.x
-          const userScreenY = user.y * zoom + worldOffset.y
-          const userColor = user.playerColor || '#ffffff'
-
-          const rgb = hexToRgb(userColor)
-          const otherCursorEdge = cursorEdgeOn(atriumBackground)
-
-          return (
-            <div
-              key={`other-user-${odUserId}`}
-              style={{
-                position: 'absolute',
-                left: userScreenX,
-                top: userScreenY,
-                pointerEvents: 'none',
-                transition: 'left 0.15s ease-out, top 0.15s ease-out',
-                zIndex: OTHER_USER_CURSOR_Z_INDEX,
-              }}
-            >
-              {/* Cursor pointer SVG */}
-              <svg
-                width={20 * zoom}
-                height={20 * zoom}
-                viewBox="0 0 24 24"
-                style={{ 
-                  transform: 'translate(-2px, -2px)',
-                }}
-              >
-                <path
-                  d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-                  fill={userColor}
-                  stroke={otherCursorEdge}
-                  strokeWidth="1.5"
-                />
-              </svg>
-              {/* User label -- see the own-player label above for why dark
-                  user colors get a different (light-glow) treatment instead
-                  of glowing/blending into their own dark background. */}
-              {!hideOtherNameTags && (() => {
-                const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
-                const isDarkColor = luminance < 90
-                return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 16 * zoom,
-                    left: 10 * zoom,
-                    color: userColor,
-                    fontSize: `${10 * zoom}px`,
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    pointerEvents: 'none',
-                    textShadow: isDarkColor
-                      ? '0 0 5px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,0.9)'
-                      : `0 0 6px rgba(${rgb.r},${rgb.g},${rgb.b},0.4), 0 2px 4px rgba(0,0,0,0.8)`,
-                    WebkitTextStroke: isDarkColor ? '0.5px rgba(255,255,255,0.6)' : undefined,
-                    letterSpacing: '0.5px',
-                    background: isDarkColor ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.6)',
-                    border: isDarkColor ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
-                    padding: '2px 5px',
-                    borderRadius: '3px',
-                  }}
-                >
-                  {user.username}
-                </div>
-                )
-              })()}
-            </div>
-          )
-        })}
+        {/* Other people's cursors, in the world layer (RemoteCursors): who's
+            here from the store, where they are from the direct connections,
+            moved every frame without drawing anything else again. */}
+        {!hideOtherCursors && (
+          <RemoteCursors users={otherUsers} zoom={zoom} worldOffset={worldOffset} hideNames={hideOtherNameTags} atriumBackground={atriumBackground} zIndex={OTHER_USER_CURSOR_Z_INDEX} />
+        )}
       </div>
       </div>
 

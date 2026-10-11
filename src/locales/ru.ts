@@ -553,6 +553,7 @@ const ru: Catalogue = {
   'atrium.hud.owner': '(Владелец)',
   'atrium.hud.admin': '(Админ)',
   'atrium.hud.kick': 'Исключить',
+  'atrium.hud.directLink': 'Прямое соединение: курсор в реальном времени',
   'atrium.hud.usage': 'Занято',
   'atrium.hud.zoom': 'Масштаб',
   'atrium.hud.zoomIn': 'Приблизить',

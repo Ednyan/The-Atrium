@@ -501,6 +501,7 @@ export const en = {
   'atrium.hud.owner': '(Owner)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Kick',
+  'atrium.hud.directLink': 'Connected directly: their cursor is live',
   'atrium.hud.usage': 'Usage',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Zoom in',

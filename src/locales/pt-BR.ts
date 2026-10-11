@@ -551,6 +551,7 @@ const ptBR: Catalogue = {
   'atrium.hud.owner': '(Proprietário)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Expulsar',
+  'atrium.hud.directLink': 'Conexão direta: cursor ao vivo',
   'atrium.hud.usage': 'Uso',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Aproximar',

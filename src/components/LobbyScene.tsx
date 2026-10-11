@@ -60,6 +60,7 @@ import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar, type MenuItem } from './AtriumMenu'
 import { useNarrow } from '../lib/useNarrow'
+import { useLinked } from '../lib/peers'
 import { ACTION_ICONS, CustomizationPanel, PanelAction, Section } from './Customization'
 import ShapeStyleControls from './ShapeStyleControls'
 import { AtriumName, ViewReadout } from './AtriumInfo'
@@ -521,6 +522,23 @@ function particleConfig(theme: { particleColor?: string; particlesEnabled?: bool
     particleDensity: theme?.particleDensity ?? 1.0,
     backgroundColor,
   }
+}
+
+// Beside someone in the online list who is connected directly (lib/peers):
+// their cursor and laser arrive live. Its own subscription, so a connection
+// coming or going redraws this mark alone.
+function LinkMark({ userId }: { userId: string }) {
+  const { t } = useTranslation()
+  if (!useLinked().has(userId)) return null
+  return (
+    <span
+      data-direct-link=""
+      title={t('atrium.hud.directLink')}
+      aria-label={t('atrium.hud.directLink')}
+      className="w-1.5 h-1.5 shrink-0 rotate-45"
+      style={{ background: 'rgb(var(--c-emerald))' }}
+    />
+  )
 }
 
 export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
@@ -4873,7 +4891,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     </div>
                     {Object.values(otherUsers).map(user => (
                       <div key={user.userId} className="flex items-center justify-between gap-2">
-                        <span className="text-nier-bg/80 text-xs tracking-wide truncate">{user.username}</span>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-nier-bg/80 text-xs tracking-wide truncate">{user.username}</span>
+                          <LinkMark userId={user.userId} />
+                        </span>
                         <span className="text-nier-bg/80 text-xs flex-shrink-0">{formatTimeInAtrium(user.joinedAt)}</span>
                         {(isLobbyOwner || isLobbyAdmin) && user.userId !== currentLobby?.ownerUserId && (
                           <button

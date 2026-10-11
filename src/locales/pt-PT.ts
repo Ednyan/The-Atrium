@@ -554,6 +554,7 @@ const ptPT: Catalogue = {
   'atrium.hud.owner': '(Proprietário)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Expulsar',
+  'atrium.hud.directLink': 'Ligação direta: cursor em direto',
   'atrium.hud.usage': 'Uso',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Aproximar',

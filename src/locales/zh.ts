@@ -520,6 +520,7 @@ const zh: Catalogue = {
   'atrium.hud.owner': '（所有者）',
   'atrium.hud.admin': '（管理员）',
   'atrium.hud.kick': '请离',
+  'atrium.hud.directLink': '直接连接：光标实时显示',
   'atrium.hud.usage': '占用',
   'atrium.hud.zoom': '缩放',
   'atrium.hud.zoomIn': '放大',

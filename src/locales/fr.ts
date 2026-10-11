@@ -549,6 +549,7 @@ const fr: Catalogue = {
   'atrium.hud.owner': '(Propriétaire)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Exclure',
+  'atrium.hud.directLink': 'Connexion directe : curseur en direct',
   'atrium.hud.usage': 'Utilisation',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Zoom avant',

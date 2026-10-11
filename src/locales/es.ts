@@ -547,6 +547,7 @@ const es: Catalogue = {
   'atrium.hud.owner': '(Propietario)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Expulsar',
+  'atrium.hud.directLink': 'Conexión directa: su cursor en vivo',
   'atrium.hud.usage': 'Uso',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Acercar',

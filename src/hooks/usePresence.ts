@@ -3,6 +3,7 @@ import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import { receiveLaser, setLaserSender } from '../lib/laser'
+import { Mesh, canLink, livePositions, type Live, type Signal } from '../lib/peers'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -61,6 +62,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
         y: positionRef.current.y,
         playerColor: playerColor,
         online_at: new Date(joinedAtRef.current).toISOString(),
+        link: canLink(),
       })
     }
   }, [playerColor, userId, username])
@@ -169,9 +171,31 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       })
     }
 
+    // Direct connections to the others (lib/peers): their cursors and lasers
+    // live, rather than a cursor every 5 seconds through this channel. Made
+    // once the ghost check says this person is seen -- an invisible operator
+    // connects to no one -- and introduced through this channel.
+    let mesh: Mesh | null = null
+    // Everyone here; and of them, those who can be connected to directly.
+    const everyone = () => Object.keys(channel.presenceState()).filter(key => key !== userId && isValidUserKey(key))
+    const roster = () => Object.entries(channel.presenceState())
+      .filter(([key, presences]) => key !== userId && isValidUserKey(key) && (presences as { link?: boolean }[])[0]?.link !== false)
+      .map(([key]) => key)
+    const fromPeer = (from: string, message: Live) => {
+      if (message.k === 'c' && Number.isFinite(message.x) && Number.isFinite(message.y)) livePositions.set(from, { x: message.x, y: message.y })
+      else if (message.k === 'l' && message.m && typeof message.m === 'object') receiveLaser({ ...(message.m as object), userId: from } as Parameters<typeof receiveLaser>[0])
+    }
+    ghostPromise.then(ghost => {
+      if (ghost || !canLink() || channelRef.current !== channel) return
+      mesh = new Mesh(userId, signal => {
+        void channel.send({ type: 'broadcast', event: 'rtc', payload: { ...signal, from: userId } })
+      }, fromPeer)
+      mesh.sync(roster())
+    })
+
     // Track presence
     channel
-      .on('presence', { event: 'sync' }, applyPresenceState)
+      .on('presence', { event: 'sync' }, () => { applyPresenceState(); mesh?.sync(roster()) })
       .on('presence', { event: 'join' }, ({ key, newPresences }: { key: string; newPresences: any[] }) => {
         if (key !== userId && newPresences && newPresences.length > 0 && isValidUserKey(key)) {
           const presence = newPresences[0] as any
@@ -190,16 +214,25 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
         if (key !== userId) {
           removeOtherUser(key)
+          mesh?.sync(roster())
         }
       })
+      // Through here, from anyone not connected directly; from someone who
+      // is, the direct copy is newer, and this one is left.
       .on('broadcast', { event: 'cursor' }, ({ payload }: { payload: any }) => {
-        if (payload && payload.userId !== userId && isValidUserKey(payload.userId)) {
+        if (payload && payload.userId !== userId && isValidUserKey(payload.userId) && !mesh?.linked(payload.userId)) {
           updateOtherUserPosition(payload.userId, payload.x, payload.y)
         }
       })
       // Someone's laser pointer (lib/laser): drawn, never kept.
       .on('broadcast', { event: 'laser' }, ({ payload }: { payload: any }) => {
-        if (payload && payload.userId !== userId && isValidUserKey(payload.userId)) receiveLaser(payload)
+        if (payload && payload.userId !== userId && isValidUserKey(payload.userId) && !mesh?.linked(payload.userId)) receiveLaser(payload)
+      })
+      // An introduction for a direct connection (lib/peers).
+      .on('broadcast', { event: 'rtc' }, ({ payload }: { payload: any }) => {
+        if (payload && isValidUserKey(payload.from) && typeof payload.sdp === 'string' && (payload.kind === 'offer' || payload.kind === 'answer')) {
+          void mesh?.signal(payload.from, payload as Signal)
+        }
       })
       .on('broadcast', { event: 'kicked' }, ({ payload }: { payload: any }) => {
         if (payload && payload.targetUserId === userId) {
@@ -215,6 +248,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           // so the panel renders and the canvas behind it keeps working.
           ghostRef.current = true
           void channel.untrack()
+          mesh?.close()
+          mesh = null
           onKickedRef.current?.(!!payload.blacklisted)
         }
       })
@@ -233,6 +268,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
             y: positionRef.current.y,
             playerColor: playerColorRef.current,
             online_at: new Date(joinedAtRef.current).toISOString(),
+            // Whether this person can be connected to directly (lib/peers):
+            // nobody offers to someone who can't answer -- the Linux app.
+            link: canLink(),
           })
         }
       })
@@ -240,15 +278,30 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Safety-net: reconcile periodically in case a join/leave broadcast was
     // ever missed, so a mismatch self-heals instead of persisting until the
     // affected user leaves and rejoins.
-    const reconcileInterval = setInterval(reconcilePresenceState, 20000)
+    const reconcileInterval = setInterval(() => { reconcilePresenceState(); mesh?.sync(roster()) }, 20000)
 
     channelRef.current = channel
     // This person's laser out to the others -- not while invisible, like the
-    // cursor below.
+    // cursor below: directly to whoever is connected, and through the
+    // channel only while someone here isn't.
     setLaserSender(message => {
       if (ghostRef.current !== false) return
-      void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
+      mesh?.send({ k: 'l', m: message })
+      if (!mesh || everyone().some(id => !mesh!.linked(id))) {
+        void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
+      }
     })
+
+    // The cursor, directly, up to 20 times a second while it moves.
+    let sentX = NaN, sentY = NaN
+    const liveInterval = setInterval(() => {
+      if (!mesh || ghostRef.current !== false) return
+      const { x, y } = positionRef.current
+      if (x === sentX && y === sentY) return
+      sentX = x
+      sentY = y
+      mesh.send({ k: 'c', x, y })
+    }, 50)
 
     // Send position updates only when position actually changes. Throttled
     // to max 1 update per 2 seconds to keep Realtime message usage minimal.
@@ -297,8 +350,13 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     return () => {
       // Disconnecting from presence channel
       clearInterval(updateInterval)
+      clearInterval(liveInterval)
       clearInterval(reconcileInterval)
       setLaserSender(null)
+      mesh?.close()
+      mesh = null
+      livePositions.clear()
+      channelRef.current = null
       channel.unsubscribe()
     }
   }, [userId, username, lobbyId])

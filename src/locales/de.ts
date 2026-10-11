@@ -550,6 +550,7 @@ const de: Catalogue = {
   'atrium.hud.owner': '(Inhaber)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Rauswerfen',
+  'atrium.hud.directLink': 'Direkt verbunden: Cursor live',
   'atrium.hud.usage': 'Belegung',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Vergrößern',

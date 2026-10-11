@@ -551,6 +551,7 @@ const it: Catalogue = {
   'atrium.hud.owner': '(Proprietario)',
   'atrium.hud.admin': '(Admin)',
   'atrium.hud.kick': 'Espelli',
+  'atrium.hud.directLink': 'Connessione diretta: cursore in tempo reale',
   'atrium.hud.usage': 'Utilizzo',
   'atrium.hud.zoom': 'Zoom',
   'atrium.hud.zoomIn': 'Ingrandisci',
