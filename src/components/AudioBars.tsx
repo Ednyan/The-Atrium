@@ -5,20 +5,36 @@
 //
 // Driven straight on the bars each frame, never through React, and only
 // while something plays.
+//
+// As many bands as its width has room for, each bar keeping its shape: a
+// trace stretched wider hears in finer bands, rather than in the same few
+// drawn fatter.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyserOf } from '../lib/spatialSound'
 
-const BARS = 24
+// A bar and its gap, in the canvas's units; and the fewest and most bands.
+const PITCH = 9, FEWEST = 12, MOST = 96
 // The bands, spaced as hearing is: 50 Hz to 14 kHz.
 const LOW = 50, HIGH = 14000
 
 export default function AudioBars({ traceId, playing, color }: { traceId: string; playing: boolean; color?: string }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [count, setCount] = useState(24)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const watch = new ResizeObserver(([entry]) => {
+      setCount(Math.max(FEWEST, Math.min(MOST, Math.floor((entry.contentRect.width + 2) / PITCH))))
+    })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
   // Its shape at rest, the same every time for the same trace.
-  const rest = useMemo(() => Array.from({ length: BARS }, (_, i) => {
+  const rest = useMemo(() => Array.from({ length: count }, (_, i) => {
     const hash = traceId.charCodeAt(i % traceId.length) + i * 7
     return 0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82
-  }), [traceId])
+  }), [traceId, count])
   const bars = useRef<(HTMLDivElement | null)[]>([])
   const peaks = useRef<(HTMLDivElement | null)[]>([])
   const [heard, setHeard] = useState(false)
@@ -30,12 +46,12 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
     if (!analyser) return
     const data = new Uint8Array(analyser.frequencyBinCount)
     const hz = analyser.context.sampleRate / analyser.fftSize
-    const edges = Array.from({ length: BARS + 1 }, (_, k) => Math.max(1, Math.round((LOW * (HIGH / LOW) ** (k / BARS)) / hz)))
-    const peak = new Float32Array(BARS)
+    const edges = Array.from({ length: count + 1 }, (_, k) => Math.max(1, Math.round((LOW * (HIGH / LOW) ** (k / count)) / hz)))
+    const peak = new Float32Array(count)
     let frame = requestAnimationFrame(function tick() {
       frame = requestAnimationFrame(tick)
       analyser.getByteFrequencyData(data)
-      for (let k = 0; k < BARS; k++) {
+      for (let k = 0; k < count; k++) {
         const from = edges[k], to = Math.max(from + 1, edges[k + 1])
         let sum = 0
         for (let b = from; b < to; b++) sum += data[b]
@@ -47,14 +63,14 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [playing, traceId])
+  }, [playing, traceId, count])
 
   const live = playing && heard
   const fill = playing
     ? `linear-gradient(to top, ${color || '#8f8f8f'}, ${color ? color + '88' : '#cbcbcb'})`
     : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))'
   return (
-    <div className="flex items-stretch justify-center gap-[2px] flex-1 w-full max-h-[60%] min-h-[24px]" style={{ contain: 'layout paint' }}>
+    <div ref={box} className="flex items-stretch justify-center gap-[2px] flex-1 w-full min-h-[24px]" style={{ contain: 'layout paint' }}>
       {rest.map((h, i) => (
         <div key={i} className="relative flex-1 max-w-[10px]">
           <div

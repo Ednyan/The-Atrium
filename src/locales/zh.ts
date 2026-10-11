@@ -566,6 +566,12 @@ const zh: Catalogue = {
   // ------------------------------------------------- controls on a trace
   'atrium.controls.play': '播放',
   'atrium.controls.pause': '暂停',
+  'atrium.controls.timeline': '时间轴',
+  'atrium.controls.volume': '音量',
+  'atrium.controls.mute': '静音',
+  'atrium.controls.unmute': '取消静音',
+  'atrium.controls.previousPage': '上一页',
+  'atrium.controls.nextPage': '下一页',
   'atrium.controls.viewSource': '查看来源',
   'atrium.controls.rendering': '渲染中…',
   'atrium.controls.video': '视频',

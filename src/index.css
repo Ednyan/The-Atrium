@@ -242,6 +242,69 @@
   100% { opacity: 1; transform: scaleY(1); }
 }
 
+/* A video's or sound's controls (MediaControls), in the canvas's units: one
+   line -- play, the time, the timeline, the length, the sound -- dropping the
+   times, then the volume's slider, where the trace is too narrow for them. A
+   sound's sit on the trace in its own colours; a video's over the picture, on
+   a shade of their own, light in either theme, there while it's paused or
+   pointed at. */
+.media-bar {
+  container-type: inline-size;
+  display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 2px;
+  font: 10px/1 var(--font-ui); letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+  color: rgb(var(--c-fg)); pointer-events: auto; user-select: none;
+}
+.media-bar-over {
+  height: 38px; padding: 10px 10px 0; color: #ececec;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.72), rgb(0 0 0 / 0.32) 60%, transparent);
+  opacity: 0; transition: opacity 0.25s ease;
+}
+.trace-frame-nier:hover .media-bar-over, .media-bar-over[data-paused], .media-bar-over:focus-within { opacity: 1; }
+.media-btn {
+  flex: none; display: grid; place-items: center; width: 18px; height: 18px; padding: 0;
+  color: inherit; background: none; border: 0; opacity: 0.85; cursor: pointer; transition: opacity 0.15s ease;
+}
+.media-btn:hover, .media-btn:focus-visible { opacity: 1; }
+.media-btn svg { width: 10px; height: 10px; }
+.media-time { flex: none; opacity: 0.75; }
+.media-range {
+  --at: 0%;
+  min-width: 0; height: 14px; margin: 0; padding: 0; color: inherit; background: transparent;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.media-range:disabled { cursor: default; opacity: 0.5; }
+.media-timeline { flex: 1; }
+.media-volume { flex: none; width: 44px; }
+.media-range::-webkit-slider-runnable-track {
+  height: 2px; background: linear-gradient(to right, currentColor var(--at), color-mix(in srgb, currentColor 26%, transparent) var(--at));
+}
+.media-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 9px; height: 9px; margin-top: -3.5px; border: 0; border-radius: 50%;
+  background: currentColor; transform: scale(0.55); transition: transform 0.15s ease;
+}
+.media-range::-moz-range-track { height: 2px; background: color-mix(in srgb, currentColor 26%, transparent); }
+.media-range::-moz-range-progress { height: 2px; background: currentColor; }
+.media-range::-moz-range-thumb { width: 9px; height: 9px; border: 0; border-radius: 50%; background: currentColor; transform: scale(0.55); transition: transform 0.15s ease; }
+.media-bar:hover .media-range::-webkit-slider-thumb, .media-range:focus-visible::-webkit-slider-thumb { transform: none; }
+.media-bar:hover .media-range::-moz-range-thumb, .media-range:focus-visible::-moz-range-thumb { transform: none; }
+.media-range:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
+@container (max-width: 210px) { .media-time { display: none; } }
+@container (max-width: 140px) { .media-volume { display: none; } }
+
+/* A document's pages (TraceOverlay's control layer): dark on the page in
+   either theme, so its words are light. */
+.doc-pages {
+  display: flex; align-items: center; gap: 8px; padding: 3px 4px;
+  font: 10px/1 var(--font-ui); letter-spacing: 0.12em; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: rgb(255 255 255 / 0.85); background: rgb(10 10 10 / 0.85); border: 1px solid rgb(203 203 203 / 0.35);
+}
+.doc-pages button {
+  display: grid; place-items: center; width: 18px; height: 18px; padding: 0; color: inherit;
+  background: none; border: 1px solid rgb(203 203 203 / 0.3); cursor: pointer;
+}
+.doc-pages button:disabled { opacity: 0.25; cursor: default; }
+.doc-pages svg { width: 8px; height: 8px; }
+
 /* Entered already fully white (App.tsx's entering-video crossfade div
    ramps the screen to solid white just before this mounts), so this only
    needs to hold that white briefly and then fade out to reveal the next

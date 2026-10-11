@@ -4,6 +4,7 @@
 // Removed useEffectOnce, use standard useEffect
 import { corsReady, useSpatialSound } from '../lib/spatialSound'
 import AudioBars from './AudioBars'
+import MediaControls, { overTrace } from './MediaControls'
 import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
@@ -6629,7 +6630,10 @@ return (
               : (showBackground && (trace.showShadow ?? true)
                 ? '0 6px 16px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(203, 203, 203, 0.06)'
                 : 'none'),
-            overflow: 'hidden',
+            // Clipped, never scrolled: `hidden` makes a box the browser may
+            // scroll -- to show a focused element or the caret -- and a
+            // trace scrolled so stays shifted in its own frame until redrawn.
+            overflow: 'clip',
           }}
         >
           {(isSelected || showTraceTypeLabels) && inlineEditingTraceId !== trace.id && !isFrame(trace) && (
@@ -6858,113 +6862,27 @@ return (
         </div>
       )}
 
-      {/* Play, for a video sitting on the canvas.
-
-          The video element above cannot take the click itself: it is
-          pointer-events-none so that dragging a video trace moves the
-          trace rather than poking at the video, and controls={false}
-          for the same reason. That left the canvas showing a still
-          frame with no way to start it, and the modal as the only
-          place a video would actually play.
-
-          So it gets a control of its own, driven exactly like the
-          audio trace's: the one interactive thing inside a trace that
-          is otherwise inert to the pointer. */}
-      {trace.type === 'video' && trace.mediaUrl && (
-        <div className="trace-video-control absolute inset-x-0 bottom-0 flex justify-center pb-2 pointer-events-none">
-          <button
-            // No backdrop-filter, which is what made this go soft.
-            //
-            // A backdrop blur puts the element on its own composited
-            // layer holding a rasterised copy of what is behind it.
-            // Scaling the trace resizes the video underneath without
-            // invalidating that layer, so the blur kept being stretched
-            // from the size it was first drawn at -- and snapped back
-            // only when something forced a repaint, which is why
-            // clicking it fixed it.
-            //
-            // The atrium's own buttons are flat, cut-cornered and
-            // lettered rather than glassy and pill-shaped, so this now
-            // reads as part of the same interface instead of borrowed
-            // from another one.
-            className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
-            style={{
-              color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
-              backgroundColor: 'rgb(var(--c-ground) / 0.94)',
-              border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              const el = document.getElementById(`video-${trace.id}`) as HTMLVideoElement | null
-              if (el) { el.paused ? void el.play() : el.pause() }
-            }}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
-              {playingMedia.has(trace.id)
-                ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
-                : <polygon points="2,0.5 9,5 2,9.5"/>}
-            </svg>
-            {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
-          </button>
-        </div>
-      )}
-
-      {/* Audio Content */}
+      {/* Audio Content: its element, unseen. What's seen of a sound -- its bars,
+          name and controls -- is laid out in the control layer, not stretched here. */}
       {trace.type === 'audio' && trace.mediaUrl && (
-        <div className="flex flex-col items-center justify-center h-full pointer-events-none select-none px-3 pt-5 pb-4 gap-2">
-          {/* Its bars: an equalizer while it plays. */}
-          <AudioBars traceId={trace.id} playing={playingMedia.has(trace.id)} color={trace.borderColor} />
-          {/* Hidden audio element + custom play button */}
-          <audio
-            id={`audio-${trace.id}`}
-            // Same reasoning as the video above: duration now, the
-            // rest when somebody presses play.
-            preload="metadata"
-            // No src until there is a real file to point at. A raw
+        <audio
+          id={`audio-${trace.id}`}
+          // Same reasoning as the video above: duration now, the
+          // rest when somebody presses play.
+          preload="metadata"
+          // No src until there is a real file to point at. A raw
           // local:// URL means nothing to the browser, and handing it
           // one only produces a failed element to recover from later.
           src={trace.mediaUrl?.startsWith('local://')
             ? localMediaUrls[trace.id]
             : (localMediaUrls[trace.id] || trace.mediaUrl)}
-            crossOrigin={corsReady(trace.mediaUrl?.startsWith('local://') ? localMediaUrls[trace.id] : (localMediaUrls[trace.id] || trace.mediaUrl)) ? 'anonymous' : undefined}
-            className="hidden"
-            onError={() => setFailedMedia(prev => new Set(prev).add(trace.id))}
-            onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
-            onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
-            onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
-          />
-          <button
-            // Matches the video control above, and takes its colours
-            // from the theme tokens rather than the fixed greys it had,
-            // which stayed the same shade whatever the atrium was set
-            // to.
-            className="pointer-events-auto cut-corner inline-flex items-center justify-center gap-1.5 h-[18px] px-2 text-[9px] tracking-[0.15em] uppercase leading-none transition-colors"
-            style={{
-              color: playingMedia.has(trace.id) ? 'rgb(var(--c-strong))' : 'rgb(var(--c-fg) / 0.8)',
-              backgroundColor: 'rgb(var(--c-ground) / 0.94)',
-              border: `1px solid rgb(var(--c-line) / ${playingMedia.has(trace.id) ? 0.7 : 0.4})`,
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              const el = document.getElementById(`audio-${trace.id}`) as HTMLAudioElement | null
-              if (el) { el.paused ? el.play() : el.pause() }
-            }}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor">
-              {playingMedia.has(trace.id)
-                ? <><rect x="1" y="1" width="3" height="8" rx="0.5"/><rect x="6" y="1" width="3" height="8" rx="0.5"/></>
-                : <polygon points="2,0.5 9,5 2,9.5"/>}
-            </svg>
-            {playingMedia.has(trace.id) ? t('atrium.controls.pause') : t('atrium.controls.play')}
-          </button>
-          {showDescription && trace.content && (
-            <p className="text-[10px] text-nier-strong/50 text-center truncate w-full pointer-events-none select-none tracking-wide">
-              {trace.content}
-            </p>
-          )}
-        </div>
+          crossOrigin={corsReady(trace.mediaUrl?.startsWith('local://') ? localMediaUrls[trace.id] : (localMediaUrls[trace.id] || trace.mediaUrl)) ? 'anonymous' : undefined}
+          className="hidden"
+          onError={() => setFailedMedia(prev => new Set(prev).add(trace.id))}
+          onPlay={() => setPlayingMedia(prev => new Set(prev).add(trace.id))}
+          onPause={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
+          onEnded={() => setPlayingMedia(prev => { const next = new Set(prev); next.delete(trace.id); return next })}
+        />
       )}
 
 
@@ -6982,14 +6900,7 @@ return (
           per trace+page (see documentPages), so only the page being
           looked at is ever rasterized. */}
       {trace.type === 'document' && (
-        <div
-          className="w-full h-full relative bg-white overflow-hidden"
-          // container-type lets the page controls below size
-          // themselves in cqh (percentages of this box's height)
-          // rather than fixed pixels, so the bar stays a constant
-          // fraction of the page however large the trace is drawn.
-          style={{ containerType: 'size' }}
-        >
+        <div className="w-full h-full relative bg-white overflow-hidden">
           {isDeckFile(trace.mediaUrl) ? (
             <DeckSlide url={trace.mediaUrl!} page={documentPage[trace.id] ?? 1} onCount={count => on.countSlides(trace.id, count)} />
           ) : documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
@@ -7008,74 +6919,6 @@ return (
             )
           )}
 
-          {/* Page controls. Shown for everyone, not only editors --
-              turning the page is reading, not editing. stopPropagation
-              on mousedown so grabbing an arrow doesn't also start
-              dragging the trace underneath it. */}
-          {/* Sized in cqh -- percentages of the page's own height --
-              so the bar is always about a twentieth of the page rather
-              than a fixed pixel size that swamped the trace at normal
-              zoom. */}
-          {(documentPageCount[trace.id] ?? 0) > 1 && (
-            <div
-              className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-auto"
-              style={{
-                bottom: '2cqh',
-                gap: '1.5cqh',
-                // Squared off and outlined rather than a rounded dark
-                // pill, matching the atrium's own chrome and the
-                // modal's page controls.
-                padding: '1cqh 1.5cqh',
-                background: 'rgba(10,10,10,0.85)',
-                border: '0.2cqh solid rgba(203,203,203,0.35)',
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="text-white/80 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
-                style={{
-                  fontSize: '2.6cqh',
-                  padding: '0.4cqh 1.2cqh',
-                  border: '0.2cqh solid rgba(203,203,203,0.3)',
-                }}
-                disabled={(documentPage[trace.id] ?? 1) <= 1}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setDocumentPage(prev => ({ ...prev, [trace.id]: Math.max(1, (prev[trace.id] ?? 1) - 1) }))
-                }}
-              >
-                ◀
-              </button>
-              {/* Light text, as the bar is dark in either theme: the theme's
-                  own text went dark on paper, on this dark bar. */}
-              <span
-                className="text-white/80 uppercase tabular-nums leading-none whitespace-nowrap"
-                style={{ fontSize: '2.2cqh', letterSpacing: '0.15em' }}
-              >
-                {documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}
-              </span>
-              <button
-                type="button"
-                className="text-white/80 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed leading-none transition-colors"
-                style={{
-                  fontSize: '2.6cqh',
-                  padding: '0.4cqh 1.2cqh',
-                  border: '0.2cqh solid rgba(203,203,203,0.3)',
-                }}
-                disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setDocumentPage(prev => ({
-                    ...prev,
-                    [trace.id]: Math.min(documentPageCount[trace.id] ?? 1, (prev[trace.id] ?? 1) + 1),
-                  }))
-                }}
-              >
-                ▶
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -7280,7 +7123,10 @@ return (
         }
         return (
         <div
-          className={`h-full w-full overflow-hidden ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
+          // Clipped, never scrolled (as the frame): typed into, this box was
+          // scrolled to keep the caret in sight, and the text stayed off to
+          // one side of it once typing was done.
+          className={`h-full w-full overflow-clip ${inlineEditingTraceId === trace.id ? 'pointer-events-auto' : 'pointer-events-none select-none'}`}
           style={{
             clipPath: cropClip(shownCrop),
           }}
@@ -7373,6 +7219,63 @@ return (
       })()}
 
           </div>
+          {/* The controls a trace is used through -- a video's or sound's, a
+              document's pages -- laid out over it in the canvas's own units
+              (scaled by the zoom alone), not inside the content above: that
+              is stretched by the trace's own scale, and flipped and cropped
+              with it, and its controls were stretched, mirrored and moved
+              along with the picture. A sound has no picture, so all of it is
+              here: its bars, as many as its width has room for, its name and
+              its controls. */}
+          {((trace.type === 'video' || trace.type === 'audio') && trace.mediaUrl && !failedMedia.has(trace.id)
+            || trace.type === 'document' && (documentPageCount[trace.id] ?? 0) > 1) && (
+            <div
+              className="absolute left-0 top-0 pointer-events-none"
+              style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: '0 0' }}
+            >
+              {trace.type === 'video' && (
+                <div className="absolute inset-x-0 bottom-0">
+                  <MediaControls mediaId={`video-${trace.id}`} playing={playingMedia.has(trace.id)} overVideo />
+                </div>
+              )}
+              {trace.type === 'audio' && (
+                <div className="absolute inset-0 flex flex-col select-none" style={{ padding: '12px 10px 4px' }}>
+                  <AudioBars traceId={trace.id} playing={playingMedia.has(trace.id)} color={trace.borderColor} />
+                  {showDescription && trace.content && (
+                    <p className="mt-2 text-[10px] text-nier-strong/60 text-center truncate tracking-wide">{trace.content}</p>
+                  )}
+                  <MediaControls mediaId={`audio-${trace.id}`} playing={playingMedia.has(trace.id)} />
+                </div>
+              )}
+              {trace.type === 'document' && (
+                <div className="doc-pages absolute left-1/2 -translate-x-1/2 bottom-2.5 pointer-events-auto" {...overTrace}>
+                  <button
+                    type="button"
+                    aria-label={t('atrium.controls.previousPage')}
+                    disabled={(documentPage[trace.id] ?? 1) <= 1}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDocumentPage(prev => ({ ...prev, [trace.id]: Math.max(1, (prev[trace.id] ?? 1) - 1) }))
+                    }}
+                  >
+                    <svg viewBox="0 0 10 10" aria-hidden="true"><polygon points="7.5,1 1.5,5 7.5,9" fill="currentColor" /></svg>
+                  </button>
+                  <span>{documentPage[trace.id] ?? 1} / {documentPageCount[trace.id]}</span>
+                  <button
+                    type="button"
+                    aria-label={t('atrium.controls.nextPage')}
+                    disabled={(documentPage[trace.id] ?? 1) >= (documentPageCount[trace.id] ?? 1)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDocumentPage(prev => ({ ...prev, [trace.id]: Math.min(documentPageCount[trace.id] ?? 1, (prev[trace.id] ?? 1) + 1) }))
+                    }}
+                  >
+                    <svg viewBox="0 0 10 10" aria-hidden="true"><polygon points="2.5,1 8.5,5 2.5,9" fill="currentColor" /></svg>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {dashed && (
           <svg

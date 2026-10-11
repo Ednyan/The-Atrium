@@ -567,6 +567,12 @@ const ko: Catalogue = {
   // ------------------------------------------------- controls on a trace
   'atrium.controls.play': '재생',
   'atrium.controls.pause': '일시정지',
+  'atrium.controls.timeline': '타임라인',
+  'atrium.controls.volume': '볼륨',
+  'atrium.controls.mute': '음소거',
+  'atrium.controls.unmute': '음소거 해제',
+  'atrium.controls.previousPage': '이전 페이지',
+  'atrium.controls.nextPage': '다음 페이지',
   'atrium.controls.viewSource': '원본 보기',
   'atrium.controls.rendering': '그리는 중…',
   'atrium.controls.video': '영상',

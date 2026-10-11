@@ -563,6 +563,12 @@ const ja: Catalogue = {
   // ------------------------------------------------- controls on a trace
   'atrium.controls.play': '再生',
   'atrium.controls.pause': '一時停止',
+  'atrium.controls.timeline': 'タイムライン',
+  'atrium.controls.volume': '音量',
+  'atrium.controls.mute': 'ミュート',
+  'atrium.controls.unmute': 'ミュート解除',
+  'atrium.controls.previousPage': '前のページ',
+  'atrium.controls.nextPage': '次のページ',
   'atrium.controls.viewSource': '元のページを見る',
   'atrium.controls.rendering': '描画中…',
   'atrium.controls.video': '動画',

@@ -72,6 +72,17 @@ export function heardAt(cx: number, cy: number, width: number, height: number): 
   return { volume, pan }
 }
 
+// The listener's own level for an element, set on its controls
+// (MediaControls): spatial sound scales it, rather than replacing it.
+export function listenerVolumeOf(el: HTMLMediaElement): number {
+  const level = Number(el.dataset.volume)
+  return el.dataset.volume !== undefined && Number.isFinite(level) ? level : 1
+}
+export function setListenerVolume(el: HTMLMediaElement, level: number) {
+  el.dataset.volume = String(level)
+  el.volume = level
+}
+
 const MEDIA = 'video[id^="video-"], audio[id^="audio-"]'
 const PLAYERS = '[data-trace-id] iframe'
 
@@ -97,7 +108,7 @@ export function useSpatialSound(on: boolean) {
   useEffect(() => {
     const reset = () => {
       for (const el of document.querySelectorAll<HTMLMediaElement>(MEDIA)) {
-        el.volume = 1
+        el.volume = listenerVolumeOf(el)
         const graph = graphs.get(el)
         if (graph) graph.pan.pan.value = 0
       }
@@ -114,7 +125,7 @@ export function useSpatialSound(on: boolean) {
         if (!trace) continue
         const r = trace.getBoundingClientRect()
         const { volume, pan } = heardAt(r.left + r.width / 2, r.top + r.height / 2, innerWidth, innerHeight)
-        el.volume = volume
+        el.volume = volume * listenerVolumeOf(el)
         const graph = graphOf(el)
         if (graph) {
           if (context?.state === 'suspended') void context.resume()
