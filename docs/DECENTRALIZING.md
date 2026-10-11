@@ -47,7 +47,7 @@ next phase has proved itself.
 - **Fallbacks stay:** Supabase cloud atriums as they are today. Local-only
   atriums for anyone without Google, using the desktop vault's design in the
   browser. The current realtime path wherever a direct connection can't be
-  made, including the Linux desktop app (see Risks).
+  made (see Risks).
 
 ## Ground rules for every phase
 
@@ -299,8 +299,11 @@ later, optional and reversible (export first).
 
 | Risk | What we know | Mitigation |
 |---|---|---|
-| Linux desktop has no WebRTC | WebKitGTK, which Tauri uses on Linux, lacks it without hacks; WebView2 and WKWebView have it | Linux stays on the current path |
+| Linux desktop has no WebRTC | WebKitGTK, which Tauri uses on Linux, lacks it without hacks; WebView2 and WKWebView have it | Nothing is lost today: desktop atriums are one person's, with no live presence. If the app ever joins shared atriums, Linux falls back to the presence channel, or a browser |
 | Some networks block direct connections | Vendor estimates: 10–20% of sessions need a relay (no authoritative data) | 1b: Cloudflare TURN, 1,000 GB free |
+| The relay bills past its free tier | $0.05 per GB after 1,000 GB a month; what happens without a card isn't documented | The credential function stops handing out relay passes past a monthly budget, and those pairs fall back to the channel. A moving cursor is about 3 KB/s, so 1,000 GB is ~90,000 hours of one cursor moving non-stop |
+| R2 needs a card on file | Secondhand reports: activating R2 asks for a payment method, though the free tier isn't charged | Pictures stay in Supabase Storage until its 5 GB of downloads a month gets tight |
+| Brand review trips over supabase.co | Community reports: the sign-in callback is on Supabase's domain, which we can't prove we own | Drive gets its own Google Cloud project, whose only domain is digitalatrium.org |
 | Everyone-to-everyone gets heavy | Data-only meshes go far beyond video's ~4, but no measured number | Measure in phase 1; a partial mesh in phase 3 |
 | Popular Drive files get locked | Third-party reports; threshold unpublished | R2 mirror (phase 8) |
 | Google changes billing or policy | The Drive API page announces billing details in 2026 (charges tied to egress above 1 TB a day per project) | Keep Supabase and local paths alive; watch the page |
@@ -312,8 +315,8 @@ later, optional and reversible (export first).
 ## Sources
 
 - Supabase limits: [Realtime limits](https://supabase.com/docs/guides/realtime/limits), [Realtime authorization](https://supabase.com/docs/guides/realtime/authorization), [pricing guide 2026 (jetadmin)](https://www.jetadmin.io/blog/supabase-pricing-2026-guide-to-plans-limits-and-real-world-costs/)
-- Google: [Choose Drive API scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [Drive API usage limits](https://developers.google.com/workspace/drive/api/guides/limits), [Picker](https://developers.google.com/picker/docs/), [Unverified apps](https://support.google.com/cloud/answer/7454865?hl=en), [Brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification)
-- Cloudflare: [Realtime/TURN pricing](https://developers.cloudflare.com/realtime/pricing/), [TURN credentials](https://developers.cloudflare.com/realtime/turn/generate-credentials/), [R2 pricing](https://developers.cloudflare.com/r2/pricing), [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing)
+- Google: [Choose Drive API scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [Drive API usage limits](https://developers.google.com/workspace/drive/api/guides/limits), [Picker](https://developers.google.com/picker/docs/), [Unverified apps](https://support.google.com/cloud/answer/7454865?hl=en), [Brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification), [OAuth app verification](https://support.google.com/cloud/answer/9110914), [custom thumbnails](https://developers.google.com/drive/api/guides/file-metadata), [Supabase: Login with Google](https://supabase.com/docs/guides/auth/social-login/auth-google), [a brand review stuck on the Supabase domain](https://discuss.google.dev/t/oauth-branding-verification-stuck-name-mismatch-due-to-supabase-callback-domain-no-trust-safety-email-received/389007)
+- Cloudflare: [Realtime/TURN pricing](https://developers.cloudflare.com/realtime/pricing/), [TURN credentials](https://developers.cloudflare.com/realtime/turn/generate-credentials/), [R2 pricing](https://developers.cloudflare.com/r2/pricing), [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing), [TURN FAQ](https://developers.cloudflare.com/realtime/turn/faq/), [R2 setup asking for a card (secondhand)](https://dev.to/leonwong282/the-complete-beginners-guide-to-cloudflare-r2-image-hosting-2025-2g4k)
 - draw.io: [Cloud storage](https://drawio.com/blog/cloud-storage-diagrams), [Real-time collaboration](https://www.drawio.com/blog/real-time-collaboration-diagrams.html)
 - WebRTC: [TURN share estimates (Twilio FAQ)](https://www.twilio.com/docs/api/stun-turn/faq), [Tauri WebRTC on Linux](https://github.com/tauri-apps/tauri/discussions/8426)
 - Browser SQLite: [SQLite WASM persistence](https://sqlite.org/wasm/doc/tip/persistence.md)
