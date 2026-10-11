@@ -375,7 +375,10 @@ export async function fetchPinterestBoardPins(boardId: string, onProgress?: (fet
         imageUrl: image.url,
         imageWidth: image.width,
         imageHeight: image.height,
-        pinUrl: p.link || `https://www.pinterest.com/pin/${p.id}/`,
+        // The pin's own page, always: `link` is where the pin points out to
+        // (some other site), not the pin -- and a pin shown here leads back to
+        // Pinterest.
+        pinUrl: `https://www.pinterest.com/pin/${p.id}/`,
       })
     }
     onProgress?.(pins.length)
