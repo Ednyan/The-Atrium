@@ -327,8 +327,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           void channel.track(announcement(username, playerColorRef.current, positionRef.current, joinedAtRef.current))
         })
       }
-      if (mesh) mesh.sync(roster(), true)
-      else link()
+      if (mesh) {
+        mesh.sync(roster(), true)
+        mesh.recheckRoutes()
+      } else link()
       // Anyone here, settled, with no connection open or on its way: through
       // Supabase (said once; lib/peers reportPath).
       for (const id of everyone()) if (!mesh?.linked(id) && !mesh?.connecting(id)) reportPath(id, 'supabase')

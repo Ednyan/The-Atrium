@@ -34,6 +34,8 @@ const ANSWER_MS = 15_000
 const RETRY_MS = 30_000
 // Past this many, the rest are reached through the presence channel.
 const MOST_LINKS = 16
+// How long after opening a connection's route is looked at again.
+const ROUTE_SETTLES_MS = 3000
 
 /** The introduction, sent through the presence channel. */
 export interface Signal { to: string; kind: 'offer' | 'answer'; sdp: string }
@@ -253,6 +255,11 @@ export class Mesh {
   /** A connection to them under way, not open yet. */
   connecting(id: string) { return this.peers.has(id) && !this.peers.get(id)!.open }
 
+  /** Each open connection's route looked at again (reportPath says only a change). */
+  recheckRoutes() {
+    for (const [id, peer] of this.peers) if (peer.open) void reportRoute(id, peer.pc)
+  }
+
   /** Someone gone from the atrium (their presence left). */
   forget(id: string) {
     this.drop(id, 'left')
@@ -294,13 +301,21 @@ export class Mesh {
 
   private wire(id: string, peer: Peer, channel: RTCDataChannel) {
     peer.channel = channel
-    channel.onopen = () => {
+    const opened = () => {
+      if (peer.open) return
       peer.open = true
       this.failedAt.delete(id)
       this.changed()
       note(id, 'open')
       void reportRoute(id, peer.pc)
+      // The first route that works is taken at once, a better one moments later.
+      window.setTimeout(() => { if (this.peers.get(id) === peer) void reportRoute(id, peer.pc) }, ROUTE_SETTLES_MS)
     }
+    channel.onopen = opened
+    // The answering side's channel can come already open, and then -- in
+    // Firefox -- no open event follows: unmarked, it was let go of after
+    // ANSWER_MS as one that never connected, and made again, on a loop.
+    if (channel.readyState === 'open') opened()
     channel.onclose = () => {
       if (this.peers.get(id) !== peer) return
       this.drop(id, 'closed by them')
