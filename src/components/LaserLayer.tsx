@@ -8,7 +8,7 @@
 // pointer's dot. Otherwise no frame is asked for at all.
 
 import { useEffect, useRef } from 'react'
-import { DIRECT_EVERY_MS, onLaserActivity, remoteTrails, sendEvery, sendLaser, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
+import { onLaserActivity, remoteTrails, SEND_EVERY_MS, sendLaser, type LaserEffect, type LaserPoint, type LaserSettings } from '../lib/laser'
 
 type View = { x: number; y: number; zoom: number }
 
@@ -329,15 +329,7 @@ export default function LaserLayer({ active, settings, view, onPointerInside }: 
   }
   useEffect(() => {
     if (!active) return
-    // Checked every frame; sent as often as lib/laser says (a frame's grace
-    // for the timer's own jitter).
-    let sentAt = 0
-    const timer = window.setInterval(() => {
-      const now = performance.now()
-      if (now - sentAt < sendEvery() - 4) return
-      sentAt = now
-      flush()
-    }, DIRECT_EVERY_MS)
+    const timer = window.setInterval(flush, SEND_EVERY_MS)
     return () => {
       window.clearInterval(timer)
       flush()

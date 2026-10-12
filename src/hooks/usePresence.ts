@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
-import { receiveLaser, setLaserSender } from '../lib/laser'
+import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '../lib/laser'
 import { Mesh, askForRelay, canLink, livePositions, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -332,14 +332,18 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
 
     channelRef.current = channel
     // This person's laser out to the others -- not while invisible, like the
-    // cursor below: directly to whoever is connected, and through the
-    // channel only while someone here isn't. With everyone direct, a batch
-    // goes every frame (lib/laser).
+    // cursor below: every batch directly to whoever is connected; through the
+    // channel, for anyone who isn't, four messages a second (lib/laser).
+    const toChannel = channelBatches()
     setLaserSender(message => {
       if (ghostRef.current !== false) return
       mesh?.send({ k: 'l', m: message })
-      if (!allDirect()) void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
-    }, allDirect)
+      if (!allDirect()) toChannel.add(message)
+    })
+    const laserInterval = setInterval(() => {
+      const message = toChannel.take()
+      if (message) void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
+    }, CHANNEL_EVERY_MS)
 
     // The cursor, directly, every frame it moves, with when it was there
     // (RemoteCursors plays it back by that). A tenth of a world unit is finer
@@ -403,6 +407,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       // Disconnecting from presence channel
       clearInterval(updateInterval)
       clearInterval(liveInterval)
+      clearInterval(laserInterval)
       clearInterval(reconcileInterval)
       setLaserSender(null)
       stopWatching()

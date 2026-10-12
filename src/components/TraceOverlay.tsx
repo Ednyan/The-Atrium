@@ -31,7 +31,7 @@ import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 import { openExternalUrl } from '../lib/openExternal'
-import { throughRelay, toEmbedUrl, withPlayerApi } from '../lib/embedUrl'
+import { privately, throughRelay, toEmbedUrl, withPlayerApi } from '../lib/embedUrl'
 import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, reorder, siblingsOf, topLevel, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
@@ -5579,8 +5579,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       }
     }
 
-    // A YouTube player with its API on, for spatial sound (withPlayerApi).
-    const framed = (url: string | null) => (url && EMBED_NEEDS_RELAY ? throughRelay(withPlayerApi(url)) : url && withPlayerApi(url))
+    // A YouTube player with its API on, for spatial sound (withPlayerApi),
+    // and its privacy-enhanced one (privately).
+    const framed = (url: string | null) => (url && EMBED_NEEDS_RELAY ? throughRelay(withPlayerApi(privately(url))) : url && withPlayerApi(privately(url)))
 
     // Check if it's HTML embed code (contains <iframe)
     if (content.includes('<iframe')) {

@@ -92,6 +92,10 @@ const told = new WeakMap<HTMLIFrameElement, { volume: number; at: number }>()
 function tellVolume(frame: HTMLIFrameElement, volume: number, now: number) {
   const player = embedPlayerOf(frame.src)
   if (!player) return
+  // Until the player's page is in, the frame holds the blank page every frame
+  // starts as -- this site's own, so readable here -- which a message for the
+  // player's origin can't reach: the browser drops it, and says so.
+  try { if (frame.contentWindow?.location.href) return } catch { /* the player's page: listening */ }
   const last = told.get(frame)
   if (last && Math.abs(last.volume - volume) < 0.01 && now - last.at < 1000) return
   told.set(frame, { volume, at: now })

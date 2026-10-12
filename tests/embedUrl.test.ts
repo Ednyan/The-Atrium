@@ -5,10 +5,10 @@ import assert from 'node:assert/strict'
 
 import { readFileSync } from 'node:fs'
 
-import { defaultEmbedBox, EMBED_RELAY, embedPlayerOf, embedSourcesIn, linksIn, RELAYED_HOSTS, throughRelay, toEmbedUrl, withPlayerApi, youtubeId } from '../src/lib/embedUrl.ts'
+import { defaultEmbedBox, EMBED_RELAY, embedPlayerOf, embedSourcesIn, linksIn, privately, RELAYED_HOSTS, throughRelay, toEmbedUrl, withPlayerApi, youtubeId } from '../src/lib/embedUrl.ts'
 
 test('every shape of YouTube link becomes the one embed URL', () => {
-  const embed = 'https://www.youtube.com/embed/abc123'
+  const embed = 'https://www.youtube-nocookie.com/embed/abc123'
   for (const link of [
     'https://www.youtube.com/watch?v=abc123',
     'https://www.youtube.com/watch?v=abc123&list=PL1&index=2',
@@ -19,6 +19,13 @@ test('every shape of YouTube link becomes the one embed URL', () => {
     'https://www.youtube.com/live/abc123/',
   ]) assert.equal(toEmbedUrl(link), embed, link)
   assert.equal(toEmbedUrl(embed + '?start=30'), embed + '?start=30')
+})
+
+test('a video embedded before is shown by the privacy-enhanced player', () => {
+  assert.equal(privately('https://www.youtube.com/embed/abc123?start=5'), 'https://www.youtube-nocookie.com/embed/abc123?start=5')
+  assert.equal(privately('https://youtube.com/embed/abc123'), 'https://www.youtube-nocookie.com/embed/abc123')
+  for (const other of ['https://www.youtube-nocookie.com/embed/abc123', 'https://player.vimeo.com/video/42', 'https://www.youtube.com.evil.example/embed/x'])
+    assert.equal(privately(other), other)
 })
 
 test('videos start at a size YouTube draws its full player at', () => {

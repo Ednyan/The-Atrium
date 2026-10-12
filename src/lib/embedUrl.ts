@@ -39,12 +39,20 @@ export function youtubeId(url: string): string | null {
   return url.match(YOUTUBE)?.[1] ?? url.match(/youtube(?:-nocookie)?\.com\/embed\/([^?#/\s]+)/)?.[1] ?? null
 }
 
+// YouTube's privacy-enhanced player: no cookies of its own until it's played
+// (and none of the browser's warnings about them). Videos are embedded with
+// it, and those embedded before are moved to it as they're shown (privately).
+const PRIVATE_YOUTUBE = 'https://www.youtube-nocookie.com/embed/'
+export function privately(src: string): string {
+  return src.replace(/^https:\/\/(?:www\.)?youtube\.com\/embed\//, PRIVATE_YOUTUBE)
+}
+
 export function toEmbedUrl(rawUrl: string): string {
   const url = rawUrl.trim()
   if (!url) return rawUrl
 
   const youtube = url.match(YOUTUBE)
-  if (youtube) return `https://www.youtube.com/embed/${youtube[1]}`
+  if (youtube) return `${PRIVATE_YOUTUBE}${youtube[1]}`
 
   if (SOUNDCLOUD.test(url)) return `https://w.soundcloud.com/player/?url=${encodeURIComponent(url.split(/[?#]/)[0])}`
 

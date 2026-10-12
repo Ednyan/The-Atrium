@@ -86,8 +86,10 @@ every 5 seconds become live.
   pointer was there on the sender's clock. Every pointer sample counts: the
   store's own throttle (2 world units or 50 ms, for what redraws the
   position) once held back slow movements and the last steps before
-  stopping. Laser batches every frame while
-  everyone is connected directly, 20 a second while any go through Supabase.
+  stopping. Laser batches every frame to those connected directly; for anyone
+  who isn't, the batches since the last are gathered into one Supabase message
+  every 250 ms (4 a second, where it was 20) and played a quarter of a second
+  behind.
 - **Playback:** what arrives is shown by the sender's clock, as late as the
   slowest arrival of the last second, but never more than 150 ms behind the
   quickest. Motion plays back as evenly as it was made, through a jittery
@@ -107,7 +109,8 @@ every 5 seconds become live.
 - The Supabase cursor broadcast keeps running for everyone, every 5 seconds,
   until 1c.
 - The laser goes through Supabase only while someone here isn't directly
-  connected. With everyone connected, a laser costs no realtime messages.
+  connected, and then 4 messages a second per person pointing. With everyone
+  connected, a laser costs no realtime messages.
 - Receivers ignore the Supabase copy from someone they're directly connected
   to.
 - Ghost mode connects to no one. Being kicked closes every connection.

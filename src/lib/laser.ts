@@ -5,8 +5,9 @@
 //
 // Points are in the world, so a trail stays on what it points at as the view
 // moves. They go out a few at a time, only while pointing (hooks/usePresence):
-// over the presence channel at most twenty messages a second, directly
-// (lib/peers) every frame.
+// directly (lib/peers) every frame; over the presence channel, for anyone not
+// connected directly, gathered into four messages a second -- the project's
+// realtime budget -- and played a quarter of a second behind.
 
 import { Playback, RESTART_MS } from './playback'
 
@@ -54,16 +55,18 @@ let wake: (() => void) | null = null
 // LaserLayer, to be woken when something arrives while it's idle.
 export const onLaserActivity = (fn: (() => void) | null) => { wake = fn }
 
-// How often the points drawn are sent, a batch at a time: sparingly while
-// any of it goes through the presence channel (the project's realtime
-// budget), every frame while everyone is connected directly (lib/peers).
-export const SEND_EVERY_MS = 50
-export const DIRECT_EVERY_MS = 16
+// How often the points drawn are sent, a batch at a time: every frame to
+// those connected directly; through the presence channel, the batches since
+// its last message gathered into one this often (channelBatches).
+export const SEND_EVERY_MS = 16
+export const CHANNEL_EVERY_MS = 250
 // Someone else's trail is played as it was drawn, point by point at the pace
 // it was made, rather than a batch at once when it arrives -- which moved it
 // in jumps. When: lib/playback, from `sent`; for a version from before that,
-// two batches behind, so one arriving a little late still has its turn.
-const PLAYBACK_MS = SEND_EVERY_MS * 2
+// 100 ms behind, as it was then.
+const PLAYBACK_MS = 100
+// The most points a message carries, and receiveLaser reads.
+const MOST_POINTS = 64
 
 // What a batch looks like on the wire: points as [x, y, ms before sending],
 // and a fourth number, 1, on a stroke's first; `sent`, when, on the sender's
@@ -81,7 +84,7 @@ export function receiveLaser(message: LaserMessage) {
   trail.trail = trailOf(message.trail)
   trail.seen = now
   const sent = Number(message.sent)
-  const points = message.points.slice(0, 64).filter(p => Array.isArray(p) && p.length >= 3 && p.every(Number.isFinite))
+  const points = message.points.slice(0, MOST_POINTS).filter(p => Array.isArray(p) && p.length >= 3 && p.every(Number.isFinite))
   // Each point's moment, on the sender's clock or (before `sent`) on ours.
   const made = (p: number[]) => (Number.isFinite(sent) ? sent : now) - Math.max(0, Math.min(500, p[2]))
   if (Number.isFinite(sent)) {
@@ -91,7 +94,8 @@ export function receiveLaser(message: LaserMessage) {
     if (sent <= latest && latest - sent < RESTART_MS) return
     if (sent < latest) trail.playback = undefined
     trail.sent = sent
-    trail.playback ??= new Playback()
+    // Room for a whole channel message's points: they span CHANNEL_EVERY_MS.
+    trail.playback ??= new Playback(CHANNEL_EVERY_MS + 50)
     for (const p of points) trail.playback.heard(made(p), now)
   }
   const lag = Number.isFinite(sent) ? trail.playback!.lag() : PLAYBACK_MS
@@ -101,10 +105,32 @@ export function receiveLaser(message: LaserMessage) {
   wake?.()
 }
 
-// How a batch is sent, and whether everyone it goes to is connected
-// directly: set by the presence hook while it's connected.
+// How a batch is sent: set by the presence hook while it's connected.
 let sender: ((message: Omit<LaserMessage, 'userId'>) => void) | null = null
-let allDirect = () => false
-export const setLaserSender = (fn: typeof sender, direct: () => boolean = () => false) => { sender = fn; allDirect = direct }
-export const sendEvery = () => (allDirect() ? DIRECT_EVERY_MS : SEND_EVERY_MS)
+export const setLaserSender = (fn: typeof sender) => { sender = fn }
 export const sendLaser = (message: Omit<LaserMessage, 'userId'>) => sender?.(message)
+
+/** The presence channel's share: the batches made since its last message,
+ *  taken as one -- each point's age counted again from when it goes, and at
+ *  most MOST_POINTS of them (every so many kept, a stroke's first always). */
+export function channelBatches() {
+  let latest: Omit<LaserMessage, 'userId'> | null = null
+  let held: { p: number[]; made: number }[] = []
+  return {
+    add(message: Omit<LaserMessage, 'userId'>) {
+      latest = message
+      const sent = message.sent ?? performance.now()
+      for (const p of message.points) held.push({ p, made: sent - p[2] })
+    },
+    take(): Omit<LaserMessage, 'userId'> | null {
+      if (!latest || held.length === 0) return null
+      const now = performance.now()
+      const every = Math.ceil(held.length / (MOST_POINTS - 4))
+      const kept = held.length <= MOST_POINTS ? held : held.filter(({ p }, i) => p[3] === 1 || i % every === 0 || i === held.length - 1)
+      const message = { ...latest, sent: Math.round(now), points: kept.map(({ p, made }) => [p[0], p[1], Math.round(now - made), ...p.slice(3)]) }
+      latest = null
+      held = []
+      return message
+    },
+  }
+}
