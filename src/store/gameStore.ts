@@ -70,6 +70,9 @@ interface GameState {
   autoSaveMinutes: number
   hideOtherNameTags: boolean
   hideOtherCursors: boolean
+  // No direct connections (lib/peers), so nobody in an atrium learns this
+  // person's IP address; their cursors come through the presence channel.
+  hideMyAddress: boolean
   // Soft fade-out of traces as they approach the viewport edge. Purely a
   // visual preference, so it lives with the other localStorage toggles.
   traceFadeEnabled: boolean
@@ -109,6 +112,7 @@ interface GameState {
   setAutoSaveMinutes: (minutes: number) => void
   setHideOtherNameTags: (hide: boolean) => void
   setHideOtherCursors: (hide: boolean) => void
+  setHideMyAddress: (hide: boolean) => void
   setTraceFadeEnabled: (enabled: boolean) => void
   setDragBounce: (level: number) => void
   setTraceFloat: (level: number) => void
@@ -243,6 +247,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('hideOtherCursors')
     return stored !== null ? stored === 'true' : false
   })(),
+  hideMyAddress: localStorage.getItem('atrium.p2p') === 'off',
   traceFadeEnabled: (() => {
     const stored = localStorage.getItem('traceFadeEnabled')
     return stored !== null ? stored === 'true' : true
@@ -319,6 +324,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   setHideOtherCursors: (hide) => {
     localStorage.setItem('hideOtherCursors', String(hide))
     set({ hideOtherCursors: hide })
+  },
+  setHideMyAddress: (hide) => {
+    if (hide) localStorage.setItem('atrium.p2p', 'off')
+    else localStorage.removeItem('atrium.p2p')
+    set({ hideMyAddress: hide })
   },
   setTraceFadeEnabled: (enabled) => {
     localStorage.setItem('traceFadeEnabled', String(enabled))

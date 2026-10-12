@@ -1,16 +1,35 @@
 // Other people's cursors, in TraceOverlay's world layer. Who's here -- name,
-// colour -- from the store; where they are, every frame: from a direct
-// connection (lib/peers' livePositions) when there is one, else where the
-// presence channel last put them. Eased toward it and written straight onto
-// the element, so a cursor moving never draws anything else again.
+// colour -- from the store; where they are, every frame, written straight onto
+// the element, so a cursor moving never draws anything else again:
+// - connected directly (lib/peers' livePositions), its path played back as it
+//   was made, by the sender's clock (lib/playback) -- even, through a jittery
+//   network, and as little behind as that allows;
+// - else glided to where the presence channel last put it, every few seconds.
 
 import { useEffect, useRef } from 'react'
 import type { UserPresence } from '../types/database'
 import { livePositions } from '../lib/peers'
+import { Playback } from '../lib/playback'
 import { cursorEdgeOn, hexToRgb } from '../lib/cursorLook'
 
-// How much of the way to where it is a cursor goes each frame.
-const EASE = 0.35
+// How long a cursor takes to glide to where the presence channel puts it.
+const GLIDE_MS = 100
+
+interface Track {
+  // Connected directly: its recent positions, on the sender's clock, and when
+  // to show them. Null through the channel.
+  path: { x: number; y: number; t: number }[] | null
+  playback: Playback
+  // Through the channel: the glide under way, and where it was last put.
+  from: { x: number; y: number }
+  to: { x: number; y: number }
+  start: number
+  put: { x: number; y: number }
+  // Where it's drawn, and the transform that says so.
+  x: number
+  y: number
+  at: string
+}
 
 export default function RemoteCursors({ users, zoom, worldOffset, hideNames, atriumBackground, zIndex }: {
   users: Record<string, UserPresence>
@@ -24,7 +43,7 @@ export default function RemoteCursors({ users, zoom, worldOffset, hideNames, atr
   // Read by the frame loop: the latest of each, without restarting it.
   const latest = useRef({ users, zoom, worldOffset })
   latest.current = { users, zoom, worldOffset }
-  const shown = useRef(new Map<string, { x: number; y: number; at: string }>())
+  const shown = useRef(new Map<string, Track>())
   const anyone = Object.keys(users).length > 0
 
   useEffect(() => {
@@ -32,17 +51,54 @@ export default function RemoteCursors({ users, zoom, worldOffset, hideNames, atr
     let frame = requestAnimationFrame(function step() {
       frame = requestAnimationFrame(step)
       const { users, zoom, worldOffset } = latest.current
+      const now = performance.now()
       for (const [id, element] of elements.current) {
         const user = users[id]
         if (!user) continue
-        const target = livePositions.get(id) ?? user
-        const last = shown.current.get(id)
-        const x = last ? last.x + (target.x - last.x) * EASE : target.x
-        const y = last ? last.y + (target.y - last.y) * EASE : target.y
-        const at = `translate(${(x * zoom + worldOffset.x).toFixed(1)}px, ${(y * zoom + worldOffset.y).toFixed(1)}px)`
+        const live = livePositions.get(id)
+        let track = shown.current.get(id)
+        if (!track) {
+          const { x, y } = live ?? user
+          track = { path: null, playback: new Playback(), from: { x, y }, to: { x, y }, start: 0, put: { x: user.x, y: user.y }, x, y, at: '' }
+          shown.current.set(id, track)
+        }
+        if (live) {
+          if (!track.path) { track.path = []; track.playback = new Playback() }
+          const path = track.path
+          // Their clock started again (a reload): so does the playback.
+          if (live.t < (path[path.length - 1]?.t ?? -Infinity)) { path.length = 0; track.playback = new Playback() }
+          if (live.t !== path[path.length - 1]?.t) {
+            path.push({ x: live.x, y: live.y, t: live.t })
+            track.playback.heard(live.t, live.at)
+          }
+          // The moment of theirs shown now, between the two positions around it.
+          const moment = now - track.playback.lag()
+          while (path.length > 2 && path[1].t <= moment) path.shift()
+          const [a, b] = path
+          const k = !b || moment <= a.t ? (moment <= a.t ? 0 : 1) : Math.min(1, (moment - a.t) / (b.t - a.t))
+          const end = b ?? a
+          track.x = a.x + (end.x - a.x) * k
+          track.y = a.y + (end.y - a.y) * k
+        } else {
+          // No longer direct: stays where it is until the channel moves it.
+          if (track.path) {
+            track.path = null
+            track.from = track.to = { x: track.x, y: track.y }
+            track.put = { x: user.x, y: user.y }
+          }
+          if (user.x !== track.put.x || user.y !== track.put.y) {
+            track.from = { x: track.x, y: track.y }
+            track.to = track.put = { x: user.x, y: user.y }
+            track.start = now
+          }
+          const k = Math.min(1, (now - track.start) / GLIDE_MS)
+          track.x = track.from.x + (track.to.x - track.from.x) * k
+          track.y = track.from.y + (track.to.y - track.from.y) * k
+        }
+        const at = `translate(${(track.x * zoom + worldOffset.x).toFixed(1)}px, ${(track.y * zoom + worldOffset.y).toFixed(1)}px)`
         // Written only when it moved: a still cursor costs nothing.
-        if (last?.at !== at) element.style.transform = at
-        shown.current.set(id, { x, y, at })
+        if (track.at !== at) element.style.transform = at
+        track.at = at
       }
     })
     return () => cancelAnimationFrame(frame)

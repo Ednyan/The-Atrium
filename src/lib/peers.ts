@@ -16,6 +16,7 @@
 // overlay again on every change.
 
 import { useSyncExternalStore } from 'react'
+import { useGameStore } from '../store/gameStore'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // Longest wait for this side's addresses before sending what's known (ms).
@@ -29,16 +30,18 @@ const MOST_LINKS = 16
 
 /** The introduction, sent through the presence channel. */
 export interface Signal { to: string; kind: 'offer' | 'answer'; sdp: string }
-/** What flows directly: a cursor, or a batch of laser points (lib/laser). */
-export type Live = { k: 'c'; x: number; y: number } | { k: 'l'; m: unknown }
+/** What flows directly: a cursor, with the moment it was there on the
+ *  sender's clock (performance.now), or a batch of laser points (lib/laser). */
+export type Live = { k: 'c'; x: number; y: number; t?: number } | { k: 'l'; m: unknown }
 
-/** Where each directly connected person's cursor is, in the world. */
-export const livePositions = new Map<string, { x: number; y: number }>()
+/** Where each directly connected person's cursor is, in the world: the latest,
+ *  with its moment on their clock and when it arrived here (lib/playback). */
+export const livePositions = new Map<string, { x: number; y: number; t: number; at: number }>()
 
-/** WebRTC is here (not in the Linux app's webview), and not switched off. */
+/** WebRTC is here (not in the Linux app's webview), and this person hasn't
+ *  hidden their IP address (Profile, People in the room). */
 export function canLink(): boolean {
-  if (typeof RTCPeerConnection === 'undefined') return false
-  try { return localStorage.getItem('atrium.p2p') !== 'off' } catch { return true }
+  return typeof RTCPeerConnection !== 'undefined' && !useGameStore.getState().hideMyAddress
 }
 
 // Who's connected directly right now, for whatever shows it (the online list).

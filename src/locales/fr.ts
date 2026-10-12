@@ -684,6 +684,8 @@ const fr: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': 'Masquer les étiquettes au-dessus des curseurs des autres',
   'atrium.profile.hideOtherCursors': 'Masquer les curseurs des autres',
   'atrium.profile.hideOtherCursorsHint': 'Masquer complètement les indicateurs de curseur des autres',
+  'atrium.profile.hideMyAddress': 'Masquer mon adresse IP',
+  'atrium.profile.hideMyAddressHint': 'Les autres ne voient pas votre adresse IP, mais les curseurs ne bougent plus que toutes les quelques secondes',
   'atrium.profile.animations': 'Animations',
   'atrium.profile.dragBounce': 'Sensation au glisser : {value} %',
   'atrium.profile.dragBounceHint': 'Une trace déplacée suit le pointeur avec un léger retard, s\'incline dans le mouvement et se pose avec un petit rebond. 0 la déplace de façon rigide.',

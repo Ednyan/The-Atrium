@@ -662,6 +662,8 @@ const ko: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': '다른 사람 커서 위에 뜨는 사용자 이름을 숨겨요',
   'atrium.profile.hideOtherCursors': '다른 사람 커서 숨기기',
   'atrium.profile.hideOtherCursorsHint': '다른 사람의 커서를 아예 보이지 않게 해요',
+  'atrium.profile.hideMyAddress': '내 IP 주소 숨기기',
+  'atrium.profile.hideMyAddressHint': '다른 사람이 내 IP 주소를 볼 수 없어요. 대신 커서가 몇 초마다 움직여요',
   'atrium.profile.animations': '애니메이션',
   'atrium.profile.dragBounce': '드래그 느낌: {value}%',
   'atrium.profile.dragBounceHint': '드래그하는 Trace가 포인터를 살짝 늦게 따라오고, 당기는 쪽으로 기울며, 작게 튕기며 멈춥니다. 0이면 딱딱하게 움직입니다.',

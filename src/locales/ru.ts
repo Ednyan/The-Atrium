@@ -688,6 +688,8 @@ const ru: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': 'Скрыть подписи над курсорами других',
   'atrium.profile.hideOtherCursors': 'Скрыть курсоры других',
   'atrium.profile.hideOtherCursorsHint': 'Полностью скрыть указатели курсора других',
+  'atrium.profile.hideMyAddress': 'Скрыть мой IP-адрес',
+  'atrium.profile.hideMyAddressHint': 'Другие не увидят ваш IP-адрес, но курсоры будут обновляться раз в несколько секунд',
   'atrium.profile.animations': 'Анимации',
   'atrium.profile.dragBounce': 'Ощущение перетаскивания: {value}%',
   'atrium.profile.dragBounceHint': 'Перетаскиваемый Trace чуть отстаёт от указателя, наклоняется по ходу движения и останавливается с лёгким отскоком. 0 двигает его жёстко.',

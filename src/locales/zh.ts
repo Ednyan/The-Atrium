@@ -661,6 +661,8 @@ const zh: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': '隐藏其他人光标上方的用户名标签',
   'atrium.profile.hideOtherCursors': '隐藏别人的光标',
   'atrium.profile.hideOtherCursorsHint': '完全不显示其他人的光标',
+  'atrium.profile.hideMyAddress': '隐藏我的 IP 地址',
+  'atrium.profile.hideMyAddressHint': '别人看不到你的 IP 地址，但光标会改为每隔几秒更新一次',
   'atrium.profile.animations': '动画',
   'atrium.profile.dragBounce': '拖动手感：{value}%',
   'atrium.profile.dragBounceHint': '拖动的 Trace 会稍微滞后于指针，顺着拉动方向倾斜，并带着轻微回弹停下。设为 0 则生硬跟随。',

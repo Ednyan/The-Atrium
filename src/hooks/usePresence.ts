@@ -4,9 +4,22 @@ import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import { receiveLaser, setLaserSender } from '../lib/laser'
 import { Mesh, canLink, livePositions, type Live, type Signal } from '../lib/peers'
+import { RESTART_MS } from '../lib/playback'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+
+// What this person announces in an atrium's presence.
+const announcement = (username: string, playerColor: string, at: { x: number; y: number }, joinedAt: number) => ({
+  username,
+  x: at.x,
+  y: at.y,
+  playerColor,
+  online_at: new Date(joinedAt).toISOString(),
+  // Whether they can be connected to directly (lib/peers): nobody offers to
+  // someone who can't answer -- the Linux app, or someone hiding their IP.
+  link: canLink(),
+})
 
 // Ghost mode: the platform operator entering an atrium it wouldn't otherwise
 // have access to. It still subscribes -- it needs to see who is present -- but
@@ -21,7 +34,7 @@ const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 // Nothing outside this hook needs the value in order to render, so it stays a
 // ref here and the channel connects immediately, exactly as it did before.
 export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boolean) => void) {
-  const { userId, username, playerColor, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGamePick('userId', 'username', 'playerColor', 'updateOtherUser', 'updateOtherUserPosition', 'removeOtherUser', 'setPosition')
+  const { userId, username, playerColor, hideMyAddress, updateOtherUser, updateOtherUserPosition, removeOtherUser, setPosition } = useGamePick('userId', 'username', 'playerColor', 'hideMyAddress', 'updateOtherUser', 'updateOtherUserPosition', 'removeOtherUser', 'setPosition')
   const channelRef = useRef<RealtimeChannel | null>(null)
   const positionRef = useRef(useGameStore.getState().position)
   const playerColorRef = useRef(playerColor)
@@ -42,30 +55,30 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
   const ghostRef = useRef<boolean | null>(null)
 
   // Keep position ref up to date -- by subscribing, not by rendering for it:
-  // it changes with every movement of the mouse (see useGamePick).
-  useEffect(() => useGameStore.subscribe(state => { positionRef.current = state.position }), [])
+  // it changes with every movement of the mouse (see useGamePick). And when
+  // it changed, which a direct connection sends with it (RemoteCursors).
+  const positionAtRef = useRef(performance.now())
+  useEffect(() => useGameStore.subscribe((state, before) => {
+    if (state.position === before.position) return
+    positionRef.current = state.position
+    positionAtRef.current = performance.now()
+  }), [])
 
   // Keep player color ref up to date
   useEffect(() => {
     playerColorRef.current = playerColor
     
-    // Immediately broadcast color change to other users.
+    // Immediately broadcast color change to other users -- and whether they
+    // can connect directly, when this person hides their IP or stops.
     //
     // Strict false, not !ghostRef.current: while the check is pending this is
     // null, and `!null` is true -- which would publish the operator into an
     // atrium it is entering invisibly, from the one outbound path that fires
     // early enough for the race to be real.
     if (channelRef.current && userId && username && ghostRef.current === false) {
-      channelRef.current.track({
-        username,
-        x: positionRef.current.x,
-        y: positionRef.current.y,
-        playerColor: playerColor,
-        online_at: new Date(joinedAtRef.current).toISOString(),
-        link: canLink(),
-      })
+      channelRef.current.track(announcement(username, playerColor, positionRef.current, joinedAtRef.current))
     }
-  }, [playerColor, userId, username])
+  }, [playerColor, userId, username, hideMyAddress])
 
   // Expose function to manually update position (for cursor tracking)
   // Throttled to prevent excessive re-renders
@@ -174,7 +187,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Direct connections to the others (lib/peers): their cursors and lasers
     // live, rather than a cursor every 5 seconds through this channel. Made
     // once the ghost check says this person is seen -- an invisible operator
-    // connects to no one -- and introduced through this channel.
+    // connects to no one -- and introduced through this channel. Never while
+    // they hide their IP address (Profile), which takes effect at once.
     let mesh: Mesh | null = null
     // Everyone here; and of them, those who can be connected to directly.
     const everyone = () => Object.keys(channel.presenceState()).filter(key => key !== userId && isValidUserKey(key))
@@ -182,16 +196,31 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       .filter(([key, presences]) => key !== userId && isValidUserKey(key) && (presences as { link?: boolean }[])[0]?.link !== false)
       .map(([key]) => key)
     const fromPeer = (from: string, message: Live) => {
-      if (message.k === 'c' && Number.isFinite(message.x) && Number.isFinite(message.y)) livePositions.set(from, { x: message.x, y: message.y })
+      const at = performance.now()
+      if (message.k === 'c' && Number.isFinite(message.x) && Number.isFinite(message.y)) {
+        // A version from before `t`: its moment is its arrival. One overtaken
+        // on the way (a direct link keeps no order) is behind already.
+        const t = Number.isFinite(message.t) ? message.t! : at
+        const latest = livePositions.get(from)?.t ?? -Infinity
+        if (t <= latest && latest - t < RESTART_MS) return
+        livePositions.set(from, { x: message.x, y: message.y, t, at })
+      }
       else if (message.k === 'l' && message.m && typeof message.m === 'object') receiveLaser({ ...(message.m as object), userId: from } as Parameters<typeof receiveLaser>[0])
     }
-    ghostPromise.then(ghost => {
-      if (ghost || !canLink() || channelRef.current !== channel) return
+    const link = () => {
+      if (mesh || ghostRef.current !== false || !canLink() || channelRef.current !== channel) return
       mesh = new Mesh(userId, signal => {
         void channel.send({ type: 'broadcast', event: 'rtc', payload: { ...signal, from: userId } })
       }, fromPeer)
       mesh.sync(roster())
+    }
+    const unlink = () => { mesh?.close(); mesh = null }
+    ghostPromise.then(link)
+    const stopWatching = useGameStore.subscribe((state, before) => {
+      if (state.hideMyAddress !== before.hideMyAddress) { if (state.hideMyAddress) unlink(); else link() }
     })
+    // Everyone here connected directly: the laser needn't touch the channel.
+    const allDirect = () => !!mesh && everyone().every(id => mesh!.linked(id))
 
     // Track presence
     channel
@@ -248,8 +277,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           // so the panel renders and the canvas behind it keeps working.
           ghostRef.current = true
           void channel.untrack()
-          mesh?.close()
-          mesh = null
+          unlink()
           onKickedRef.current?.(!!payload.blacklisted)
         }
       })
@@ -262,16 +290,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
         // This is the one place that must wait for the answer -- and the only
         // one, since it's the only line here that publishes anything.
         if (status === 'SUBSCRIBED' && !(await ghostPromise)) {
-          await channel.track({
-            username,
-            x: positionRef.current.x,
-            y: positionRef.current.y,
-            playerColor: playerColorRef.current,
-            online_at: new Date(joinedAtRef.current).toISOString(),
-            // Whether this person can be connected to directly (lib/peers):
-            // nobody offers to someone who can't answer -- the Linux app.
-            link: canLink(),
-          })
+          await channel.track(announcement(username, playerColorRef.current, positionRef.current, joinedAtRef.current))
         }
       })
 
@@ -283,25 +302,27 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     channelRef.current = channel
     // This person's laser out to the others -- not while invisible, like the
     // cursor below: directly to whoever is connected, and through the
-    // channel only while someone here isn't.
+    // channel only while someone here isn't. With everyone direct, a batch
+    // goes every frame (lib/laser).
     setLaserSender(message => {
       if (ghostRef.current !== false) return
       mesh?.send({ k: 'l', m: message })
-      if (!mesh || everyone().some(id => !mesh!.linked(id))) {
-        void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
-      }
-    })
+      if (!allDirect()) void channel.send({ type: 'broadcast', event: 'laser', payload: { ...message, userId } })
+    }, allDirect)
 
-    // The cursor, directly, up to 20 times a second while it moves.
+    // The cursor, directly, every frame it moves, with when it was there
+    // (RemoteCursors plays it back by that). A tenth of a world unit is finer
+    // than a pixel.
     let sentX = NaN, sentY = NaN
     const liveInterval = setInterval(() => {
       if (!mesh || ghostRef.current !== false) return
-      const { x, y } = positionRef.current
+      const x = Math.round(positionRef.current.x * 10) / 10
+      const y = Math.round(positionRef.current.y * 10) / 10
       if (x === sentX && y === sentY) return
       sentX = x
       sentY = y
-      mesh.send({ k: 'c', x, y })
-    }, 50)
+      mesh.send({ k: 'c', x, y, t: Math.round(positionAtRef.current) })
+    }, 16)
 
     // Send position updates only when position actually changes. Throttled
     // to max 1 update per 2 seconds to keep Realtime message usage minimal.
@@ -353,8 +374,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       clearInterval(liveInterval)
       clearInterval(reconcileInterval)
       setLaserSender(null)
-      mesh?.close()
-      mesh = null
+      stopWatching()
+      unlink()
       livePositions.clear()
       channelRef.current = null
       channel.unsubscribe()

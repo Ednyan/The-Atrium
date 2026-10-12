@@ -689,6 +689,8 @@ const ptPT: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': 'Ocultar as etiquetas com nomes por cima dos cursores dos outros',
   'atrium.profile.hideOtherCursors': 'Ocultar os cursores dos outros',
   'atrium.profile.hideOtherCursorsHint': 'Ocultar por completo os indicadores de cursor dos outros',
+  'atrium.profile.hideMyAddress': 'Ocultar o meu endereço IP',
+  'atrium.profile.hideMyAddressHint': 'Os outros não veem o seu endereço IP, mas os cursores passam a mover-se a cada poucos segundos',
   'atrium.profile.animations': 'Animações',
   'atrium.profile.dragBounce': 'Sensação ao arrastar: {value}%',
   'atrium.profile.dragBounceHint': 'Um trace arrastado segue o ponteiro com um ligeiro atraso, inclina-se na direção do puxão e assenta com um pequeno ressalto. 0 move-o de forma rígida.',

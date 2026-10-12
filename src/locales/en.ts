@@ -636,6 +636,8 @@ export const en = {
   'atrium.profile.hideOtherNameTagsHint': "Hide username labels above other users' cursors",
   'atrium.profile.hideOtherCursors': "Hide Others' Cursors",
   'atrium.profile.hideOtherCursorsHint': "Completely hide other users' cursor indicators",
+  'atrium.profile.hideMyAddress': "Hide My IP Address",
+  'atrium.profile.hideMyAddressHint': "Others here can't see your IP address, but cursors then move every few seconds instead of live",
   'atrium.profile.animations': 'Animations',
   'atrium.profile.dragBounce': 'Drag feel: {value}%',
   'atrium.profile.dragBounceHint': 'A trace you drag trails the pointer slightly, leans into the pull and settles with a small bounce. 0 moves it rigidly.',

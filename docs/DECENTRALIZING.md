@@ -1,6 +1,6 @@
 # Decentralizing the Atrium
 
-**Planned 2026-10-12. Phase 1 built; not yet tested on real networks.**
+**Planned 2026-10-12. Phase 1 live; not yet tried across two different networks.**
 
 The web version runs on Supabase's free tier, and its four limits are that
 tier's ceilings divided between everyone who uses it:
@@ -63,9 +63,10 @@ next phase has proved itself.
 
 ## Phase 1: live cursors and laser over direct connections
 
-**Status: built and tested in the harness (2026-10-12), not yet on real
-networks.** Code: `lib/peers.ts` (the connections), `usePresence` (the
-introductions), `RemoteCursors` (the drawing).
+**Status: live (2026-10-12).** Works between real devices on one network;
+two different networks not yet tried. Code: `lib/peers.ts` (the
+connections), `usePresence` (the introductions), `lib/playback.ts` (when to
+show what arrives), `RemoteCursors` and `lib/laser` (the drawing).
 
 **Why first:** it needs no storage, no Google setup and no data migration. It
 is entirely additive, and it fixes something everyone sees: cursors that jump
@@ -79,14 +80,18 @@ every 5 seconds become live.
 - **Who starts:** in each pair, the person whose user id sorts first sends the
   offer, so two offers never cross.
 - **Addresses** come from Google's public STUN server. No relay yet; see 1b.
-- **The channel** is unordered, with no retransmits. A late cursor position is
-  skipped, never waited for.
-- **Sending:** cursors at up to 20 a second while moving, and laser batches as
-  they are made.
-- **Drawing:** remote cursors are moved every frame from a plain map,
-  smoothed, and never through React state. `TraceOverlay` subscribes to
-  `otherUsers`, so a store update per cursor message would redraw every trace
-  20 times a second per person.
+- **The channel** is unordered, with no retransmits. A cursor position or
+  laser batch overtaken on the way is dropped, never waited for.
+- **Sending:** the cursor every frame it moves, stamped with the moment the
+  pointer was there on the sender's clock. Laser batches every frame while
+  everyone is connected directly, 20 a second while any go through Supabase.
+- **Playback:** what arrives is shown by the sender's clock, as late as the
+  slowest arrival of the last second, but never more than 150 ms behind the
+  quickest. Motion plays back as evenly as it was made, through a jittery
+  network, with the least delay that allows (`lib/playback.ts`).
+- **Drawing:** remote cursors are moved every frame from a plain map, never
+  through React state. `TraceOverlay` subscribes to `otherUsers`, so a store
+  update per cursor message would redraw every trace for every move.
 - **Who can connect:** each person's presence says whether they can
   (`link`), so nobody makes an offer to a browser without WebRTC.
 - **At most 16 direct connections** per person; anyone past that is reached
@@ -104,13 +109,19 @@ every 5 seconds become live.
   to.
 - Ghost mode connects to no one. Being kicked closes every connection.
 
-**Switch:** on where `RTCPeerConnection` exists. The kill switch is
-`localStorage['atrium.p2p'] = 'off'`.
+**Switch:** on where `RTCPeerConnection` exists. Anyone can turn it off for
+themselves under Profile → People in the room → "Hide my IP address". It
+takes effect at once, and their cursor then comes through the channel. The
+setting is stored as `localStorage['atrium.p2p'] = 'off'`, which is also the
+kill switch.
 
 **Security:** the trust boundary is the same as today, since only people
 already in the atrium's channel can introduce themselves. Two known limits:
-- **IP addresses:** directly connected people can see each other's. A relay
-  (1b) hides them for anyone who asks.
+- **IP addresses:** directly connected people can see each other's. The
+  introductions go to the whole atrium channel, so anyone in the atrium can
+  read the address of anyone who connects directly (the same people a full
+  mesh connects to anyway). "Hide my IP address" sends none. A relay (1b)
+  would hide addresses without losing live cursors.
 - **Spoofed senders:** the introduction carries the sender's user id unchecked,
   exactly as today's broadcasts do. Someone already in the atrium could spoof
   another person's cursor, no more than today.
@@ -131,6 +142,17 @@ already in the atrium's channel can introduce themselves. Two known limits:
 | Four people | all 6 pairs connected, 12 messages in all; no laser through Supabase |
 | One of four without WebRTC | the other three connect (6 messages, none to the fourth); the fourth still gets every cursor and laser through the channel |
 | Someone leaving | their connection closes |
+
+**Delay** from the sender's pointer to the other screen (harness; a second
+run holds each message back a random 0–40 ms, as a phone network does):
+
+| | First version | Now | Now, with 0–40 ms jitter (first version) |
+|---|---|---|---|
+| Cursor | 65 ms, moving in pulses | 27 ms | 56 ms (85 ms) |
+| Laser | 109 ms | 42 ms | 70 ms (123 ms) |
+
+The laser figures include the sender's own smoothing of the line, which they
+see too.
 
 Tabs of one browser share a machine, so this says nothing about getting
 through routers. That is what test 2 is for.

@@ -658,6 +658,8 @@ const ja: Catalogue = {
   'atrium.profile.hideOtherNameTagsHint': '他の人のカーソルの上に出るユーザー名を隠します',
   'atrium.profile.hideOtherCursors': '他の人のカーソルを隠す',
   'atrium.profile.hideOtherCursorsHint': '他の人のカーソルをまったく表示しません',
+  'atrium.profile.hideMyAddress': '自分のIPアドレスを隠す',
+  'atrium.profile.hideMyAddressHint': '他の人にIPアドレスが見えなくなります。代わりにカーソルは数秒ごとの更新になります',
   'atrium.profile.animations': 'アニメーション',
   'atrium.profile.dragBounce': 'ドラッグの感触: {value}%',
   'atrium.profile.dragBounceHint': 'ドラッグした Trace がポインタに少し遅れてついてきて、引く方向に傾き、軽く弾んで止まります。0 でそのまま動きます。',
