@@ -524,8 +524,8 @@ function particleConfig(theme: { particleColor?: string; particlesEnabled?: bool
   }
 }
 
-// Beside someone in the online list who is connected directly (lib/peers):
-// their cursor and laser arrive live. Its own subscription, so a connection
+// Beside someone in the online list connected live (lib/peers), directly or
+// through the relay: their cursor and laser arrive as they move. Its own subscription, so a connection
 // coming or going redraws this mark alone.
 function LinkMark({ userId }: { userId: string }) {
   const { t } = useTranslation()

@@ -83,7 +83,10 @@ every 5 seconds become live.
 - **The channel** is unordered, with no retransmits. A cursor position or
   laser batch overtaken on the way is dropped, never waited for.
 - **Sending:** the cursor every frame it moves, stamped with the moment the
-  pointer was there on the sender's clock. Laser batches every frame while
+  pointer was there on the sender's clock. Every pointer sample counts: the
+  store's own throttle (2 world units or 50 ms, for what redraws the
+  position) once held back slow movements and the last steps before
+  stopping. Laser batches every frame while
   everyone is connected directly, 20 a second while any go through Supabase.
 - **Playback:** what arrives is shown by the sender's clock, as late as the
   slowest arrival of the last second, but never more than 150 ms behind the
@@ -109,19 +112,18 @@ every 5 seconds become live.
   to.
 - Ghost mode connects to no one. Being kicked closes every connection.
 
-**Switch:** on where `RTCPeerConnection` exists. Anyone can turn it off for
-themselves under Profile → People in the room → "Hide my IP address". It
-takes effect at once, and their cursor then comes through the channel. The
-setting is stored as `localStorage['atrium.p2p'] = 'off'`, which is also the
-kill switch.
+**Switch:** on where `RTCPeerConnection` exists. Under Profile → People in
+the room → "Hide my IP address", anyone can connect only through the relay
+instead (1b), or through the channel while there's no relay pass. It takes
+effect at once. The setting is stored as `localStorage['atrium.p2p'] = 'off'`.
 
 **Security:** the trust boundary is the same as today, since only people
 already in the atrium's channel can introduce themselves. Two known limits:
 - **IP addresses:** directly connected people can see each other's. The
   introductions go to the whole atrium channel, so anyone in the atrium can
   read the address of anyone who connects directly (the same people a full
-  mesh connects to anyway). "Hide my IP address" sends none. A relay (1b)
-  would hide addresses without losing live cursors.
+  mesh connects to anyway). With "Hide my IP address" on, a person's
+  introductions carry only the relay's address (1b), or none at all.
 - **Spoofed senders:** the introduction carries the sender's user id unchecked,
   exactly as today's broadcasts do. Someone already in the atrium could spoof
   another person's cursor, no more than today.
@@ -163,13 +165,53 @@ through routers. That is what test 2 is for.
 - CPU with five people moving;
 - Supabase messages per minute, before and after.
 
-### 1b: a relay for strict networks (only if the gate shows a need)
+### 1b: the relay, last resort and IP shield
 
-Cloudflare's TURN: 1,000 GB a month free, then $0.05 per GB. The TURN key
-must stay on a server, so a small Supabase Edge Function mints short-lived
-credentials (up to 48 hours). That costs one invocation per session, against
-500,000 free a month. Cursor traffic is tiny, so 1,000 GB is practically
-unlimited for presence.
+**Status: built (2026-10-13), waiting for the Cloudflare key.**
+
+The order, for each pair:
+1. **Directly,** whenever the two networks allow it. Nothing goes through the
+   relay; ICE tries every address and prefers direct ones.
+2. **Through the relay** when they don't (a strict network), and always for
+   someone with "Hide my IP address" on: only their connections use it
+   (`iceTransportPolicy: 'relay'`), so the others see Cloudflare's address.
+3. **Through the presence channel** (a cursor every few seconds) when there's
+   no relay pass: the budget is spent, or the relay isn't set up.
+
+**The relay:** Cloudflare's TURN, 1,000 GB a month free, then $0.05 per GB.
+The TURN key must stay on a server, so `supabase/functions/relay-pass` hands
+out passes (12 hours, signed-in people only). The browser keeps its pass for
+as long as it lasts (`localStorage['atrium.relay']`), and a refusal for an
+hour, so it's about two invocations per person a day, against 500,000 free a
+month. An answer is waited for 4 seconds at most before connecting without
+one.
+
+**The cap:** before each pass, the function asks Cloudflare's analytics
+(GraphQL, `callsTurnUsageAdaptiveGroups`, egress) how much the account's
+relay sent over the last 31 days. That window covers any billing month. Past
+`RELAY_BUDGET_GB` (800 by default) it refuses, and so on any doubt: a secret
+missing, or the usage unknown. The margin covers passes already out and the
+analytics' delay. A hidden person whose pass can't be renewed goes back to
+the channel and tells the others.
+
+
+**Setup (the user):**
+1. Cloudflare dashboard → Realtime → TURN → create a key: its id and API
+   token.
+2. Cloudflare → My Profile → API Tokens → create a token with Account →
+   Account Analytics → Read; and the account id (the dashboard's URL).
+3. Supabase → Edge Functions → Secrets: `CF_TURN_KEY_ID`,
+   `CF_TURN_KEY_TOKEN`, `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN`; optionally
+   `RELAY_BUDGET_GB` (gigabytes over 31 days; `0` switches the relay off).
+4. Deploy the function: `npx supabase functions deploy relay-pass`.
+
+**Tested** with a local relay (node-turn) and two harness tabs:
+- hiding, Ana's introductions carry only the relay's address;
+- the link runs through the relay, and her cursor is live;
+- with no pass, she sends no introductions and her cursor comes through the
+  channel;
+- a strict network (each side unable to use the other's direct addresses)
+  connects through the relay, and with no pass falls back to the channel.
 
 ### 1c: stop the Supabase cursor broadcast for directly connected pairs
 
@@ -323,7 +365,7 @@ later, optional and reversible (export first).
 |---|---|---|
 | Linux desktop has no WebRTC | WebKitGTK, which Tauri uses on Linux, lacks it without hacks; WebView2 and WKWebView have it | Nothing is lost today: desktop atriums are one person's, with no live presence. If the app ever joins shared atriums, Linux falls back to the presence channel, or a browser |
 | Some networks block direct connections | Vendor estimates: 10–20% of sessions need a relay (no authoritative data) | 1b: Cloudflare TURN, 1,000 GB free |
-| The relay bills past its free tier | $0.05 per GB after 1,000 GB a month; what happens without a card isn't documented | The credential function stops handing out relay passes past a monthly budget, and those pairs fall back to the channel. A moving cursor is about 3 KB/s, so 1,000 GB is ~90,000 hours of one cursor moving non-stop |
+| The relay bills past its free tier | $0.05 per GB after 1,000 GB a month; what happens without a card isn't documented | `relay-pass` refuses past 800 GB in the last 31 days, read from Cloudflare's analytics; those people fall back to the channel. A cursor moving every frame is about 8 KB/s, so 800 GB is ~28,000 hours of one hidden cursor moving non-stop |
 | R2 needs a card on file | Secondhand reports: activating R2 asks for a payment method, though the free tier isn't charged | Pictures stay in Supabase Storage until its 5 GB of downloads a month gets tight |
 | Brand review trips over supabase.co | Community reports: the sign-in callback is on Supabase's domain, which we can't prove we own | Drive gets its own Google Cloud project, whose only domain is digitalatrium.org |
 | Everyone-to-everyone gets heavy | Data-only meshes go far beyond video's ~4, but no measured number | Measure in phase 1; a partial mesh in phase 3 |

@@ -14,9 +14,16 @@
 // Positions go into `livePositions`, which RemoteCursors draws from every
 // frame -- never into the store, whose `otherUsers` draws the whole canvas
 // overlay again on every change.
+//
+// Cloudflare's relay (TURN) is the last resort: a pair that can't connect
+// directly -- a strict network -- goes through it. Someone hiding their IP
+// address (Profile) goes only through it, so the others see the relay's
+// address. And without a pass for it (the month's budget spent), both are
+// left to the presence channel, a cursor every few seconds.
 
 import { useSyncExternalStore } from 'react'
 import { useGameStore } from '../store/gameStore'
+import { isDesktop, supabase } from './supabase'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // Longest wait for this side's addresses before sending what's known (ms).
@@ -38,10 +45,74 @@ export type Live = { k: 'c'; x: number; y: number; t?: number } | { k: 'l'; m: u
  *  with its moment on their clock and when it arrived here (lib/playback). */
 export const livePositions = new Map<string, { x: number; y: number; t: number; at: number }>()
 
-/** WebRTC is here (not in the Linux app's webview), and this person hasn't
- *  hidden their IP address (Profile, People in the room). */
+// A pass for the relay (supabase/functions/relay-pass), kept in this browser
+// for as long as it lasts, so another atrium or a reload doesn't ask again.
+// Asked for again this long before it runs out; a refusal (the month's budget
+// spent) or no answer is believed this long; an answer is waited for this
+// long before going on without.
+const RENEW_MS = 30 * 60_000
+const REFUSED_MS = 60 * 60_000
+const ASK_MS = 4000
+const KEPT = 'atrium.relay'
+type Pass = { servers: RTCIceServer[]; until: number }
+let relay: Pass | null = null
+let refusedAt = -Infinity
+try {
+  const kept = JSON.parse(localStorage.getItem(KEPT) || 'null') as Pass | null
+  if (kept && Array.isArray(kept.servers) && kept.until > Date.now()) relay = kept
+  refusedAt = Number(localStorage.getItem(`${KEPT}.refused`)) || -Infinity
+} catch { /* nothing kept */ }
+let asking: Promise<boolean> | null = null
+const relayNow = () => (relay && relay.until > Date.now() ? relay : null)
+
+/** Whether there's a relay pass -- asking for one, or a new one, if it's
+ *  time. Never on desktop: no functions there, and no one else in its atriums. */
+export function askForRelay(): Promise<boolean> {
+  const now = Date.now()
+  if (relay && relay.until - now > RENEW_MS) return Promise.resolve(true)
+  if (isDesktop || !supabase || now - refusedAt < REFUSED_MS) return Promise.resolve(!!relayNow())
+  return asking ??= (async () => {
+    try {
+      const { data, error } = await Promise.race([
+        supabase.functions.invoke('relay-pass'),
+        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('no answer')), ASK_MS)),
+      ])
+      const servers = !error && Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : []
+      const seconds = Number(data?.seconds)
+      if (servers.length && seconds > 0) {
+        relay = { servers, until: Date.now() + seconds * 1000 }
+        try { localStorage.setItem(KEPT, JSON.stringify(relay)); localStorage.removeItem(`${KEPT}.refused`) } catch { /* this visit only */ }
+      } else {
+        refusedAt = Date.now()
+        try { localStorage.setItem(`${KEPT}.refused`, String(refusedAt)) } catch { /* this visit only */ }
+      }
+    } catch {
+      // No answer (offline, or the function not there): this visit waits too.
+      refusedAt = Date.now()
+    } finally {
+      asking = null
+    }
+    // A pass that couldn't be renewed still holds until it runs out.
+    return !!relayNow()
+  })()
+}
+
+// How a connection is made: by whichever address works -- the outward one
+// from Google's STUN server, the relay last of all (ICE prefers the direct
+// ones) -- or, hiding the IP address, through the relay alone. Hiding without
+// a pass finds no address at all, so a slip can only fail to connect, never
+// show the address.
+const rtcConfig = (): RTCConfiguration => {
+  const servers = relayNow()?.servers ?? []
+  return useGameStore.getState().hideMyAddress
+    ? { iceServers: servers, iceTransportPolicy: 'relay' }
+    : { iceServers: [...ICE_SERVERS, ...servers] }
+}
+
+/** WebRTC is here (not in the Linux app's webview), and this person either
+ *  shows their IP address or has a relay pass to hide it behind. */
 export function canLink(): boolean {
-  return typeof RTCPeerConnection !== 'undefined' && !useGameStore.getState().hideMyAddress
+  return typeof RTCPeerConnection !== 'undefined' && (!useGameStore.getState().hideMyAddress || !!relayNow())
 }
 
 // Who's connected directly right now, for whatever shows it (the online list).
@@ -153,7 +224,7 @@ export class Mesh {
   }
 
   private open(id: string): Peer {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    const pc = new RTCPeerConnection(rtcConfig())
     const peer: Peer = { pc, channel: null, open: false }
     this.peers.set(id, peer)
     pc.addEventListener('connectionstatechange', () => {

@@ -3,7 +3,7 @@ import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import { receiveLaser, setLaserSender } from '../lib/laser'
-import { Mesh, canLink, livePositions, type Live, type Signal } from '../lib/peers'
+import { Mesh, askForRelay, canLink, livePositions, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -80,10 +80,15 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     }
   }, [playerColor, userId, username, hideMyAddress])
 
-  // Expose function to manually update position (for cursor tracking)
-  // Throttled to prevent excessive re-renders
+  // Expose function to manually update position (for cursor tracking).
+  // Every sample is kept for the direct connections, which send it the frame
+  // it changes; the store -- what redraws what shows the position -- is
+  // throttled, so a slow movement or the last steps before stopping would
+  // reach the others late, or not until the next movement.
   const lastCursorUpdateRef = useRef({ x: 0, y: 0, time: 0 })
   const updateCursorPosition = useCallback((worldX: number, worldY: number) => {
+    positionRef.current = { x: worldX, y: worldY }
+    positionAtRef.current = performance.now()
     const now = Date.now()
     const dx = Math.abs(worldX - lastCursorUpdateRef.current.x)
     const dy = Math.abs(worldY - lastCursorUpdateRef.current.y)
@@ -187,8 +192,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Direct connections to the others (lib/peers): their cursors and lasers
     // live, rather than a cursor every 5 seconds through this channel. Made
     // once the ghost check says this person is seen -- an invisible operator
-    // connects to no one -- and introduced through this channel. Never while
-    // they hide their IP address (Profile), which takes effect at once.
+    // connects to no one -- and introduced through this channel. Hiding their
+    // IP address (Profile), only through the relay, once there's a pass for
+    // it; the switch takes effect at once.
     let mesh: Mesh | null = null
     // Everyone here; and of them, those who can be connected to directly.
     const everyone = () => Object.keys(channel.presenceState()).filter(key => key !== userId && isValidUserKey(key))
@@ -207,17 +213,28 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       }
       else if (message.k === 'l' && message.m && typeof message.m === 'object') receiveLaser({ ...(message.m as object), userId: from } as Parameters<typeof receiveLaser>[0])
     }
-    const link = () => {
+    const connect = () => {
       if (mesh || ghostRef.current !== false || !canLink() || channelRef.current !== channel) return
       mesh = new Mesh(userId, signal => {
         void channel.send({ type: 'broadcast', event: 'rtc', payload: { ...signal, from: userId } })
       }, fromPeer)
       mesh.sync(roster())
     }
+    // A relay pass first (lib/peers): the last resort for a pair that can't
+    // connect directly, and the only way for someone hiding their IP address.
+    const link = () => {
+      void askForRelay().then(() => {
+        if (mesh) return
+        connect()
+        // Hiding, now someone who can be connected to (announcement's `link`).
+        if (mesh && useGameStore.getState().hideMyAddress) void channel.track(announcement(username, playerColorRef.current, positionRef.current, joinedAtRef.current))
+      })
+    }
     const unlink = () => { mesh?.close(); mesh = null }
     ghostPromise.then(link)
     const stopWatching = useGameStore.subscribe((state, before) => {
-      if (state.hideMyAddress !== before.hideMyAddress) { if (state.hideMyAddress) unlink(); else link() }
+      // Every connection closed, and made again the other way.
+      if (state.hideMyAddress !== before.hideMyAddress) { unlink(); link() }
     })
     // Everyone here connected directly: the laser needn't touch the channel.
     const allDirect = () => !!mesh && everyone().every(id => mesh!.linked(id))
@@ -297,7 +314,21 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Safety-net: reconcile periodically in case a join/leave broadcast was
     // ever missed, so a mismatch self-heals instead of persisting until the
     // affected user leaves and rejoins.
-    const reconcileInterval = setInterval(() => { reconcilePresenceState(); mesh?.sync(roster()) }, 20000)
+    // And the direct connections: the new and the gone, a relay pass renewed
+    // before it runs out -- and someone hiding, with none to be had (the
+    // month's budget spent), back to the channel, telling the others so.
+    const reconcileInterval = setInterval(() => {
+      reconcilePresenceState()
+      if (mesh) {
+        void askForRelay().then(held => {
+          if (held || !mesh || !useGameStore.getState().hideMyAddress) return
+          unlink()
+          void channel.track(announcement(username, playerColorRef.current, positionRef.current, joinedAtRef.current))
+        })
+      }
+      if (mesh) mesh.sync(roster())
+      else link()
+    }, 20000)
 
     channelRef.current = channel
     // This person's laser out to the others -- not while invisible, like the

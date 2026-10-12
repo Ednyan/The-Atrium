@@ -33,3 +33,8 @@ verify_jwt = true
 # with no project token at all. It reveals one bit about one unguessable id.
 [functions.contribution-status]
 verify_jwt = true
+
+# Verified, and then checked again inside: the anon key passes the gate, but a
+# relay pass is for signed-in people only (getAuthenticatedUserId).
+[functions.relay-pass]
+verify_jwt = true
