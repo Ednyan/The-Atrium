@@ -119,6 +119,7 @@ export function mapRowToTrace(row: any): Trace {
     orderKey: row.order_key ?? null,
     layerName: row.layer_name ?? null,
     frameId: row.frame_id ?? null,
+    frameArrange: row.frame_arrange === 'masonry' ? 'masonry' : null,
     lobbyId: row.lobby_id,
     // Shape properties
     shapeType: row.shape_type,

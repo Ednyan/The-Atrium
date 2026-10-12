@@ -35,7 +35,7 @@ import { privately, throughRelay, toEmbedUrl, withPlayerApi } from '../lib/embed
 import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, reorder, siblingsOf, topLevel, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
-import { boxContains, frameAround, heldBy, isFrame, newFrame, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
+import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -314,6 +314,8 @@ const FRAME_PADDING = 40
 // How far either side of its border a press takes a frame, in screen pixels.
 // Its inside is left to what it holds, and to the canvas under it.
 const FRAME_GRIP_PX = 6
+// How long a trace glides to its place in an arranged frame.
+const ARRANGE_GLIDE_MS = 360
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
 const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360
@@ -2179,6 +2181,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     }
     if (newlyDiscovered.length > 0) {
       pushBatchAddOp(newlyDiscovered)
+      joinArrangedRef.current?.(newlyDiscovered)
     }
     // Keep the known-ids set from growing unboundedly across a long session
     if (known.size > traces.length) {
@@ -3247,6 +3250,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // them back with the rest.
     deleted[0].links = [...loose, ...deleted[0].links]
     pushDeleteOp(deleted)
+    // Arranged frames close the gap.
+    arrangeFrames(deleted.map(d => d.trace.frameId).filter((id): id is string => !!id), 'fold')
   }
 
   const duplicateTrace = async (traceId: string) => {
@@ -5311,13 +5316,28 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const movedFrames = new Set(moved.filter(isFrame).map(f => f.id))
     const loose = new Set(moved.filter(t => !isFrame(t) && !(t.frameId && movedFrames.has(t.frameId))).map(t => t.id))
     if (loose.size === 0) return
-    applyFrameChanges(placeUnits(unitsOf(all, groupIdsNow(), loose), framesNow(all), storedBox), 'fold')
+    const changes = placeUnits(unitsOf(all, groupIdsNow(), loose), framesNow(all), storedBox)
+    applyFrameChanges(changes, 'fold')
+    // Arranged frames a unit left, joined, or was moved about in: laid out again.
+    const touched = new Set<string>()
+    for (const t of moved) {
+      if (!loose.has(t.id)) continue
+      if (t.frameId) touched.add(t.frameId)
+      const now = changes.get(t.id)
+      if (now) touched.add(now)
+    }
+    arrangeFrames(touched, 'fold')
   }
 
   // A frame resized: what it no longer covers leaves it, and what lies loose
   // in it now -- in no frame -- joins it.
   const settleFrameResize = (frameId: string) => {
     const all = useGameStore.getState().traces
+    const resized = all.find(t => t.id === frameId)
+    // An arranged frame keeps what it holds, laid out to its new width; a
+    // trace resized in one goes back to its column.
+    if (resized?.frameArrange === 'masonry') { arrangeFrames([frameId], 'fold'); return }
+    if (resized && !isFrame(resized) && resized.frameId) { arrangeFrames([resized.frameId], 'fold'); return }
     const frames = framesNow(all)
     const frame = frames.find(f => f.id === frameId)
     if (!frame) return
@@ -5369,6 +5389,168 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     if (traces.length === 0) return
     void createFrame(frameAround(traces.map(storedBox), FRAME_PADDING), traces.map(tr => tr.id))
   }
+
+  // ---- Arranged frames (lib/frames masonry) --------------------------------
+
+  // What laying out an arranged frame changes: each unit (a trace, a group
+  // whole) brought to its column and its width, and the frame grown or shrunk
+  // to end below the tallest column. None for a frame not arranged, or empty.
+  const arrangementOf = (frameId: string): { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] => {
+    const all = useGameStore.getState().traces
+    const frame = all.find(t => t.id === frameId)
+    if (!frame || frame.frameArrange !== 'masonry') return []
+    const held = new Set(all.filter(t => t.frameId === frameId && !isFrame(t)).map(t => t.id))
+    if (held.size === 0) return []
+    const units = unitsOf(all, groupIdsNow(), held).map(unit => {
+      const boxes = unit.map(storedBox)
+      const one = unit.length === 1 ? unit[0] : null
+      const box = one ? boxes[0] : frameAround(boxes, 0)
+      // A trace's border keeps its size as the trace is scaled.
+      const edge = one && !isPathTrace(one) && one.type !== 'shape' && (one.showBorder ?? true) ? (one.borderWidth ?? 2) : 0
+      return { cx: box.cx, cy: box.cy, halfW: box.halfW, halfH: box.halfH, edge, unit }
+    })
+    const ordered = readingOrder(units)
+    const laid = masonry(storedBox(frame), ordered)
+    const near = (a: number, b: number) => Math.abs(a - b) < 0.01
+    const ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+    laid.placed.forEach((place, i) => {
+      const { unit, cx: ux, cy: uy } = ordered[i]
+      const f = place.factor
+      const to = (x: number, y: number) => ({ x: place.cx + (x - ux) * f, y: place.cy + (y - uy) * f })
+      if (near(f, 1) && near(place.cx, ux) && near(place.cy, uy)) return
+      for (const t of unit) {
+        if (isPathTrace(t) && t.shapePoints) {
+          const shapePoints = t.shapePoints.map(p => {
+            const at = to(p.x, p.y)
+            const next = { ...p, x: at.x, y: at.y }
+            if (p.cp1x !== undefined && p.cp1y !== undefined) { const c = to(p.cp1x, p.cp1y); next.cp1x = c.x; next.cp1y = c.y }
+            if (p.cp2x !== undefined && p.cp2y !== undefined) { const c = to(p.cp2x, p.cp2y); next.cp2x = c.x; next.cp2y = c.y }
+            return next
+          })
+          ops.push({ traceId: t.id, before: { shapePoints: t.shapePoints }, after: { shapePoints } })
+          continue
+        }
+        const now = storedTransformOf(t)
+        const at = to(now.x, now.y)
+        ops.push({
+          traceId: t.id,
+          before: { x: now.x, y: now.y, scaleX: now.scaleX, scaleY: now.scaleY },
+          after: { x: at.x, y: at.y, scaleX: now.scaleX * f, scaleY: now.scaleY * f },
+        })
+      }
+    })
+    // The frame: its top where it was, its height (a whole number, as the
+    // database keeps it) to end below the tallest column.
+    const was = storedBox(frame)
+    const top = was.cy - was.halfH
+    const border = (frame.showBorder ?? true) ? (frame.borderWidth ?? 2) : 0
+    const scaleY = storedTransformOf(frame).scaleY
+    const height = Math.max(1, Math.round(((laid.frame.halfH - border) * 2) / scaleY))
+    const y = top + (height * scaleY) / 2 + border
+    if (height !== frame.height || !near(y, frame.y)) ops.push({ traceId: frame.id, before: { y: frame.y, height: frame.height }, after: { y, height } })
+    return ops
+  }
+
+  // Arranged frames laid out again, with a short glide -- folded into the undo
+  // step just recorded (what caused it), made a step with `withOps` (the
+  // switch turned on), or left out of the history ('none': a picture's size
+  // arriving as it loads).
+  const arrangeFrames = (frameIds: Iterable<string>, undo: 'fold' | 'none' | { withOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] }) => {
+    const ops = [...new Set(frameIds)].flatMap(arrangementOf)
+    if (ops.length > 0) {
+      glideFrom(ops.filter(op => !isFrame(useGameStore.getState().traces.find(t => t.id === op.traceId) ?? { type: '' })))
+      for (const op of ops) applyUpdateTarget(useGameStore.getState(), op.traceId, op.after)
+    }
+    if (undo === 'fold') foldIntoLastUndo(ops)
+    else if (undo !== 'none') {
+      // One entry a trace: a step's changes to the same trace are taken back
+      // from one snapshot, so a second entry would put back what the first
+      // undid (the switch, under the frame's new height).
+      const merged = new Map<string, { traceId: string; before: Partial<Trace>; after: Partial<Trace> }>()
+      for (const op of [...undo.withOps, ...ops]) {
+        const had = merged.get(op.traceId)
+        merged.set(op.traceId, had ? { traceId: op.traceId, before: { ...op.before, ...had.before }, after: { ...had.after, ...op.after } } : op)
+      }
+      pushBatchUpdateOp([...merged.values()])
+    }
+  }
+  const arrangeRef = useRef(arrangeFrames)
+  arrangeRef.current = arrangeFrames
+
+  // The switch (the frame's menu): on, laid out at once -- one undo step with it.
+  const setFrameArrange = (frameId: string, on: boolean) => {
+    const live = useGameStore.getState().traces.find(tr => tr.id === frameId)
+    if (!live) return
+    const toggle = { traceId: frameId, before: { frameArrange: live.frameArrange ?? null }, after: { frameArrange: on ? 'masonry' as const : null } }
+    applyUpdateTarget(useGameStore.getState(), frameId, toggle.after)
+    if (on) arrangeFrames([frameId], { withOps: [toggle] })
+    else pushBatchUpdateOp([toggle])
+  }
+
+  // Traces of mine just made -- dropped, pasted, duplicated -- whose middle is
+  // in an arranged frame: in it, and it laid out again. (Made anywhere else, a
+  // trace joins no frame until it's moved into one; others' arrive placed.)
+  const joinArrangedFrames = (fresh: Trace[]) => {
+    const all = useGameStore.getState().traces
+    const arranged = framesNow(all).filter(f => all.find(t => t.id === f.id)?.frameArrange === 'masonry')
+    if (arranged.length === 0 || !canEdit) return
+    const known = new Set(all.map(t => t.id))
+    const mine = fresh.filter(t => t.userId === userId && !isFrame(t) && !(t.frameId && known.has(t.frameId))
+      && Date.now() - Date.parse(t.createdAt) < 2 * 60_000)
+    if (mine.length === 0) return
+    const changes = placeUnits(unitsOf(all, groupIdsNow(), new Set(mine.map(t => t.id))), arranged, storedBox)
+    if (changes.size === 0) return
+    applyFrameChanges(changes, 'fold')
+    arrangeFrames([...changes.values()].filter((id): id is string => !!id), 'fold')
+  }
+  const joinArrangedRef = useRef(joinArrangedFrames)
+  joinArrangedRef.current = joinArrangedFrames
+
+  // A picture's size is known once it has loaded: arranged frames laid out
+  // again (unrecorded), a moment after the last of a batch.
+  useEffect(() => {
+    if (!canEdit) return
+    const timer = window.setTimeout(() => {
+      const frames = useGameStore.getState().traces.filter(f => f.frameArrange === 'masonry').map(f => f.id)
+      if (frames.length > 0) arrangeRef.current(frames, 'none')
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [imageDimensions, canEdit])
+
+  // A short glide for what an arrangement moved (FLIP): each from where it
+  // was drawn, at its old size, to where it's drawn now -- on the element's
+  // own translate and scale, which the transform it's placed by composes with.
+  const glideFromRef = useRef<Map<string, { cx: number; cy: number; scale: number }> | null>(null)
+  const [glideTick, setGlideTick] = useState(0)
+  const glideFrom = (ops: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[]) => {
+    const from = new Map<string, { cx: number; cy: number; scale: number }>()
+    for (const op of ops) {
+      const el = document.querySelector<HTMLElement>(`[data-trace-element][data-trace-id="${op.traceId}"]`)
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      const scale = op.before.scaleX && op.after.scaleX ? op.before.scaleX / op.after.scaleX : 1
+      from.set(op.traceId, { cx: r.left + r.width / 2, cy: r.top + r.height / 2, scale })
+    }
+    glideFromRef.current = from
+    setGlideTick(n => n + 1)
+  }
+  useLayoutEffect(() => {
+    const from = glideFromRef.current
+    if (!from) return
+    glideFromRef.current = null
+    for (const [id, was] of from) {
+      const el = document.querySelector<HTMLElement>(`[data-trace-element][data-trace-id="${id}"]`)
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      const s = was.scale
+      // The individual scale turns about the element's own middle, which its
+      // translate(-50%, -50%) has moved: the difference, made up.
+      const dx = was.cx - (r.left + r.width / 2) - (el.offsetWidth / 2) * (1 - s)
+      const dy = was.cy - (r.top + r.height / 2) - (el.offsetHeight / 2) * (1 - s)
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(s - 1) < 0.005) continue
+      el.animate([{ translate: `${dx}px ${dy}px`, scale: `${s}` }, { translate: '0px 0px', scale: '1' }], { duration: ARRANGE_GLIDE_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' })
+    }
+  }, [glideTick])
 
   // A frame's title, as typed. Left as it was if emptied.
   const renameFrame = (id: string, name: string) => {
@@ -7357,7 +7539,10 @@ return (
                   style={{ color: 'inherit', borderColor: 'currentColor' }}
                 />
               ) : (
-                trace.content
+                <>
+                  {trace.frameArrange === 'masonry' && <span title={t('atrium.frame.arranged')} className="mr-1 opacity-70">▦</span>}
+                  {trace.content}
+                </>
               )}
             </div>
           </>
@@ -8388,6 +8573,25 @@ return (
                   }}
                 >
                   <span className="text-nier-bg/60 text-[10px]">⬚</span> {t('atrium.menu.wrapInFrame')}
+                </button>
+              )
+            })()}
+            {/* A frame's own: what it holds laid out by itself (lib/frames masonry). */}
+            {canEdit && (() => {
+              const frame = traces.find(tr => tr.id === contextMenu.traceId)
+              if (!frame || !isFrame(frame)) return null
+              const on = frame.frameArrange === 'masonry'
+              return (
+                <button
+                  data-arrange-frame={on ? 'on' : 'off'}
+                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  onClick={() => {
+                    setContextMenu(null)
+                    setFrameArrange(frame.id, !on)
+                  }}
+                >
+                  <span className="text-nier-bg/60 text-[10px]">▦</span> {t('atrium.menu.arrangeFrame')}
+                  {on && <span className="ml-auto text-nier-bg/70">✓</span>}
                 </button>
               )
             })()}

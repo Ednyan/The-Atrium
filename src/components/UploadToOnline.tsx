@@ -197,6 +197,7 @@ export default function UploadToOnline({ onClose }: UploadToOnlineProps) {
             ignore_clicks: trace.ignore_clicks,
             layer_id: trace.layer_id ? layerIdMap[trace.layer_id] || null : null,
             frame_id: carriedFrameId(trace.frame_id, onlineIds),
+            frame_arrange: trace.frame_arrange ?? undefined,
             z_index: trace.z_index,
             order_key: trace.order_key ?? null,
             layer_name: trace.layer_name ?? null,

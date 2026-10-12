@@ -1241,6 +1241,7 @@ export async function initLocalDb(): Promise<void> {
       order_key TEXT,
       layer_name TEXT,
       frame_id TEXT,
+      frame_arrange TEXT,
       lobby_id TEXT,
       shape_type TEXT,
       shape_color TEXT,
@@ -1559,6 +1560,12 @@ export async function initLocalDb(): Promise<void> {
   try {
     // The frame a trace is in (lib/frames).
     await db.execute('ALTER TABLE traces ADD COLUMN frame_id TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    // A frame that lays out what it holds (lib/frames masonry).
+    await db.execute('ALTER TABLE traces ADD COLUMN frame_arrange TEXT')
   } catch {
     // Column already exists — ignore
   }

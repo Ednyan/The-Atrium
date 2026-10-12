@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { carriedFrameId, frameAround, frameAt, freshIds, heldBy, placeUnits, putInFrame, unitMiddle, unitsOf, type FrameBox } from '../src/lib/frames.ts'
+import { ARRANGE_GAP, carriedFrameId, frameAround, frameAt, freshIds, heldBy, masonry, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../src/lib/frames.ts'
 
 type T = { id: string; type: string; layerId?: string | null; frameId?: string | null; box: FrameBox }
 const trace = (id: string, cx: number, cy: number, extra: Partial<T> = {}): T =>
@@ -74,4 +74,56 @@ test('carried into another atrium, a frame_id follows its frame to the new id', 
   assert.equal(carriedFrameId('F', ids), 'new1')
   assert.equal(carriedFrameId('missing', ids), null)
   assert.equal(carriedFrameId(null, ids), null)
+})
+
+test('an arranged frame: columns across it, each unit at the column width, in the shortest column', () => {
+  const frameBox = { cx: 300, cy: 100, halfW: 300, halfH: 100 }
+  const units = [
+    { cx: 0, cy: 0, halfW: 50, halfH: 50 },
+    { cx: 0, cy: 0, halfW: 50, halfH: 100 },
+    { cx: 0, cy: 0, halfW: 100, halfH: 50 },
+  ]
+  const { frame: grown, placed } = masonry(frameBox, units)
+  // 600 wide: two columns of (600 - 3 gaps) / 2.
+  const width = (600 - 3 * ARRANGE_GAP) / 2
+  assert.equal(placed[0].factor, width / 100)
+  assert.equal(placed[0].cx, ARRANGE_GAP + width / 2)
+  assert.equal(placed[1].cx, 2 * ARRANGE_GAP + width * 1.5)
+  // The third goes under the first: its column is the shorter.
+  assert.equal(placed[2].cx, placed[0].cx)
+  assert.equal(placed[2].cy, ARRANGE_GAP + width + ARRANGE_GAP + width / 4)
+  // The frame keeps its top and width, and ends below its tallest column.
+  assert.equal(grown.cy - grown.halfH, 0)
+  assert.equal(grown.halfW, 300)
+  assert.equal(grown.cy + grown.halfH, ARRANGE_GAP + 2 * width + ARRANGE_GAP)
+})
+
+test('a border stays its size: the unit ends exactly the column wide', () => {
+  const frameBox = { cx: 150, cy: 100, halfW: 150, halfH: 100 }
+  const [{ factor }] = masonry(frameBox, [{ cx: 0, cy: 0, halfW: 52, halfH: 32, edge: 2 }]).placed
+  const width = 300 - 2 * ARRANGE_GAP
+  assert.ok(Math.abs((100 * factor) + 4 - width) < 1e-9)
+})
+
+test('arranging an arranged frame changes nothing, and reading order is what it reads back in', () => {
+  const frameBox = { cx: 500, cy: 300, halfW: 500, halfH: 300 }
+  const sizes = [[60, 40], [40, 90], [80, 50], [50, 50], [70, 30], [30, 80], [55, 65]]
+  const units = sizes.map(([halfW, halfH], i) => ({ cx: i * 10, cy: i * 7, halfW, halfH }))
+  const once = masonry(frameBox, units)
+  const laid = units.map((u, i) => ({ cx: once.placed[i].cx, cy: once.placed[i].cy, halfW: u.halfW * once.placed[i].factor, halfH: u.halfH * once.placed[i].factor, i }))
+  const again = readingOrder(laid)
+  assert.deepEqual(again.map(u => u.i), laid.map(u => u.i))
+  const twice = masonry(once.frame, again)
+  twice.placed.forEach((p, k) => {
+    assert.ok(Math.abs(p.cx - laid[k].cx) < 1e-6 && Math.abs(p.cy - laid[k].cy) < 1e-6)
+    assert.ok(Math.abs(p.factor - 1) < 1e-9)
+  })
+  assert.deepEqual(twice.frame, once.frame)
+})
+
+test('a narrow frame is one column; an empty one is left as it is', () => {
+  const narrow = { cx: 100, cy: 100, halfW: 100, halfH: 100 }
+  const { placed } = masonry(narrow, [{ cx: 0, cy: 0, halfW: 10, halfH: 10 }, { cx: 0, cy: 0, halfW: 10, halfH: 10 }])
+  assert.equal(placed[0].cx, placed[1].cx)
+  assert.deepEqual(masonry(narrow, []).frame, narrow)
 })

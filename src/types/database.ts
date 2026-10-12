@@ -185,6 +185,9 @@ export interface Trace {
   // The frame this trace is in (lib/frames); null in none. A frame's title
   // is its content.
   frameId?: string | null
+  // A frame's: lays out what it holds by itself (lib/frames masonry); null
+  // or missing, as it's put.
+  frameArrange?: 'masonry' | null
   // Lobby association
   lobbyId?: string
 }

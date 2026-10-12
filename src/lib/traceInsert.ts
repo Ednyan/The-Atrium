@@ -75,6 +75,8 @@ export function buildTraceInsertRow(
   if (trace.enableInteraction !== undefined) newTrace.enable_interaction = trace.enableInteraction
   if (trace.layerId) newTrace.layer_id = trace.layerId
   if (trace.frameId) newTrace.frame_id = trace.frameId
+  // Left out when none, so a database without the column still takes it.
+  if (trace.frameArrange) newTrace.frame_arrange = trace.frameArrange
   if (lobbyId) newTrace.lobby_id = lobbyId
   // Applies to every resizable type (text, image, embed, video, shape) --
   // this used to be gated to shape only, so duplicating a text/image/embed/
@@ -178,6 +180,10 @@ export function traceColumns(trace: Trace): Record<string, any> {
     layer_name: trace.layerName ?? null,
     frame_id: trace.frameId ?? null,
   }
+  // A frame's only, and only once set -- switched off it's null, which must
+  // reach the database -- so a database without the column (add_frame_arrange
+  // not yet run) refuses nothing but an arranged frame's save.
+  if (trace.type === 'frame' && trace.frameArrange !== undefined) columns.frame_arrange = trace.frameArrange ?? null
 
   // Add optional fields
   if (trace.mediaUrl !== undefined) columns.media_url = trace.mediaUrl

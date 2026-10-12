@@ -174,3 +174,53 @@ export function freshIds(rows: { id?: string }[], fresh: () => string): Map<stri
 }
 export const carriedFrameId = (frameId: unknown, ids: Map<string, string>): string | null =>
   typeof frameId === 'string' ? ids.get(frameId) ?? null : null
+
+// ---- Arranged frames (Trace.frameArrange 'masonry') -----------------------
+//
+// What an arranged frame holds, laid out Pinterest-style: columns of one
+// width across it, as many as fit about ARRANGE_COLUMN wide; each unit -- a
+// trace, or a group whole -- brought to the column's width at its own shape
+// and put at the foot of the shortest column, in reading order (by its top,
+// then its left). That's the order a laid-out frame reads back in, so
+// arranging it again changes nothing, and a unit dragged somewhere else in it
+// takes its turn from there. The frame keeps its left, top and width, and
+// ends below its tallest column.
+export const ARRANGE_GAP = 24
+export const ARRANGE_COLUMN = 240
+
+// A unit to lay out: its box, and the part of its half-size that doesn't
+// scale with it (a trace's border).
+export interface ArrangeUnit extends FrameBox { edge?: number }
+export interface Placement { factor: number; cx: number; cy: number }
+
+export function readingOrder<U extends FrameBox>(units: U[]): U[] {
+  const key = (u: U) => [Math.round(u.cy - u.halfH), u.cx - u.halfW]
+  return [...units].sort((a, b) => {
+    const [at, al] = key(a), [bt, bl] = key(b)
+    return at - bt || al - bl
+  })
+}
+
+export function masonry(frame: FrameBox, units: ArrangeUnit[]): { frame: FrameBox; placed: Placement[] } {
+  const left = frame.cx - frame.halfW, top = frame.cy - frame.halfH
+  const inner = frame.halfW * 2 - ARRANGE_GAP * 2
+  const columns = Math.max(1, Math.round((inner + ARRANGE_GAP) / (ARRANGE_COLUMN + ARRANGE_GAP)))
+  const width = Math.max(1, (inner - (columns - 1) * ARRANGE_GAP) / columns)
+  // Where each column's next unit starts.
+  const feet: number[] = Array(columns).fill(top + ARRANGE_GAP)
+  const placed = units.map(unit => {
+    const edge = unit.edge ?? 0
+    const factor = Math.max(0.01, (width - 2 * edge) / Math.max(1e-6, unit.halfW * 2 - 2 * edge))
+    const height = (unit.halfH * 2 - 2 * edge) * factor + 2 * edge
+    // The shortest, the leftmost of those as short.
+    let column = 0
+    for (let i = 1; i < columns; i++) if (feet[i] < feet[column] - 0.5) column = i
+    const cx = left + ARRANGE_GAP + column * (width + ARRANGE_GAP) + width / 2
+    const cy = feet[column] + height / 2
+    feet[column] += height + ARRANGE_GAP
+    return { factor, cx, cy }
+  })
+  if (units.length === 0) return { frame, placed }
+  const bottom = Math.max(...feet)
+  return { frame: { cx: frame.cx, halfW: frame.halfW, cy: (top + bottom) / 2, halfH: (bottom - top) / 2 }, placed }
+}
