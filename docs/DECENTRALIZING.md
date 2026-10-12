@@ -102,6 +102,14 @@ every 5 seconds become live.
 - **At most 16 direct connections** per person; anyone past that is reached
   through the channel. A pair that hasn't connected in 15 seconds, on either
   side, waits 30 seconds before trying again.
+- **A link counts only while it carries something.** With nothing else to
+  send, each side says "still here" every 2 seconds. Nothing heard for 5
+  seconds and that person's Supabase copies are used again; nothing for 20
+  (from a side that sends "still here") and the link is made again. A link
+  that breaks without closing -- a browser quirk, a network that stops
+  passing data -- can make someone slow, never silent. (Firefox once left
+  the answering side's link unmarked as open: one person then reached the
+  other by neither path. Fixed, and this guards the whole class.)
 - **Presence blips don't break links.** Supabase's presence snapshot can miss
   someone for a moment. A connection is let go of only when they leave, when
   their side closes, or at the 20-second reconcile, never on a single sync
