@@ -97,16 +97,57 @@ export function askForRelay(): Promise<boolean> {
   })()
 }
 
+// A pass's servers, as few as do the job -- Firefox slows its search past
+// four: its own STUN in place of Google's, and of the relay's ports only UDP
+// 3478 and TLS on 443, which any firewall that lets the web through lets
+// through too.
+const fewest = (servers: RTCIceServer[]): RTCIceServer[] => servers
+  .map(server => ({ ...server, urls: ([] as string[]).concat(server.urls).filter(url => /^stun:|:3478\?transport=udp|^turns:[^?]*:443\b/.test(url)) }))
+  .filter(server => server.urls.length > 0)
+
 // How a connection is made: by whichever address works -- the outward one
-// from Google's STUN server, the relay last of all (ICE prefers the direct
-// ones) -- or, hiding the IP address, through the relay alone. Hiding without
-// a pass finds no address at all, so a slip can only fail to connect, never
-// show the address.
+// from a STUN server, the relay last of all (ICE prefers the direct ones) --
+// or, hiding the IP address, through the relay alone. Hiding without a pass
+// finds no address at all, so a slip can only fail to connect, never show
+// the address.
 const rtcConfig = (): RTCConfiguration => {
-  const servers = relayNow()?.servers ?? []
+  const pass = relayNow()
   return useGameStore.getState().hideMyAddress
-    ? { iceServers: servers, iceTransportPolicy: 'relay' }
-    : { iceServers: [...ICE_SERVERS, ...servers] }
+    ? { iceServers: pass ? fewest(pass.servers) : [], iceTransportPolicy: 'relay' }
+    : { iceServers: pass ? fewest(pass.servers) : ICE_SERVERS }
+}
+
+// localStorage['atrium.p2p.debug'] = '1': what each connection does, and why
+// it ends, in the console -- for a network that can't be seen from here.
+const debugging = (() => { try { return localStorage.getItem('atrium.p2p.debug') === '1' } catch { return false } })()
+const note = (id: string, what: string) => { if (debugging) console.info(`[peers] ${id.slice(0, 8)}: ${what}`) }
+// How each person's cursor and laser reach this one, said in the console
+// when it changes -- once, not with every message: directly, through the
+// relay, or through Supabase (the presence channel).
+type Path = 'direct' | 'relay' | 'supabase'
+const PATH_WORDS: Record<Path, string> = {
+  direct: 'connected directly',
+  relay: 'connected through the relay',
+  supabase: 'through Supabase (cursor every few seconds)',
+}
+const paths = new Map<string, Path>()
+/** `null`: gone, said nothing of. */
+export function reportPath(id: string, path: Path | null) {
+  if (path === null) { paths.delete(id); return }
+  if (paths.get(id) === path) return
+  paths.set(id, path)
+  console.info(`[atrium] ${useGameStore.getState().otherUsers[id]?.username ?? id.slice(0, 8)}: ${PATH_WORDS[path]}`)
+}
+export const forgetPaths = () => paths.clear()
+// Directly or through the relay: the pair of addresses the open connection uses.
+async function reportRoute(id: string, pc: RTCPeerConnection) {
+  const stats = await pc.getStats()
+  let relayed: boolean | null = null
+  stats.forEach(report => {
+    if (report.type !== 'candidate-pair' || report.state !== 'succeeded' || !report.nominated) return
+    relayed = stats.get(report.localCandidateId)?.candidateType === 'relay' || stats.get(report.remoteCandidateId)?.candidateType === 'relay'
+  })
+  if (relayed !== null) reportPath(id, relayed ? 'relay' : 'direct')
 }
 
 /** WebRTC is here (not in the Linux app's webview), and this person either
@@ -152,11 +193,16 @@ export class Mesh {
     this.receive = receive
   }
 
-  /** Who's in the atrium now: the new connected to, the gone let go of. */
-  sync(roster: Iterable<string>) {
+  /** Who's in the atrium now: the new connected to -- and, with `prune` (the
+   *  slow reconcile, whose snapshot is settled), the gone let go of. Presence's
+   *  own sync events can carry a snapshot that's missing someone for a moment
+   *  (usePresence, applyPresenceState): a link dropped on one of those was
+   *  made again moments later, the cursor and laser stalled in between. One
+   *  really gone is let go of anyway, when their side closes. */
+  sync(roster: Iterable<string>, prune = false) {
     if (this.closed) return
     const here = new Set(roster)
-    for (const id of [...this.peers.keys()]) if (!here.has(id)) this.drop(id)
+    if (prune) for (const id of [...this.peers.keys()]) if (!here.has(id)) { this.drop(id, 'gone from presence'); reportPath(id, null) }
     for (const id of here) {
       if (id === this.self || this.peers.has(id) || id < this.self) continue
       if (this.peers.size >= MOST_LINKS) break
@@ -173,7 +219,7 @@ export class Mesh {
         // Only the one sorting first offers; and a full mesh takes no more.
         if (from > this.self || (this.peers.size >= MOST_LINKS && !this.peers.has(from))) return
         // A fresh offer from someone already known: they've connected again.
-        this.drop(from)
+        this.drop(from, 'a new offer from them')
         const peer = this.open(from)
         peer.pc.ondatachannel = event => this.wire(from, peer, event.channel)
         await peer.pc.setRemoteDescription({ type: 'offer', sdp: signal.sdp })
@@ -181,12 +227,15 @@ export class Mesh {
         await gathered(peer.pc)
         if (this.peers.get(from) !== peer) return
         this.post({ to: from, kind: 'answer', sdp: peer.pc.localDescription!.sdp })
+        note(from, 'answered')
+        // The same wait as theirs, rather than the browser's own half minute.
+        window.setTimeout(() => { if (this.peers.get(from) === peer && !peer.open) this.fail(from, 'no way through') }, ANSWER_MS)
       } else {
         const peer = this.peers.get(from)
         if (peer?.pc.signalingState === 'have-local-offer') await peer.pc.setRemoteDescription({ type: 'answer', sdp: signal.sdp })
       }
-    } catch {
-      this.fail(from)
+    } catch (error) {
+      this.fail(from, `introduction failed: ${error}`)
     }
   }
 
@@ -201,10 +250,19 @@ export class Mesh {
   }
 
   linked(id: string) { return !!this.peers.get(id)?.open }
+  /** A connection to them under way, not open yet. */
+  connecting(id: string) { return this.peers.has(id) && !this.peers.get(id)!.open }
+
+  /** Someone gone from the atrium (their presence left). */
+  forget(id: string) {
+    this.drop(id, 'left')
+    reportPath(id, null)
+  }
 
   close() {
     this.closed = true
-    for (const id of [...this.peers.keys()]) this.drop(id)
+    for (const id of [...this.peers.keys()]) this.drop(id, 'closing')
+    forgetPaths()
     publish([])
   }
 
@@ -217,9 +275,10 @@ export class Mesh {
       await gathered(peer.pc)
       if (this.peers.get(id) !== peer) return
       this.post({ to: id, kind: 'offer', sdp: peer.pc.localDescription!.sdp })
-      window.setTimeout(() => { if (this.peers.get(id) === peer && !peer.open) this.fail(id) }, ANSWER_MS)
-    } catch {
-      this.fail(id)
+      note(id, 'offered')
+      window.setTimeout(() => { if (this.peers.get(id) === peer && !peer.open) this.fail(id, 'no answer, or no way through') }, ANSWER_MS)
+    } catch (error) {
+      this.fail(id, `offer failed: ${error}`)
     }
   }
 
@@ -228,7 +287,7 @@ export class Mesh {
     const peer: Peer = { pc, channel: null, open: false }
     this.peers.set(id, peer)
     pc.addEventListener('connectionstatechange', () => {
-      if (pc.connectionState === 'failed' && this.peers.get(id) === peer) this.fail(id)
+      if (pc.connectionState === 'failed' && this.peers.get(id) === peer) this.fail(id, 'connection failed')
     })
     return peer
   }
@@ -239,21 +298,29 @@ export class Mesh {
       peer.open = true
       this.failedAt.delete(id)
       this.changed()
+      note(id, 'open')
+      void reportRoute(id, peer.pc)
     }
-    channel.onclose = () => { if (this.peers.get(id) === peer) this.drop(id) }
+    channel.onclose = () => {
+      if (this.peers.get(id) !== peer) return
+      this.drop(id, 'closed by them')
+      reportPath(id, 'supabase')
+    }
     channel.onmessage = event => {
       try { this.receive(id, JSON.parse(event.data)) } catch { /* not ours */ }
     }
   }
 
-  private fail(id: string) {
+  private fail(id: string, why: string) {
     this.failedAt.set(id, Date.now())
-    this.drop(id)
+    this.drop(id, `${why}; tried again in ${RETRY_MS / 1000} s`)
+    reportPath(id, 'supabase')
   }
 
-  private drop(id: string) {
+  private drop(id: string, why: string) {
     const peer = this.peers.get(id)
     if (!peer) return
+    note(id, `let go: ${why}`)
     this.peers.delete(id)
     try { peer.channel?.close() } catch { /* gone */ }
     peer.pc.close()

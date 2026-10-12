@@ -3,7 +3,7 @@ import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '../lib/laser'
-import { Mesh, askForRelay, canLink, livePositions, type Live, type Signal } from '../lib/peers'
+import { Mesh, askForRelay, canLink, forgetPaths, livePositions, reportPath, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -260,7 +260,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
         if (key !== userId) {
           removeOtherUser(key)
-          mesh?.sync(roster())
+          // Gone, not just announced again (which leaves and joins at once).
+          if (!channel.presenceState()[key]?.length) mesh?.forget(key)
         }
       })
       // Through here, from anyone not connected directly; from someone who
@@ -326,8 +327,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           void channel.track(announcement(username, playerColorRef.current, positionRef.current, joinedAtRef.current))
         })
       }
-      if (mesh) mesh.sync(roster())
+      if (mesh) mesh.sync(roster(), true)
       else link()
+      // Anyone here, settled, with no connection open or on its way: through
+      // Supabase (said once; lib/peers reportPath).
+      for (const id of everyone()) if (!mesh?.linked(id) && !mesh?.connecting(id)) reportPath(id, 'supabase')
     }, 20000)
 
     channelRef.current = channel
@@ -412,6 +416,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       setLaserSender(null)
       stopWatching()
       unlink()
+      forgetPaths()
       livePositions.clear()
       channelRef.current = null
       channel.unsubscribe()

@@ -100,7 +100,21 @@ every 5 seconds become live.
 - **Who can connect:** each person's presence says whether they can
   (`link`), so nobody makes an offer to a browser without WebRTC.
 - **At most 16 direct connections** per person; anyone past that is reached
-  through the channel. A pair that fails waits 30 seconds before trying again.
+  through the channel. A pair that hasn't connected in 15 seconds, on either
+  side, waits 30 seconds before trying again.
+- **Presence blips don't break links.** Supabase's presence snapshot can miss
+  someone for a moment. A connection is let go of only when they leave, when
+  their side closes, or at the 20-second reconcile, never on a single sync
+  event. Dropping on those used to rebuild every link on each presence
+  change, stalling cursors and lasers for a moment each time.
+- **The console says how each person reaches you,** once per change:
+  `[atrium] Ben: connected directly`, `... connected through the relay`, or
+  `... through Supabase (cursor every few seconds)`. With
+  `localStorage['atrium.p2p.debug'] = '1'`, every offer, answer and the
+  reason each connection ends are logged too.
+- **Fewest servers:** with a relay pass, Cloudflare's STUN replaces Google's,
+  and of the relay's ports only UDP 3478 and TLS 443 are used (Firefox slows
+  its search past four).
 - **The online list** marks the people connected directly (a green diamond).
 - **The roster** (who's here, names, colours) stays on Supabase presence,
   unchanged.
