@@ -33,6 +33,7 @@ import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
+import { startOverlay } from './lib/overlay'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
 import { useLayers } from './hooks/useLayers'
@@ -67,6 +68,9 @@ if (isDesktop) {
     .then(noteVersionSeen)
     .catch(() => { /* no version, no comparison, nothing asked */ })
 }
+
+// The window as an overlay as it was left -- on top, seen through (lib/overlay).
+startOverlay()
 
 // The webview's own zoom, refused on every screen of the desktop app.
 //

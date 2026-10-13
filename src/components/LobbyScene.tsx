@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
@@ -30,6 +30,8 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
+import OverlayPanel from './OverlayPanel'
+import { overlayNow, setOverlay } from '../lib/overlay'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -543,6 +545,15 @@ function LinkMark({ userId }: { userId: string }) {
   )
 }
 
+// A panel sliding out beside the view bar, opening its width as it does.
+const besideViewBar = (open: boolean, panel: ReactNode) => (
+  <div className="grid transition-[grid-template-columns,opacity] duration-300 ease-out" style={{ gridTemplateColumns: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}>
+    <div className="min-w-0 overflow-hidden">
+      <div className="pl-2">{panel}</div>
+    </div>
+  </div>
+)
+
 export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
   const { t, language } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -719,8 +730,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { presentationIndexRef.current = presentationIndex }, [presentationIndex])
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
-  // The palette, beside the view bar (PalettePanel).
+  // The palette, beside the view bar (PalettePanel); and in the desktop app,
+  // the window as an overlay (OverlayPanel).
   const [showPalette, setShowPalette] = useState(false)
+  const [showOverlay, setShowOverlay] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   // Customize quick bar (QuickBarEditor), from the bar's More.
   const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
@@ -2058,6 +2071,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         return
       }
 
+      // The overlay (lib/overlay), by PureRef's keys: Ctrl+T click-through,
+      // Ctrl+Shift+A always on top.
+      if (isDesktop && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (e.code === 'KeyT' && !e.shiftKey) { e.preventDefault(); void setOverlay({ clickThrough: !overlayNow().clickThrough }); return }
+        if (e.code === 'KeyA' && e.shiftKey) { e.preventDefault(); void setOverlay({ onTop: !overlayNow().onTop }); return }
+      }
+
       // Move the view: H takes it up and puts it down, Escape puts it down.
       if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isDrawingModeRef.current) {
         e.preventDefault()
@@ -2140,7 +2160,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       }
 
       // T: an embed's link asked for where the pointer is.
-      if (e.key === 't' || e.key === 'T') {
+      if ((e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (!canEditRef.current) return
         e.preventDefault()
         e.stopPropagation()
@@ -4661,6 +4681,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setShowThemeCustomization(true)
     } },
     { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
+    ...(isDesktop ? [{ id: 'overlay', icon: MENU_ICONS.overlay, label: t('atrium.hud.overlay'), open: showOverlay, onSelect: () => setShowOverlay(open => !open) }] : []),
     { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
       if (showProfileCustomization) { setShowProfileCustomization(false); return }
       closeSidePanels()
@@ -4956,21 +4977,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {!uiHidden && !narrow && (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex items-start">
         <ViewBar items={viewItems} />
-        {/* The palette slides out beside it, and the two stay in the middle
-            together: this row is what's centred, and it widens. */}
-        <div className="grid transition-[grid-template-columns,opacity] duration-300 ease-out" style={{ gridTemplateColumns: showPalette ? '1fr' : '0fr', opacity: showPalette ? 1 : 0 }}>
-          <div className="min-w-0 overflow-hidden">
-            <div className="pl-2">
-              <PalettePanel open={showPalette} />
-            </div>
-          </div>
-        </div>
+        {/* The palette and the overlay slide out beside it, and stay in the
+            middle with it: this row is what's centred, and it widens. */}
+        {besideViewBar(showPalette, <PalettePanel open={showPalette} />)}
+        {isDesktop && besideViewBar(showOverlay, <OverlayPanel open={showOverlay} />)}
       </div>
       )}
-      {/* A phone has the view bar in its menu: the palette, under the top row. */}
-      {!uiHidden && narrow && showPalette && (
-      <div className="fixed top-[4.5rem] left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
-        <PalettePanel open />
+      {/* A phone, or a narrow window, has the view bar in its menu: these, under the top row. */}
+      {!uiHidden && narrow && (showPalette || showOverlay) && (
+      <div className="fixed top-[4.5rem] left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-2">
+        {showPalette && <PalettePanel open />}
+        {isDesktop && showOverlay && <OverlayPanel open />}
       </div>
       )}
       {!uiHidden && !narrow && (

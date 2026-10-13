@@ -1408,6 +1408,50 @@ fn repair_user_environment() {
     }
 }
 
+/// The window as an overlay, PureRef's way (src/lib/overlay.ts): over every
+/// other window, letting clicks through to whatever is behind it, and seen
+/// through at `opacity`. All three at once, in this order: on Windows, the
+/// first two each rewrite the window's extended style, which drops the
+/// layering its opacity is set with, so the opacity goes on last. A command
+/// that isn't async runs on the main thread, where those are applied at once.
+#[tauri::command]
+fn set_overlay(window: tauri::WebviewWindow, on_top: bool, click_through: bool, opacity: f64) -> Result<(), String> {
+    window.set_always_on_top(on_top).map_err(|e| e.to_string())?;
+    window.set_ignore_cursor_events(click_through).map_err(|e| e.to_string())?;
+    set_window_opacity(&window, opacity.clamp(0.1, 1.0), click_through)
+}
+
+/// A layered window, at `opacity`. Click-through makes the window layered
+/// too, and a layered window with no level set may not be drawn at all, so
+/// it gets one whenever it's layered; fully opaque and not click-through, the
+/// window is an ordinary one again.
+#[cfg(windows)]
+fn set_window_opacity(window: &tauri::WebviewWindow, opacity: f64, click_through: bool) -> Result<(), String> {
+    use windows::Win32::Foundation::COLORREF;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
+    };
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let layered = WS_EX_LAYERED.0 as isize;
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if opacity >= 1.0 && !click_through {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style & !layered);
+            return Ok(());
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | layered);
+        SetLayeredWindowAttributes(hwnd, COLORREF(0), (opacity * 255.0).round() as u8, LWA_ALPHA).map_err(|e| e.to_string())
+    }
+}
+
+// ponytail: opacity on Windows only; macOS (NSWindow alphaValue) and Linux
+// (GTK opacity) when they can be built and tried. On top and click-through
+// work everywhere.
+#[cfg(not(windows))]
+fn set_window_opacity(_window: &tauri::WebviewWindow, _opacity: f64, _click_through: bool) -> Result<(), String> {
+    Ok(())
+}
+
 fn main() {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     let before = format!(
@@ -1465,6 +1509,7 @@ fn main() {
         // install, since the running binary is the one being replaced.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Let the webview stream media straight out of the vault.
         //
         // Video and audio traces used to be read whole over IPC and wrapped in
@@ -1532,6 +1577,7 @@ fn main() {
             rename_path,
             consolidate_runtime_media,
             download_remote_image,
+            set_overlay,
             startup_log
         ])
         .build(tauri::generate_context!());

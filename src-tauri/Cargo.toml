@@ -20,6 +20,9 @@ tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-clipboard-manager = "2"
+# The overlay (set_overlay): a shortcut that turns click-through off from anywhere.
+# 2.3: 2.4 wants Tauri 2.12, and would take the whole tree up with it.
+tauri-plugin-global-shortcut = "~2.3.2"
 # Already in the tree via the updater; declared here so the image download
 # command can use it. rustls to match what is already being built rather than
 # pulling a second TLS stack in.
@@ -33,6 +36,9 @@ serde_json = "1"
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
+# The overlay's opacity: a layered window (set_window_opacity). The version
+# Tauri itself is built on, already in the tree.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 # Tuned so the release build fits in this machine's available commit rather
 # than for maximum optimization. Compiling the final binary at the stock
