@@ -29,6 +29,8 @@ import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { showToast } from '../lib/toast'
+import PalettePanel from './PalettePanel'
+import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
 import { recordAction } from '../lib/actionHistory'
@@ -717,6 +719,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   useEffect(() => { presentationIndexRef.current = presentationIndex }, [presentationIndex])
   const [showLobbyManagement, setShowLobbyManagement] = useState(false)
   const [showThemeCustomization, setShowThemeCustomization] = useState(false)
+  // The palette, beside the view bar (PalettePanel).
+  const [showPalette, setShowPalette] = useState(false)
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   // Customize quick bar (QuickBarEditor), from the bar's More.
   const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
@@ -2043,6 +2047,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // keys live in -- so undo, redo, Enter, Delete and Escape all went quiet
       // the moment the brush width or smoothing slider took focus.
       if (isEditableTarget(e.target)) return
+
+      // I: the colour under the pointer, into the palette (lib/eyedropper).
+      if (e.code === 'KeyI' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const at = lastMouseScreenPositionRef.current
+        if (at) {
+          e.preventDefault()
+          void takeColourAt(at.x, at.y, useGameStore.getState().traces)
+        }
+        return
+      }
 
       // Move the view: H takes it up and puts it down, Escape puts it down.
       if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isDrawingModeRef.current) {
@@ -4646,6 +4660,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setMultiSelectRequest([])
       setShowThemeCustomization(true)
     } },
+    { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
     { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
       if (showProfileCustomization) { setShowProfileCustomization(false); return }
       closeSidePanels()
@@ -4939,8 +4954,23 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           them beside the atrium's name -- and in the bottom-right corner, the
           usage, which a phone does without. */}
       {!uiHidden && !narrow && (
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex items-start">
         <ViewBar items={viewItems} />
+        {/* The palette slides out beside it, and the two stay in the middle
+            together: this row is what's centred, and it widens. */}
+        <div className="grid transition-[grid-template-columns,opacity] duration-300 ease-out" style={{ gridTemplateColumns: showPalette ? '1fr' : '0fr', opacity: showPalette ? 1 : 0 }}>
+          <div className="min-w-0 overflow-hidden">
+            <div className="pl-2">
+              <PalettePanel open={showPalette} />
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+      {/* A phone has the view bar in its menu: the palette, under the top row. */}
+      {!uiHidden && narrow && showPalette && (
+      <div className="fixed top-[4.5rem] left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+        <PalettePanel open />
       </div>
       )}
       {!uiHidden && !narrow && (

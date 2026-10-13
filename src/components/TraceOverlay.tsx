@@ -36,6 +36,7 @@ import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween
 import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
+import { APPLY_COLOUR_EVENT, type ApplyColour } from '../lib/palette'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
 import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
@@ -5551,6 +5552,42 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       el.animate([{ translate: `${dx}px ${dy}px`, scale: `${s}` }, { translate: '0px 0px', scale: '1' }], { duration: ARRANGE_GLIDE_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' })
     }
   }, [glideTick])
+
+  // ---- A colour from the palette (PalettePanel) ----------------------------
+  // On what's selected, as one undo step: a shape's fill, a line's colour,
+  // text's, a frame's border. Pictures, drawings and the rest have no one
+  // colour of their own to take it; with only those selected, `applied` stays
+  // false and the palette copies the colour's code instead.
+  const colourOf = (trace: Trace, colour: string): Partial<Trace> | null => {
+    if (trace.strokeData) return null
+    if (isPathTrace(trace)) return { shapeOutlineColor: colour }
+    if (trace.type === 'shape') return { shapeColor: colour }
+    if (trace.type === 'text') return { textColor: colour }
+    if (isFrame(trace)) return { borderColor: colour }
+    return null
+  }
+  const applyColourRef = useRef<(colour: string) => boolean>(() => false)
+  applyColourRef.current = (colour: string) => {
+    if (!canEdit) return false
+    const ids = new Set([...multiSelectedIds, ...(selectedTraceId ? [selectedTraceId] : [])])
+    const changes: [string, Partial<Trace>][] = []
+    for (const id of ids) {
+      const trace = traces.find(tr => tr.id === id)
+      const patch = trace && !isLockedTrace(trace) ? colourOf(trace, colour) : null
+      if (patch) changes.push([id, patch])
+    }
+    if (changes.length === 0) return false
+    inOneStep(() => { for (const [id, patch] of changes) updateTraceCustomization(id, patch) })
+    return true
+  }
+  useEffect(() => {
+    const onColour = (e: Event) => {
+      const ask = (e as CustomEvent<ApplyColour>).detail
+      ask.applied = applyColourRef.current(ask.colour)
+    }
+    window.addEventListener(APPLY_COLOUR_EVENT, onColour)
+    return () => window.removeEventListener(APPLY_COLOUR_EVENT, onColour)
+  }, [])
 
   // A frame's title, as typed. Left as it was if emptied.
   const renameFrame = (id: string, name: string) => {
