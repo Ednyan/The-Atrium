@@ -15,6 +15,12 @@
 // frame -- never into the store, whose `otherUsers` draws the whole canvas
 // overlay again on every change.
 //
+// A connection is to a place someone is in the atrium -- their account and
+// that page of theirs, `user/PAGE` -- for one account can be here more than
+// once: two tabs, a phone and a PC. With one connection for the account,
+// both pages answered to it, and the still one could hold it while the
+// moving one's cursor stood frozen. What comes from a place is its person's.
+//
 // Cloudflare's relay (TURN) is the last resort: a pair that can't connect
 // directly -- a strict network -- goes through it. Someone hiding their IP
 // address (Profile) goes only through it, so the others see the relay's
@@ -46,7 +52,7 @@ const HEARTBEAT_MS = 2000
 const SILENT_MS = 5000
 const DEAD_MS = 20_000
 
-/** The introduction, sent through the presence channel. */
+/** The introduction, sent through the presence channel, to a place. */
 export interface Signal { to: string; kind: 'offer' | 'answer'; sdp: string }
 /** What flows directly: a cursor, with the moment it was there on the
  *  sender's clock (performance.now); a batch of laser points (lib/laser); or
@@ -54,8 +60,18 @@ export interface Signal { to: string; kind: 'offer' | 'answer'; sdp: string }
 export type Live = { k: 'c'; x: number; y: number; t?: number } | { k: 'l'; m: unknown } | { k: 'h' }
 
 /** Where each directly connected person's cursor is, in the world: the latest,
- *  with its moment on their clock and when it arrived here (lib/playback). */
-export const livePositions = new Map<string, { x: number; y: number; t: number; at: number }>()
+ *  with its moment on the clock of the place that sent it (`by`), and when it
+ *  arrived here (lib/playback). */
+export const livePositions = new Map<string, { x: number; y: number; t: number; at: number; by: string }>()
+
+/** This page, among its account's places in an atrium (announced in
+ *  presence; usePresence). It lasts the page: reconnecting keeps it. Not
+ *  randomUUID, which isn't there over plain http (the dev server, on a phone). */
+export const PAGE = Math.random().toString(36).slice(2, 12)
+/** Whose a place is (`user/PAGE`). */
+export const userOf = (place: string) => place.split('/')[0]
+// A place's cursor, let go of with it -- unless another of theirs sent the last.
+const unplace = (place: string) => { if (livePositions.get(userOf(place))?.by === place) livePositions.delete(userOf(place)) }
 
 // A pass for the relay (supabase/functions/relay-pass), kept in this browser
 // for as long as it lasts, so another atrium or a reload doesn't ask again.
@@ -152,14 +168,14 @@ export function reportPath(id: string, path: Path | null) {
 }
 export const forgetPaths = () => paths.clear()
 // Directly or through the relay: the pair of addresses the open connection uses.
-async function reportRoute(id: string, pc: RTCPeerConnection) {
+async function reportRoute(place: string, pc: RTCPeerConnection) {
   const stats = await pc.getStats()
   let relayed: boolean | null = null
   stats.forEach(report => {
     if (report.type !== 'candidate-pair' || report.state !== 'succeeded' || !report.nominated) return
     relayed = stats.get(report.localCandidateId)?.candidateType === 'relay' || stats.get(report.remoteCandidateId)?.candidateType === 'relay'
   })
-  if (relayed !== null) reportPath(id, relayed ? 'relay' : 'direct')
+  if (relayed !== null) reportPath(userOf(place), relayed ? 'relay' : 'direct')
 }
 
 /** WebRTC is here (not in the Linux app's webview), and this person either
@@ -210,7 +226,7 @@ export class Mesh {
     this.beat = window.setInterval(() => this.tick(), 1000)
   }
 
-  /** Who's in the atrium now: the new connected to -- and, with `prune` (the
+  /** Who's in the atrium now, by place: the new connected to -- and, with `prune` (the
    *  slow reconcile, whose snapshot is settled), the gone let go of. Presence's
    *  own sync events can carry a snapshot that's missing someone for a moment
    *  (usePresence, applyPresenceState): a link dropped on one of those was
@@ -219,7 +235,15 @@ export class Mesh {
   sync(roster: Iterable<string>, prune = false) {
     if (this.closed) return
     const here = new Set(roster)
-    if (prune) for (const id of [...this.peers.keys()]) if (!here.has(id)) { this.drop(id, 'gone from presence'); reportPath(id, null) }
+    if (prune) {
+      for (const id of [...this.peers.keys()]) {
+        if (here.has(id)) continue
+        // Still heard from: here, whatever presence says (forget).
+        if (this.carries(id)) { note(id, 'not in presence, but still heard from: kept'); continue }
+        this.drop(id, 'gone from presence')
+        if (!this.linked(userOf(id))) reportPath(userOf(id), null)
+      }
+    }
     for (const id of here) {
       if (id === this.self || this.peers.has(id) || id < this.self) continue
       if (this.peers.size >= MOST_LINKS) break
@@ -267,23 +291,36 @@ export class Mesh {
     }
   }
 
-  /** Connected directly, and carrying: heard from lately. */
-  linked(id: string) {
-    const peer = this.peers.get(id)
-    return !!peer?.open && peer.live
+  /** Connected directly to the person, at any of their places, and carrying: heard from lately. */
+  linked(user: string) {
+    for (const place of this.peers.keys()) if (userOf(place) === user && this.carries(place)) return true
+    return false
   }
   /** A connection to them under way, not open yet. */
-  connecting(id: string) { return this.peers.has(id) && !this.peers.get(id)!.open }
+  connecting(user: string) {
+    for (const [place, peer] of this.peers) if (userOf(place) === user && !peer.open) return true
+    return false
+  }
 
   /** Each carrying connection's route looked at again (reportPath says only a change). */
   recheckRoutes() {
     for (const [id, peer] of this.peers) if (peer.open && peer.live) void reportRoute(id, peer.pc)
   }
 
-  /** Someone gone from the atrium (their presence left). */
-  forget(id: string) {
-    this.drop(id, 'left')
-    reportPath(id, null)
+  /** Someone gone from the atrium (their presence left), from every place. */
+  forget(user: string) {
+    // Presence can lose someone for a moment -- their browser's connection to
+    // it reconnecting, which Safari's does when it rests a page. A link still
+    // carrying something is theirs all the same: one really gone closes from
+    // their side, or goes quiet and is let go of (tick). Dropped on presence
+    // alone, a working link was ended here, made again by the other side, and
+    // ended again, on a loop.
+    for (const id of [...this.peers.keys()]) {
+      if (userOf(id) !== user) continue
+      if (this.carries(id)) { note(id, 'left presence, but still heard from: kept'); continue }
+      this.drop(id, 'left')
+    }
+    if (!this.linked(user)) reportPath(user, null)
   }
 
   close() {
@@ -342,7 +379,7 @@ export class Mesh {
     channel.onclose = () => {
       if (this.peers.get(id) !== peer) return
       this.drop(id, 'closed by them')
-      reportPath(id, 'supabase')
+      if (!this.linked(userOf(id))) reportPath(userOf(id), 'supabase')
     }
     channel.onmessage = event => {
       peer.heardAt = performance.now()
@@ -370,8 +407,8 @@ export class Mesh {
       note(id, live ? 'heard again' : `nothing heard for ${SILENT_MS / 1000} s: their Supabase copies count again`)
       if (live) void reportRoute(id, peer.pc)
       else {
-        livePositions.delete(id)
-        reportPath(id, 'supabase')
+        unplace(id)
+        if (!this.linked(userOf(id))) reportPath(userOf(id), 'supabase')
       }
     }
   }
@@ -379,7 +416,7 @@ export class Mesh {
   private fail(id: string, why: string) {
     this.failedAt.set(id, Date.now())
     this.drop(id, `${why}; tried again in ${RETRY_MS / 1000} s`)
-    reportPath(id, 'supabase')
+    if (!this.linked(userOf(id))) reportPath(userOf(id), 'supabase')
   }
 
   private drop(id: string, why: string) {
@@ -389,11 +426,16 @@ export class Mesh {
     this.peers.delete(id)
     try { peer.channel?.close() } catch { /* gone */ }
     peer.pc.close()
-    livePositions.delete(id)
+    unplace(id)
     if (peer.open) this.changed()
   }
 
+  private carries(place: string) {
+    const peer = this.peers.get(place)
+    return !!peer?.open && peer.live
+  }
+
   private changed() {
-    publish([...this.peers].filter(([, peer]) => peer.open && peer.live).map(([id]) => id))
+    publish([...this.peers.keys()].filter(place => this.carries(place)).map(userOf))
   }
 }

@@ -3,7 +3,7 @@ import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase } from '../lib/supabase'
 import { isGhostEntry } from '../lib/operatorGhost'
 import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '../lib/laser'
-import { Mesh, askForRelay, canLink, forgetPaths, livePositions, reportPath, type Live, type Signal } from '../lib/peers'
+import { Mesh, PAGE, askForRelay, canLink, forgetPaths, livePositions, reportPath, userOf, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -19,6 +19,8 @@ const announcement = (username: string, playerColor: string, at: { x: number; y:
   // Whether they can be connected to directly (lib/peers): nobody offers to
   // someone who can't answer -- the Linux app, or someone hiding their IP.
   link: canLink(),
+  // Which of their pages this is: each is connected to on its own.
+  page: PAGE,
 })
 
 // Ghost mode: the platform operator entering an atrium it wouldn't otherwise
@@ -196,27 +198,34 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // IP address (Profile), only through the relay, once there's a pass for
     // it; the switch takes effect at once.
     let mesh: Mesh | null = null
-    // Everyone here; and of them, those who can be connected to directly.
+    // This page, among the places people are here (lib/peers).
+    const place = `${userId}/${PAGE}`
+    // Everyone here; and of them, the places that can be connected to directly
+    // -- every page of theirs (a version from before `page` can't be).
     const everyone = () => Object.keys(channel.presenceState()).filter(key => key !== userId && isValidUserKey(key))
     const roster = () => Object.entries(channel.presenceState())
-      .filter(([key, presences]) => key !== userId && isValidUserKey(key) && (presences as { link?: boolean }[])[0]?.link !== false)
-      .map(([key]) => key)
+      .filter(([key]) => key !== userId && isValidUserKey(key))
+      .flatMap(([key, presences]) => (presences as { link?: boolean; page?: unknown }[])
+        .filter(presence => presence.link !== false && typeof presence.page === 'string')
+        .map(presence => `${key}/${presence.page}`))
     const fromPeer = (from: string, message: Live) => {
       const at = performance.now()
+      const user = userOf(from)
       if (message.k === 'c' && Number.isFinite(message.x) && Number.isFinite(message.y)) {
         // A version from before `t`: its moment is its arrival. One overtaken
-        // on the way (a direct link keeps no order) is behind already.
+        // on the way (a direct link keeps no order) is behind already -- on
+        // the clock of the page it came from: another of theirs keeps its own.
         const t = Number.isFinite(message.t) ? message.t! : at
-        const latest = livePositions.get(from)?.t ?? -Infinity
-        if (t <= latest && latest - t < RESTART_MS) return
-        livePositions.set(from, { x: message.x, y: message.y, t, at })
+        const latest = livePositions.get(user)
+        if (latest?.by === from && t <= latest.t && latest.t - t < RESTART_MS) return
+        livePositions.set(user, { x: message.x, y: message.y, t, at, by: from })
       }
-      else if (message.k === 'l' && message.m && typeof message.m === 'object') receiveLaser({ ...(message.m as object), userId: from } as Parameters<typeof receiveLaser>[0])
+      else if (message.k === 'l' && message.m && typeof message.m === 'object') receiveLaser({ ...(message.m as object), userId: user } as Parameters<typeof receiveLaser>[0])
     }
     const connect = () => {
       if (mesh || ghostRef.current !== false || !canLink() || channelRef.current !== channel) return
-      mesh = new Mesh(userId, signal => {
-        void channel.send({ type: 'broadcast', event: 'rtc', payload: { ...signal, from: userId } })
+      mesh = new Mesh(place, signal => {
+        void channel.send({ type: 'broadcast', event: 'rtc', payload: { ...signal, from: place } })
       }, fromPeer)
       mesh.sync(roster())
     }
@@ -275,9 +284,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       .on('broadcast', { event: 'laser' }, ({ payload }: { payload: any }) => {
         if (payload && payload.userId !== userId && isValidUserKey(payload.userId) && !mesh?.linked(payload.userId)) receiveLaser(payload)
       })
-      // An introduction for a direct connection (lib/peers).
+      // An introduction for a direct connection (lib/peers), from a place.
       .on('broadcast', { event: 'rtc' }, ({ payload }: { payload: any }) => {
-        if (payload && isValidUserKey(payload.from) && typeof payload.sdp === 'string' && (payload.kind === 'offer' || payload.kind === 'answer')) {
+        if (payload && typeof payload.from === 'string' && isValidUserKey(userOf(payload.from)) && typeof payload.sdp === 'string' && (payload.kind === 'offer' || payload.kind === 'answer')) {
           void mesh?.signal(payload.from, payload as Signal)
         }
       })
