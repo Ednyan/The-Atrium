@@ -17,7 +17,8 @@ export const MENU_ICONS = {
   open: 'M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2',
   image: 'M15 8h.01M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3zM3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3',
   share: 'M3 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M15 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M15 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M8.7 10.7l6.6 -3.4M8.7 13.3l6.6 3.4',
-  themes: 'M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+  // A paint roller: a theme repaints the whole room; the palette is its colours.
+  themes: 'M5 5a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2zM19 6h1a2 2 0 0 1 2 2a5 5 0 0 1 -5 5l-5 0v2M10 16a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z',
   preferences: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M6.168 18.849a4 4 0 0 1 3.832 -2.849h4a4 4 0 0 1 3.834 2.855',
   permissions: 'M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3M9 12l2 2l4 -4',
   recenter: 'M11.5 12a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0M4 8v-2a2 2 0 0 1 2 -2h2M4 16v2a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v2M16 20h2a2 2 0 0 0 2 -2v-2',
@@ -39,7 +40,7 @@ export const MENU_ICONS = {
   close: 'M18 6l-12 12M6 6l12 12',
   controls: 'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2zM6 10v.01M10 10v.01M14 10v.01M18 10v.01M6 14v.01M18 14v.01M10 14h4',
   // Swatches (Tabler's color-swatch, MIT).
-  palette: 'M19 3h-4a2 2 0 0 0 -2 2v12a4 4 0 0 0 8 0v-12a2 2 0 0 0 -2 -2M13 7.35l-2 -2a2 2 0 0 0 -2.828 0l-2.828 2.828a2 2 0 0 0 0 2.828l9 9M7.3 13h-2.3a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h12M17 17v.01',
+  palette: 'M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
   overlay: 'M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2zM6 8h.01M9 8h.01',
 } as const
 
@@ -152,6 +153,8 @@ export interface MenuItem {
   open?: boolean
   // A rule above it, between groups.
   apart?: boolean
+  // What it sets is in effect (the view bar's overlay): marked, closed too.
+  lit?: boolean
 }
 
 export default function AtriumMenu({ open, onOpenChange, items }: {
@@ -270,15 +273,22 @@ export function ViewBar({ items }: { items: MenuItem[] }) {
             onClick={item.onSelect}
             aria-label={item.hint ? `${item.label} (${item.hint})` : item.label}
             aria-pressed={item.open}
-            className={`peer w-9 h-9 flex items-center justify-center border transition-colors ${
+            aria-expanded={item.panel ? !!item.open : undefined}
+            className={`peer relative w-9 h-9 flex items-center justify-center border transition-colors ${
               item.open
                 ? 'bg-nier-bg text-nier-black border-nier-bg'
-                : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg focus-visible:border-nier-border/60'
+                : item.lit
+                  ? 'bg-transparent text-nier-bg border-nier-bg/60 hover:border-nier-bg'
+                  : 'bg-transparent text-nier-bg/80 border-transparent hover:border-nier-border/60 hover:text-nier-bg focus-visible:border-nier-border/60'
             }`}
           >
             <MenuIcon d={item.icon} />
+            {item.lit && <span data-lit="" className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full" style={{ background: 'rgb(var(--c-emerald))' }} />}
           </button>
-          <SlideLabel side="below-centre" text={item.label} hint={item.hint} onPress={item.onSelect} />
+          {/* Its panel, under it while open -- and its name, only while not. */}
+          {item.panel && item.open
+            ? <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-10">{item.panel}</div>
+            : <SlideLabel side="below-centre" text={item.label} hint={item.hint} onPress={item.onSelect} />}
         </div>
       ))}
     </div>

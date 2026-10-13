@@ -36,9 +36,9 @@ serde_json = "1"
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
-# The overlay's opacity: a layered window (set_window_opacity). The version
-# Tauri itself is built on, already in the tree.
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+# The overlay (set_overlay): the window seen through, and the taskbar
+# preview's button. The version Tauri 2.10 itself is built on.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 # Tuned so the release build fits in this machine's available commit rather
 # than for maximum optimization. Compiling the final binary at the stock

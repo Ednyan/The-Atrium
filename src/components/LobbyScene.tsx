@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
@@ -31,7 +31,7 @@ import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
-import { overlayNow, setOverlay } from '../lib/overlay'
+import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -545,15 +545,6 @@ function LinkMark({ userId }: { userId: string }) {
   )
 }
 
-// A panel sliding out beside the view bar, opening its width as it does.
-const besideViewBar = (open: boolean, panel: ReactNode) => (
-  <div className="grid transition-[grid-template-columns,opacity] duration-300 ease-out" style={{ gridTemplateColumns: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}>
-    <div className="min-w-0 overflow-hidden">
-      <div className="pl-2">{panel}</div>
-    </div>
-  </div>
-)
-
 export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySceneProps) {
   const { t, language } = useTranslation()
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -734,6 +725,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // the window as an overlay (OverlayPanel).
   const [showPalette, setShowPalette] = useState(false)
   const [showOverlay, setShowOverlay] = useState(false)
+  const overlay = useOverlay()
+  // Its panel hangs under its button: a press anywhere else closes it, as Escape does.
+  useEffect(() => {
+    if (!showOverlay) return
+    const away = (e: PointerEvent) => { if (!(e.target as Element).closest?.('[data-overlay-panel], [data-view="overlay"]')) setShowOverlay(false) }
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowOverlay(false) }
+    window.addEventListener('pointerdown', away, true)
+    window.addEventListener('keydown', escape)
+    return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', escape) }
+  }, [showOverlay])
+  // Seen through (lib/overlay; index.css): the page clear where the desktop
+  // behind should show -- the atrium's background gone, or the canvas faded,
+  // or everything with it.
+  const seeThrough = isDesktop && seeingThrough(overlay)
+  useEffect(() => {
+    const root = document.documentElement
+    root.toggleAttribute('data-see-through', seeThrough)
+    root.toggleAttribute('data-clear-ground', seeThrough && overlay.clearBackground)
+    root.style.setProperty('--overlay-canvas', String(seeThrough && !overlay.menusToo ? overlay.opacity : 1))
+    root.style.setProperty('--overlay-everything', String(seeThrough && overlay.menusToo ? overlay.opacity : 1))
+    return () => {
+      root.removeAttribute('data-see-through')
+      root.removeAttribute('data-clear-ground')
+      root.style.removeProperty('--overlay-canvas')
+      root.style.removeProperty('--overlay-everything')
+    }
+  }, [seeThrough, overlay.clearBackground, overlay.menusToo, overlay.opacity])
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   // Customize quick bar (QuickBarEditor), from the bar's More.
   const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
@@ -4667,9 +4685,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const viewItems: MenuItem[] = [
     { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
     { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
+    { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
     { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
     { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
     { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
+    // Lit while any of it is in effect, closed too: a window on top or seen
+    // through should never look like it isn't.
+    ...(isDesktop ? [{ id: 'overlay', icon: MENU_ICONS.overlay, label: t('atrium.hud.overlay'), open: showOverlay, lit: overlay.onTop || inOverlayMode(overlay), panel: <OverlayPanel />, onSelect: () => setShowOverlay(open => !open) }] : []),
     // Docked where a trace's panel and the Layer panel are: it takes
     // their place, and lets go of the selection.
     { id: 'themes', icon: MENU_ICONS.themes, label: t('atrium.hud.theme'), apart: true, open: showThemeCustomization, onSelect: () => {
@@ -4680,8 +4702,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       setMultiSelectRequest([])
       setShowThemeCustomization(true)
     } },
-    { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
-    ...(isDesktop ? [{ id: 'overlay', icon: MENU_ICONS.overlay, label: t('atrium.hud.overlay'), open: showOverlay, onSelect: () => setShowOverlay(open => !open) }] : []),
     { id: 'preferences', icon: MENU_ICONS.preferences, label: t('atrium.hud.profile'), open: showProfileCustomization, onSelect: () => {
       if (showProfileCustomization) { setShowProfileCustomization(false); return }
       closeSidePanels()
@@ -4740,8 +4760,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Canvas Container with Overlay - Full Viewport */}
-      <div className="w-full h-full relative">
+      {/* Canvas Container with Overlay - Full Viewport. Faded as one in the
+          desktop app's overlay (data-canvas-layer, index.css). */}
+      <div data-canvas-layer="" className="w-full h-full relative">
         {/* The room's picture, under the canvas (refreshBackdrop). */}
         <div
           ref={el => { backdrop.el = el }}
@@ -4749,9 +4770,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           className="absolute inset-0 pointer-events-none"
           style={{ display: 'none', backgroundRepeat: 'repeat' }}
         />
-        {/* Pixi Canvas */}
+        {/* Pixi Canvas: the atrium's colour, its ground, the grid -- gone
+            with its background in the overlay (data-ground). */}
         <div
           ref={canvasRef}
+          data-ground=""
           className="absolute inset-0"
         />
         
@@ -4977,17 +5000,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {!uiHidden && !narrow && (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex items-start">
         <ViewBar items={viewItems} />
-        {/* The palette and the overlay slide out beside it, and stay in the
-            middle with it: this row is what's centred, and it widens. */}
-        {besideViewBar(showPalette, <PalettePanel open={showPalette} />)}
-        {isDesktop && besideViewBar(showOverlay, <OverlayPanel open={showOverlay} />)}
+        {/* The palette slides out beside it, and the two stay in the middle
+            together: this row is what's centred, and it widens. */}
+        <div className="grid transition-[grid-template-columns,opacity] duration-300 ease-out" style={{ gridTemplateColumns: showPalette ? '1fr' : '0fr', opacity: showPalette ? 1 : 0 }}>
+          <div className="min-w-0 overflow-hidden">
+            <div className="pl-2">
+              <PalettePanel open={showPalette} />
+            </div>
+          </div>
+        </div>
       </div>
       )}
       {/* A phone, or a narrow window, has the view bar in its menu: these, under the top row. */}
       {!uiHidden && narrow && (showPalette || showOverlay) && (
       <div className="fixed top-[4.5rem] left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-2">
         {showPalette && <PalettePanel open />}
-        {isDesktop && showOverlay && <OverlayPanel open />}
+        {isDesktop && showOverlay && <OverlayPanel />}
       </div>
       )}
       {!uiHidden && !narrow && (
@@ -5106,7 +5134,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             id: 'report', icon: MENU_ICONS.report, label: t('atrium.hud.reportProblem'),
             onSelect: fromMenu(() => setShowReportForm(true)),
           },
-          ...(narrow ? viewItems.map((item, i) => ({ ...item, apart: i === 0 || item.apart, onSelect: fromMenu(item.onSelect) })) : []),
+          ...(narrow ? viewItems.map((item, i) => ({ ...item, panel: undefined, apart: i === 0 || item.apart, onSelect: fromMenu(item.onSelect) })) : []),
         ]}
       />
       {/* The atrium's name, beside the menu's button, with Save under it while

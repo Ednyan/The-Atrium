@@ -1410,46 +1410,123 @@ fn repair_user_environment() {
 
 /// The window as an overlay, PureRef's way (src/lib/overlay.ts): over every
 /// other window, letting clicks through to whatever is behind it, and seen
-/// through at `opacity`. All three at once, in this order: on Windows, the
-/// first two each rewrite the window's extended style, which drops the
-/// layering its opacity is set with, so the opacity goes on last. A command
-/// that isn't async runs on the main thread, where those are applied at once.
+/// through -- the page then decides what shows of the desktop behind: its
+/// background gone, its canvas faded, its menus or not. A command that isn't
+/// async runs on the main thread, the window's own.
+///
+/// `exit_label` is the taskbar preview's button, shown while any of it is on:
+/// it asks the page to end overlay mode (the event "atrium-exit-overlay").
 #[tauri::command]
-fn set_overlay(window: tauri::WebviewWindow, on_top: bool, click_through: bool, opacity: f64) -> Result<(), String> {
+fn set_overlay(window: tauri::WebviewWindow, on_top: bool, click_through: bool, see_through: bool, exit_label: String) -> Result<(), String> {
     window.set_always_on_top(on_top).map_err(|e| e.to_string())?;
     window.set_ignore_cursor_events(click_through).map_err(|e| e.to_string())?;
-    set_window_opacity(&window, opacity.clamp(0.1, 1.0), click_through)
-}
-
-/// A layered window, at `opacity`. Click-through makes the window layered
-/// too, and a layered window with no level set may not be drawn at all, so
-/// it gets one whenever it's layered; fully opaque and not click-through, the
-/// window is an ordinary one again.
-#[cfg(windows)]
-fn set_window_opacity(window: &tauri::WebviewWindow, opacity: f64, click_through: bool) -> Result<(), String> {
-    use windows::Win32::Foundation::COLORREF;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
-    };
-    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-    let layered = WS_EX_LAYERED.0 as isize;
-    unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        if opacity >= 1.0 && !click_through {
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style & !layered);
-            return Ok(());
-        }
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | layered);
-        SetLayeredWindowAttributes(hwnd, COLORREF(0), (opacity * 255.0).round() as u8, LWA_ALPHA).map_err(|e| e.to_string())
+    // Seen through: the webview's ground clear, and the window's -- as tao
+    // makes a transparent window, but now rather than when it's made.
+    window
+        .set_background_color(see_through.then_some(tauri::window::Color(0, 0, 0, 0)))
+        .map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        overlay_windows::see_through(hwnd, see_through);
+        overlay_windows::exit_button(hwnd, click_through || see_through, &exit_label);
     }
+    #[cfg(not(windows))]
+    let _ = exit_label;
+    Ok(())
 }
 
-// ponytail: opacity on Windows only; macOS (NSWindow alphaValue) and Linux
-// (GTK opacity) when they can be built and tried. On top and click-through
-// work everywhere.
-#[cfg(not(windows))]
-fn set_window_opacity(_window: &tauri::WebviewWindow, _opacity: f64, _click_through: bool) -> Result<(), String> {
-    Ok(())
+// ponytail: seeing through, and the taskbar button, are Windows' alone; macOS
+// (NSWindow opaque/alphaValue) and Linux when they can be built and tried.
+// On top and click-through work everywhere.
+#[cfg(windows)]
+mod overlay_windows {
+    use std::cell::RefCell;
+    use std::sync::OnceLock;
+    use tauri::Emitter;
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Graphics::Dwm::{DwmEnableBlurBehindWindow, DWM_BB_BLURREGION, DWM_BB_ENABLE, DWM_BLURBEHIND};
+    use windows::Win32::Graphics::Gdi::{CreateRectRgn, DeleteObject};
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{
+        DefSubclassProc, ITaskbarList3, SetWindowSubclass, TaskbarList, THBF_ENABLED, THBF_HIDDEN, THBN_CLICKED, THB_FLAGS,
+        THB_ICON, THB_TOOLTIP, THUMBBUTTON,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, HICON, ICON_SMALL2, WM_COMMAND, WM_GETICON};
+
+    const EXIT: u32 = 1;
+    static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+    thread_local! {
+        // The taskbar's list, once the button is on it. COM: this thread only.
+        static TASKBAR: RefCell<Option<ITaskbarList3>> = const { RefCell::new(None) };
+    }
+
+    /// The desktop seen through wherever the page is clear: DWM honours the
+    /// window's own alpha with blur-behind on an empty region.
+    pub fn see_through(hwnd: HWND, on: bool) {
+        unsafe {
+            let region = CreateRectRgn(0, 0, -1, -1);
+            let behind = DWM_BLURBEHIND { dwFlags: DWM_BB_ENABLE | DWM_BB_BLURREGION, fEnable: on.into(), hRgnBlur: region, fTransitionOnMaximized: false.into() };
+            let _ = DwmEnableBlurBehindWindow(hwnd, &behind);
+            let _ = DeleteObject(region.into());
+        }
+    }
+
+    /// The taskbar preview's "Exit overlay mode", shown or hidden. Made the
+    /// first time it's asked for -- the window has its taskbar button by then.
+    pub fn exit_button(hwnd: HWND, shown: bool, label: &str) {
+        let mut tip = [0u16; 260];
+        for (i, unit) in label.encode_utf16().take(259).enumerate() {
+            tip[i] = unit;
+        }
+        let button = THUMBBUTTON {
+            dwMask: THB_ICON | THB_TOOLTIP | THB_FLAGS,
+            iId: EXIT,
+            iBitmap: 0,
+            // The app's own icon: the button's name is its tooltip.
+            hIcon: unsafe { HICON(SendMessageW(hwnd, WM_GETICON, Some(WPARAM(ICON_SMALL2 as usize)), Some(LPARAM(0))).0 as _) },
+            szTip: tip,
+            dwFlags: if shown { THBF_ENABLED } else { THBF_HIDDEN },
+        };
+        TASKBAR.with(|taskbar| unsafe {
+            let mut taskbar = taskbar.borrow_mut();
+            if let Some(list) = taskbar.as_ref() {
+                let _ = list.ThumbBarUpdateButtons(hwnd, &[button]);
+                return;
+            }
+            if !shown {
+                return;
+            }
+            // Already so on the webview's thread; said again, it's only counted.
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let Ok(list) = CoCreateInstance::<_, ITaskbarList3>(&TaskbarList, None, CLSCTX_INPROC_SERVER) else { return };
+            if list.HrInit().is_ok() && list.ThumbBarAddButtons(hwnd, &[button]).is_ok() {
+                *taskbar = Some(list);
+            }
+        });
+    }
+
+    /// Once, as the app starts: the button's press, heard in the window's own
+    /// messages.
+    pub fn listen(app: &tauri::App) {
+        use tauri::Manager;
+        let _ = APP.set(app.handle().clone());
+        let Some(window) = app.get_webview_window("main") else { return };
+        let Ok(hwnd) = window.hwnd() else { return };
+        unsafe {
+            let _ = SetWindowSubclass(hwnd, Some(pressed), 1, 0);
+        }
+    }
+
+    unsafe extern "system" fn pressed(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM, _id: usize, _data: usize) -> LRESULT {
+        if message == WM_COMMAND && (wparam.0 >> 16) as u32 & 0xffff == THBN_CLICKED && (wparam.0 & 0xffff) as u32 == EXIT {
+            if let Some(app) = APP.get() {
+                let _ = app.emit("atrium-exit-overlay", ());
+            }
+            return LRESULT(0);
+        }
+        DefSubclassProc(hwnd, message, wparam, lparam)
+    }
 }
 
 fn main() {
@@ -1543,6 +1620,8 @@ fn main() {
             }
             #[cfg(windows)]
             listen_for_dropped_paths(app);
+            #[cfg(windows)]
+            overlay_windows::listen(app);
             Ok(())
         })
         .on_page_load(|webview, payload| {
