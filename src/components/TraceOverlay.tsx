@@ -6304,6 +6304,45 @@ const isCropping = isSelected && isCropMode && canEdit
 const { x: cropX, y: cropY, w: cropWidth, h: cropHeight } = isCropping ? WHOLE : cropOf(trace)
 const shownCrop = isCropping ? { ...trace, cropX, cropY, cropWidth, cropHeight } : trace
 
+// A picture -- an image trace's, or an embed's that turned out to be one --
+// through the server's proxy if it won't load as itself, three tries, then
+// said to have failed. Each kind used to draw it with a copy of its own of
+// all this.
+const picture = (rawUrl: string, resolvedSrc: string | undefined) => (
+  <img
+    src={resolvedSrc || rawUrl}
+    alt=""
+    className="w-full h-full object-contain pointer-events-none select-none"
+    style={{ clipPath: cropClip(shownCrop) }}
+    onLoad={(e) => {
+      const img = e.currentTarget
+      if (img.naturalWidth && img.naturalHeight) {
+        setImageDimensions(prev => ({
+          ...prev,
+          [trace.id]: { width: img.naturalWidth, height: img.naturalHeight },
+        }))
+      }
+      setFailedImages(prev => {
+        const next = new Set(prev)
+        next.delete(trace.id)
+        return next
+      })
+    }}
+    onError={() => {
+      const retries = imageRetryCount[trace.id] || 0
+      if (retries < 3) {
+        // The server's proxy, for a site that won't serve it here; again
+        // with the cache passed by, after that.
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}${retries === 0 && !imageProxySources[trace.id] ? '' : `&t=${Date.now()}`}`
+        setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
+        setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
+      } else {
+        setFailedImages(prev => new Set(prev).add(trace.id))
+      }
+    }}
+  />
+)
+
 // Border container should match the cropped content size
 // For shapes, use their actual width/height properties
 const shapeWidth = trace.type === 'shape' ? (trace.width || 200) : width
@@ -6933,49 +6972,7 @@ return (
           // needs to know why it's empty.
           if (isLocal && resolvedSrc.startsWith('local://')) return <TraceGlitch reason={t('atrium.controls.missingFile')} />
           return (
-        <img
-          src={resolvedSrc || rawUrl}
-          alt=""
-          className="w-full h-full object-contain pointer-events-none select-none"
-          style={{ 
-            clipPath: cropClip(shownCrop),
-          }}
-          onLoad={(e) => {
-            const img = e.currentTarget
-            if (img.naturalWidth && img.naturalHeight) {
-              setImageDimensions(prev => ({
-                ...prev,
-                [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
-              }))
-            }
-            // Clear from failed if it was there
-            setFailedImages(prev => {
-              const next = new Set(prev)
-              next.delete(trace.id)
-              return next
-            })
-          }}
-          onError={() => {
-            const retries = imageRetryCount[trace.id] || 0
-            if (retries < 3) {
-              const url = trace.mediaUrl || trace.imageUrl
-              if (url) {
-                if (retries === 0 && !imageProxySources[trace.id]) {
-                  // First retry: switch to proxy
-                  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-                  setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                } else {
-                  // Subsequent retries: retry proxy with cache bust
-                  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
-                  setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                }
-              }
-              setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
-            } else {
-              setFailedImages(prev => new Set(prev).add(trace.id))
-            }
-          }}
-        />
+        picture(rawUrl, resolvedSrc)
           )
         })()
       )}
@@ -7147,46 +7144,7 @@ return (
           if (isLocal && resolvedSrc.startsWith('local://')) return <TraceGlitch reason={t('atrium.controls.missingFile')} />
           // Render as image, not iframe
           return (
-            <img
-              src={resolvedSrc || trace.mediaUrl}
-              alt=""
-              className="w-full h-full object-contain pointer-events-none select-none"
-              style={{ 
-                clipPath: cropClip(shownCrop),
-              }}
-              onLoad={(e) => {
-                const img = e.currentTarget
-                if (img.naturalWidth && img.naturalHeight) {
-                  setImageDimensions(prev => ({
-                    ...prev,
-                    [trace.id]: { width: img.naturalWidth, height: img.naturalHeight }
-                  }))
-                }
-                setFailedImages(prev => {
-                  const next = new Set(prev)
-                  next.delete(trace.id)
-                  return next
-                })
-              }}
-              onError={() => {
-                const retries = imageRetryCount[trace.id] || 0
-                if (retries < 3) {
-                  const url = trace.mediaUrl
-                  if (url) {
-                    if (retries === 0 && !imageProxySources[trace.id]) {
-                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
-                      setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                    } else {
-                      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}&t=${Date.now()}`
-                      setImageProxySources(prev => ({ ...prev, [trace.id]: proxyUrl }))
-                    }
-                  }
-                  setImageRetryCount(prev => ({ ...prev, [trace.id]: retries + 1 }))
-                } else {
-                  setFailedImages(prev => new Set(prev).add(trace.id))
-                }
-              }}
-            />
+            picture(trace.mediaUrl, resolvedSrc)
           )
         }
         
