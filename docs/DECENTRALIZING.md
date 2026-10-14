@@ -1,6 +1,6 @@
 # Decentralizing the Atrium
 
-**Planned 2026-10-12. Phase 1 live; phase 3's room built (2026-10-14), not yet deployed.**
+**Planned 2026-10-12. Phase 1 live; phase 3's room live for everyone (2026-10-14).**
 
 The web version runs on Supabase's free tier, and its four limits are that
 tier's ceilings divided between everyone who uses it:
@@ -347,7 +347,11 @@ The room checks each sign-in token with Supabase Auth once per connection and
 stamps every message with its real sender, so a cursor or an introduction
 can't claim to be someone else's (today's channel can't tell).
 
-It isn't deployed yet: see workers/rooms/README.md, then set `ROOM_URL`.
+**Deployed 2026-10-14** on `rooms.digitalatrium.org` (workers/rooms/README.md).
+Tried by the user in Firefox and Chrome against each other: presence,
+"connected directly", and live cursors and laser all through the room. The
+first try was blocked by the site's own CSP (`connect-src`), and Firefox's
+throw from the WebSocket constructor then escaped the fallback. Both fixed.
 Harness, through a local room (`wrangler dev`):
 - pairs, four people, two tabs on one account, hiding, and the delay
   (27 ms cursor, 42 ms laser) are all as on Supabase;

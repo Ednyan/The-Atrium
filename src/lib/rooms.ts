@@ -18,9 +18,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { isDesktop, supabase } from './supabase'
 import { userOf } from './peers'
 
-// ponytail: set once the room service is deployed (workers/rooms/README.md); until
-// then, the Supabase channel as before.
-const ROOM_URL = ''
+// The room service (workers/rooms), on the site's own domain.
+const ROOM_URL = 'wss://rooms.digitalatrium.org'
 
 // The first connection's wait, before Supabase is used instead; a lost one is
 // tried again this many times, a little later each time, before the same.
