@@ -1436,6 +1436,39 @@ fn set_overlay(window: tauri::WebviewWindow, on_top: bool, click_through: bool, 
     Ok(())
 }
 
+/// Click-through, alone: switched many times a second while the menus stay
+/// clickable through it (src/lib/overlay.ts), so none of the rest is redone.
+#[tauri::command]
+fn set_click_through(window: tauri::WebviewWindow, on: bool) -> Result<(), String> {
+    window.set_ignore_cursor_events(on).map_err(|e| e.to_string())
+}
+
+/// Where the pointer is over the page, in its CSS pixels -- outside it too,
+/// and while the window lets clicks through, when the page can't know.
+#[tauri::command]
+fn overlay_pointer(window: tauri::WebviewWindow) -> Option<(f64, f64)> {
+    let cursor = window.cursor_position().ok()?;
+    let origin = window.inner_position().ok()?;
+    let scale = window.scale_factor().ok()?;
+    Some(((cursor.x - origin.x as f64) / scale, (cursor.y - origin.y as f64) / scale))
+}
+
+/// Whether the window came forward by a click inside it, rather than being
+/// switched back to (Alt+Tab, the taskbar): a mouse button down, over it.
+/// Coming back is what ends click-through and brings hidden menus back; a
+/// click -- on a menu kept clickable, on a trace -- leaves them be.
+#[cfg(windows)]
+fn focused_by_click(window: &tauri::WebviewWindow) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    let down = [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON].iter().any(|key| unsafe { GetAsyncKeyState(key.0 as i32) } as u16 & 0x8000 != 0);
+    let (Ok(cursor), Ok(at), Ok(size)) = (window.cursor_position(), window.outer_position(), window.outer_size()) else { return false };
+    down && cursor.x >= at.x as f64 && cursor.y >= at.y as f64 && cursor.x < (at.x + size.width as i32) as f64 && cursor.y < (at.y + size.height as i32) as f64
+}
+#[cfg(not(windows))]
+fn focused_by_click(_window: &tauri::WebviewWindow) -> bool {
+    false
+}
+
 // ponytail: seeing through, and the taskbar button, are Windows' alone; macOS
 // (NSWindow opaque/alphaValue) and Linux when they can be built and tried.
 // On top and click-through work everywhere.
@@ -1657,14 +1690,23 @@ fn main() {
             consolidate_runtime_media,
             download_remote_image,
             set_overlay,
+            set_click_through,
+            overlay_pointer,
             startup_log
         ])
         .build(tauri::generate_context!());
     match result {
         Ok(app) => {
             log_startup("built; running");
-            app.run(|_, event| match event {
+            app.run(|handle, event| match event {
                 tauri::RunEvent::WindowEvent { label, event, .. } => match event {
+                    // Back in front: how, for the overlay (focused_by_click).
+                    tauri::WindowEvent::Focused(true) => {
+                        use tauri::Emitter;
+                        if let Some(window) = handle.get_webview_window(&label) {
+                            let _ = window.emit("atrium-focus", focused_by_click(&window));
+                        }
+                    }
                     // Not the moves and resizes: only what can end a window.
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         log_startup(&format!("window {}: {:?}", label, event))

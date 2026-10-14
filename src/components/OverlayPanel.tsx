@@ -1,7 +1,8 @@
 // The overlay (lib/overlay), under its button in the desktop app's view bar:
-// the window always on top, click-through, its background gone, its opacity
-// -- the menus' too, or not -- as PureRef has them, with its keys:
-// Ctrl+Shift+A, Ctrl+T. And the way out of it all.
+// the window always on top, click-through -- the menus still clickable, or
+// not -- the menus hidden, its background gone, its canvas's opacity, as
+// PureRef has them, with its keys: Ctrl+Shift+A, Ctrl+T. And the way out of
+// it all.
 
 import { useTranslation } from '../lib/i18n'
 import { exitOverlay, inOverlayMode, seeThroughHere, setOverlay, useOverlay } from '../lib/overlay'
@@ -21,6 +22,12 @@ export default function OverlayPanel() {
       <Switch testId="on-top" label={t('atrium.overlay.onTop')} hint={t('atrium.overlay.onTopHint')} on={overlay.onTop} onChange={on => void setOverlay({ onTop: on })} />
       <Switch testId="click-through" label={t('atrium.overlay.clickThrough')} hint={t('atrium.overlay.clickThroughHint')} on={overlay.clickThrough} onChange={on => void setOverlay({ clickThrough: on })} />
       {seeThroughHere && (
+        <div className="pl-3 border-l border-nier-border/40">
+          <Switch testId="menus-clickable" label={t('atrium.overlay.menusClickable')} hint={t('atrium.overlay.menusClickableHint')} on={overlay.menusClickable} onChange={on => void setOverlay({ menusClickable: on })} />
+        </div>
+      )}
+      <Switch testId="hide-menus" label={t('atrium.overlay.hideMenus')} hint={t('atrium.overlay.hideMenusHint')} on={overlay.hideMenus} onChange={on => void setOverlay({ hideMenus: on })} />
+      {seeThroughHere && (
         <>
           <Switch testId="clear-background" label={t('atrium.overlay.clearBackground')} hint={t('atrium.overlay.clearBackgroundHint')} on={overlay.clearBackground} onChange={on => void setOverlay({ clearBackground: on })} />
           <Slider
@@ -28,7 +35,6 @@ export default function OverlayPanel() {
             min={0} max={100} step={1} value={Math.round(overlay.opacity * 100)}
             onChange={value => void setOverlay({ opacity: value / 100 })}
           />
-          <Switch testId="menus-too" label={t('atrium.overlay.menusToo')} hint={t('atrium.overlay.menusTooHint')} on={overlay.menusToo} onChange={on => void setOverlay({ menusToo: on })} />
         </>
       )}
       {inOverlayMode(overlay) && (

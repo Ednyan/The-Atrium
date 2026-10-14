@@ -735,23 +735,22 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     window.addEventListener('keydown', escape)
     return () => { window.removeEventListener('pointerdown', away, true); window.removeEventListener('keydown', escape) }
   }, [showOverlay])
+  // Click-through on: its panel goes, out of the way of what's behind.
+  useEffect(() => { if (overlay.clickThrough) setShowOverlay(false) }, [overlay.clickThrough])
   // Seen through (lib/overlay; index.css): the page clear where the desktop
-  // behind should show -- the atrium's background gone, or the canvas faded,
-  // or everything with it.
+  // behind should show -- the atrium's background gone, or the canvas faded.
   const seeThrough = isDesktop && seeingThrough(overlay)
   useEffect(() => {
     const root = document.documentElement
     root.toggleAttribute('data-see-through', seeThrough)
     root.toggleAttribute('data-clear-ground', seeThrough && overlay.clearBackground)
-    root.style.setProperty('--overlay-canvas', String(seeThrough && !overlay.menusToo ? overlay.opacity : 1))
-    root.style.setProperty('--overlay-everything', String(seeThrough && overlay.menusToo ? overlay.opacity : 1))
+    root.style.setProperty('--overlay-canvas', String(seeThrough ? overlay.opacity : 1))
     return () => {
       root.removeAttribute('data-see-through')
       root.removeAttribute('data-clear-ground')
       root.style.removeProperty('--overlay-canvas')
-      root.style.removeProperty('--overlay-everything')
     }
-  }, [seeThrough, overlay.clearBackground, overlay.menusToo, overlay.opacity])
+  }, [seeThrough, overlay.clearBackground, overlay.opacity])
   const [showProfileCustomization, setShowProfileCustomization] = useState(false)
   // Customize quick bar (QuickBarEditor), from the bar's More.
   const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
@@ -913,8 +912,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // Everything out of the way for a clean look at the atrium. The way out
   // stays, because being unable to leave is not a feature -- it just goes
-  // quiet until somebody reaches for it.
-  const [uiHidden, setUiHidden] = useState(false)
+  // quiet until somebody reaches for it. Or the overlay's Hide menus: that
+  // too, only the traces left, until the app is come back to (lib/overlay).
+  const [hidUi, setUiHidden] = useState(false)
+  const overlayHidesMenus = isDesktop && overlay.hideMenus
+  const uiHidden = hidUi || overlayHidesMenus
 
   // Set while the atrium steps back, just before it hands over. Going in was
   // already a move; coming out was a cut, which made the way back feel like a
@@ -4978,7 +4980,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
         {/* The way out; with the interface hidden, the way back to it, dimmed
             until reached for -- but not so far it can't be found. */}
-        <HudIconButton
+        {!overlayHidesMenus && <HudIconButton
           icon={uiHidden ? MENU_ICONS.show : MENU_ICONS.leave}
           label={uiHidden ? t('atrium.hud.showUi') : t('atrium.hud.leaveAtrium')}
           data-leave=""
@@ -4990,7 +4992,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           // red-300 is 1.65:1 on paper -- a warning nobody can read. The token
           // carries the red each theme can actually show.
           style={uiHidden ? undefined : { borderColor: 'rgb(var(--c-danger) / 0.55)', color: 'rgb(var(--c-danger))' }}
-        />
+        />}
       </div>
 
       {/* The viewing tools, a row along the top in the middle (AtriumMenu's

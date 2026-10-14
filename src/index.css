@@ -391,13 +391,12 @@ body {
 
 /* The desktop app as an overlay, in an atrium (lib/overlay; set by LobbyScene):
    the page clear wherever the desktop behind should show -- the window lets it
-   through there (set_overlay). The canvas faded, or everything. */
+   through there (set_overlay). The canvas faded. */
 html[data-see-through] body,
 html[data-see-through] .lobby-scene { background: transparent !important; }
 html[data-clear-ground] [data-backdrop],
 html[data-clear-ground] [data-ground] { visibility: hidden; }
 [data-canvas-layer] { opacity: var(--overlay-canvas, 1); }
-#root { opacity: var(--overlay-everything, 1); }
 
 * {
   box-sizing: border-box;
