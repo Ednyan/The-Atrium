@@ -5,6 +5,7 @@ import { isGhostEntry } from '../lib/operatorGhost'
 import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '../lib/laser'
 import { Mesh, PAGE, askForRelay, canLink, forgetPaths, livePositions, reportPath, userOf, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
+import { presenceChannel } from '../lib/rooms'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -128,8 +129,8 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // fire-and-forget pub/sub that doesn't mutate the presence registry, so
     // frequent position updates can't perturb (or be perturbed by) roster
     // sync, and don't cost anything extra in presence-diff bookkeeping.
-    const channelName = `lobby-${lobbyId}-presence`
-    const channel = supabase.channel(channelName, {
+    // The atrium's room (lib/rooms), or this Supabase channel where there's none.
+    const channel = presenceChannel(lobbyId, {
       config: {
         presence: {
           key: userId,
@@ -245,8 +246,9 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       // Every connection closed, and made again the other way.
       if (state.hideMyAddress !== before.hideMyAddress) { unlink(); link() }
     })
-    // Everyone here connected directly: the laser needn't touch the channel.
-    const allDirect = () => !!mesh && everyone().every(id => mesh!.linked(id))
+    // Everyone here connected directly, both ways: the laser and the slow
+    // cursor needn't touch the channel.
+    const allDirect = () => !!mesh && everyone().every(id => mesh!.reaches(id))
 
     // Track presence
     channel
@@ -400,8 +402,10 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
 
         // Only broadcast if:
         // 1. Enough time has passed (throttle), AND
-        // 2. Player has moved significantly
-        if (timeSinceLastBroadcast >= MIN_BROADCAST_INTERVAL && (dx >= MIN_MOVEMENT_DISTANCE || dy >= MIN_MOVEMENT_DISTANCE)) {
+        // 2. Player has moved significantly, AND
+        // 3. somebody here isn't connected directly, who'd see it no other way
+        //    (docs/DECENTRALIZING.md, 1c).
+        if (timeSinceLastBroadcast >= MIN_BROADCAST_INTERVAL && (dx >= MIN_MOVEMENT_DISTANCE || dy >= MIN_MOVEMENT_DISTANCE) && !allDirect()) {
           await channelRef.current.send({
             type: 'broadcast',
             event: 'cursor',

@@ -1,0 +1,23 @@
+# The rooms atriums' people meet in (src/index.ts). Deploy: see README.md.
+name = "atrium-rooms"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# A room per atrium. SQLite-backed, the kind the free plan offers; nothing
+# is stored in it.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# On the site's own domain, so the address doesn't depend on the account's
+# workers.dev name. Comment these two lines out to use workers.dev instead.
+[[routes]]
+pattern = "rooms.digitalatrium.org"
+custom_domain = true
+
+# SUPABASE_URL and SUPABASE_ANON_KEY are secrets (wrangler secret put), or
+# .dev.vars locally.

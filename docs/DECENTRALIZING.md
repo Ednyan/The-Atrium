@@ -1,6 +1,6 @@
 # Decentralizing the Atrium
 
-**Planned 2026-10-12. Phase 1 live; not yet tried across two different networks.**
+**Planned 2026-10-12. Phase 1 live; phase 3's room built (2026-10-14), not yet deployed.**
 
 The web version runs on Supabase's free tier, and its four limits are that
 tier's ceilings divided between everyone who uses it:
@@ -301,7 +301,12 @@ the channel and tells the others.
 
 ### 1c: stop the Supabase cursor broadcast for directly connected pairs
 
-Once 1 has run in production for a while.
+**Status: built (2026-10-14).** The slow cursor goes through the channel only
+while somebody here isn't connected directly *both ways*. Each side's "still
+here" now also says whether it hears the other (`ok`), and `reaches()` needs
+both. A link broken one way therefore costs a few seconds, not silence. In the
+harness, with one side's sends dropped, its cursor came through the channel
+after 8 s.
 
 ## Phase 2: saves reach everyone online directly
 
@@ -328,7 +333,40 @@ costs nothing, because the database event still arrives.
 **Goal:** the 200-connections ceiling becomes "200 people joining in the same
 moment", not "200 online".
 
-**How:**
+**Step 1, built (2026-10-14): the room.** `workers/rooms` is a Cloudflare
+Worker with a Durable Object per atrium. It carries what the Supabase presence
+channel did: who's here, the introductions, the slow cursor and laser, and kick
+notices. `src/lib/rooms.ts` makes it look like that channel to `usePresence`,
+and is that channel whenever the room can't be had:
+- none configured, or the desktop app;
+- signed out;
+- unreachable at first;
+- lost and not back after three tries (the free plan's day spent, say).
+
+The room checks each sign-in token with Supabase Auth once per connection and
+stamps every message with its real sender, so a cursor or an introduction
+can't claim to be someone else's (today's channel can't tell).
+
+It isn't deployed yet: see workers/rooms/README.md, then set `ROOM_URL`.
+Harness, through a local room (`wrangler dev`):
+- pairs, four people, two tabs on one account, hiding, and the delay
+  (27 ms cursor, 42 ms laser) are all as on Supabase;
+- unreachable from the start, it falls back at once;
+- stopped mid-visit, it falls back after 13 s, and the direct link never
+  noticed.
+
+**What step 1 doesn't do yet:** the 200-connection ceiling counts connections,
+and the atrium's live save updates (traces, layers, links, locations) still
+subscribe through Supabase, which holds the connection open anyway. Step 1
+lifts the presence *message* caps (2 million a month, 100 a second).
+
+**Step 2: live saves through the room.** After a save, the saver tells the room
+what changed (the rows, or a note to fetch them when large). Others apply it as
+they apply a database change event today, and the Supabase subscriptions are
+dropped while the room is up. Then a visitor holds no Supabase realtime
+connection at all.
+
+**Later, the original idea:**
 - The roster moves onto the direct connections. Each peer announces its name
   and colour, and heartbeats it.
 - The Supabase channel is opened to join (the introductions), kept only while

@@ -42,12 +42,13 @@ const RETRY_MS = 30_000
 const MOST_LINKS = 16
 // How long after opening a connection's route is looked at again.
 const ROUTE_SETTLES_MS = 3000
-// A link counts only while it carries something: with nothing else to send,
-// each side says "still here" every HEARTBEAT_MS. Nothing heard for SILENT_MS
-// and the link no longer counts -- that person's Supabase copies are used
-// again, so a link that broke without closing can make them slow, never
-// silent. Nothing for DEAD_MS, from a side that says it's still here, and it
-// is let go of and made again.
+// A link counts only while it carries something: each side says "still
+// here" every HEARTBEAT_MS, and whether it hears the other. Nothing heard for
+// SILENT_MS and the link no longer counts -- that person's Supabase copies
+// are used again; and told they don't hear us, what we'd send them through
+// the room is sent again (reaches). A link that broke without closing, either
+// way, can make someone slow, never silent. Nothing for DEAD_MS, from a side
+// that says it's still here, and it is let go of and made again.
 const HEARTBEAT_MS = 2000
 const SILENT_MS = 5000
 const DEAD_MS = 20_000
@@ -57,7 +58,7 @@ export interface Signal { to: string; kind: 'offer' | 'answer'; sdp: string }
 /** What flows directly: a cursor, with the moment it was there on the
  *  sender's clock (performance.now); a batch of laser points (lib/laser); or
  *  "still here", when there's nothing else to send. */
-export type Live = { k: 'c'; x: number; y: number; t?: number } | { k: 'l'; m: unknown } | { k: 'h' }
+export type Live = { k: 'c'; x: number; y: number; t?: number } | { k: 'l'; m: unknown } | { k: 'h'; ok?: boolean }
 
 /** Where each directly connected person's cursor is, in the world: the latest,
  *  with its moment on the clock of the place that sent it (`by`), and when it
@@ -204,14 +205,15 @@ const gathered = (pc: RTCPeerConnection) => new Promise<void>(resolve => {
 })
 
 // `heardAt`: when anything last came from them; `live`: heard from lately;
-// `beats`: they send "still here" (a version from before that doesn't).
-interface Peer { pc: RTCPeerConnection; channel: RTCDataChannel | null; open: boolean; heardAt: number; live: boolean; beats: boolean }
+// `beats`: they send "still here" (a version from before that doesn't);
+// `heardBy`: they say they hear us (assumed, until they say otherwise).
+interface Peer { pc: RTCPeerConnection; channel: RTCDataChannel | null; open: boolean; heardAt: number; live: boolean; beats: boolean; heardBy: boolean }
 
 export class Mesh {
   private peers = new Map<string, Peer>()
   private failedAt = new Map<string, number>()
   private closed = false
-  private sentAt = 0
+  private beatAt = 0
   private readonly beat: number
   private readonly self: string
   // An introduction out, through the presence channel.
@@ -282,7 +284,6 @@ export class Mesh {
 
   /** To everyone connected directly. */
   send(message: Live) {
-    this.sentAt = performance.now()
     const text = JSON.stringify(message)
     for (const peer of this.peers.values()) {
       if (peer.open && peer.channel?.readyState === 'open') {
@@ -294,6 +295,12 @@ export class Mesh {
   /** Connected directly to the person, at any of their places, and carrying: heard from lately. */
   linked(user: string) {
     for (const place of this.peers.keys()) if (userOf(place) === user && this.carries(place)) return true
+    return false
+  }
+  /** Connected directly both ways: carrying, and they say they hear us -- so
+   *  what goes to them directly needn't go through the room too. */
+  reaches(user: string) {
+    for (const [place, peer] of this.peers) if (userOf(place) === user && this.carries(place) && peer.heardBy) return true
     return false
   }
   /** A connection to them under way, not open yet. */
@@ -349,7 +356,7 @@ export class Mesh {
 
   private open(id: string): Peer {
     const pc = new RTCPeerConnection(rtcConfig())
-    const peer: Peer = { pc, channel: null, open: false, heardAt: 0, live: false, beats: false }
+    const peer: Peer = { pc, channel: null, open: false, heardAt: 0, live: false, beats: false, heardBy: true }
     this.peers.set(id, peer)
     pc.addEventListener('connectionstatechange', () => {
       if (pc.connectionState === 'failed' && this.peers.get(id) === peer) this.fail(id, 'connection failed')
@@ -385,17 +392,26 @@ export class Mesh {
       peer.heardAt = performance.now()
       try {
         const message = JSON.parse(event.data) as Live
-        if (message.k === 'h') peer.beats = true
+        if (message.k === 'h') {
+          peer.beats = true
+          peer.heardBy = message.ok !== false
+        }
         else this.receive(id, message)
       } catch { /* not ours */ }
     }
   }
 
-  // Each second: "still here" to everyone, if nothing else went out for
+  // Each second: "still here", and whether we hear them, to each every
   // HEARTBEAT_MS; and whether each link still carries anything.
   private tick() {
     const now = performance.now()
-    if (now - this.sentAt >= HEARTBEAT_MS) this.send({ k: 'h' })
+    if (now - this.beatAt >= HEARTBEAT_MS) {
+      this.beatAt = now
+      for (const peer of this.peers.values()) {
+        if (!peer.open || peer.channel?.readyState !== 'open') continue
+        try { peer.channel.send(JSON.stringify({ k: 'h', ok: peer.live })) } catch { /* closing */ }
+      }
+    }
     for (const [id, peer] of [...this.peers]) {
       if (!peer.open) continue
       const quiet = now - peer.heardAt
