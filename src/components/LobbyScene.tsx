@@ -32,6 +32,7 @@ import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
+import { liveTable } from '../lib/liveChanges'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -2805,14 +2806,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   useEffect(() => {
     loadLocations()
-    if (!supabase) return
-    const channel = supabase
-      .channel(`locations-channel-${lobbyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_locations', filter: `lobby_id=eq.${lobbyId}` }, () => {
-        loadLocations()
-      })
-      .subscribe()
-    return () => { channel.unsubscribe() }
+    if (!supabase || !lobbyId) return
+    // Others' changes (lib/liveChanges): through the room, or Supabase's feed.
+    return liveTable(lobbyId, 'lobby_locations', () => {
+      const channel = supabase
+        .channel(`locations-channel-${lobbyId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_locations', filter: `lobby_id=eq.${lobbyId}` }, () => {
+          loadLocations()
+        })
+        .subscribe()
+      return () => { channel.unsubscribe() }
+    }, () => loadLocations())
   }, [loadLocations, lobbyId])
 
   const addLocation = (name: string) => {

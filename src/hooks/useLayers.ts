@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { liveTable } from '../lib/liveChanges'
 import { useGameStore } from '../store/gameStore'
 import type { Layer } from '../types/database'
 import { keysOnTop, topLevel } from '../lib/order'
@@ -69,13 +70,17 @@ export function useLayers(lobbyId: string | null) {
     const reload = () => { void reloadLayers(lobbyId) }
     reload()
     window.addEventListener('atrium:layers-changed', reload)
-    const channel = supabase
-      .channel(`lobby-${lobbyId}-layers`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'layers', filter: `lobby_id=eq.${lobbyId}` }, reload)
-      .subscribe()
+    // Others' changes (lib/liveChanges): through the room, or Supabase's feed.
+    const stopLive = liveTable(lobbyId, 'layers', () => {
+      const channel = supabase
+        .channel(`lobby-${lobbyId}-layers`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'layers', filter: `lobby_id=eq.${lobbyId}` }, reload)
+        .subscribe()
+      return () => { channel.unsubscribe() }
+    }, reload)
     return () => {
       window.removeEventListener('atrium:layers-changed', reload)
-      channel.unsubscribe()
+      stopLive()
     }
   }, [lobbyId])
 }

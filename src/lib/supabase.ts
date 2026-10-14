@@ -9,6 +9,22 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // Check for Tauri runtime (safe to call before any Tauri imports)
 export const isDesktop = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__
 
+// Every write the web app makes goes through this fetch, and each one that
+// succeeds is told to whoever listens: lib/liveChanges, which tells the
+// atrium's room, so others see it without a Supabase realtime connection.
+// Set later, by that module, so this one imports nothing of it.
+type WriteListener = (url: string, method: string, body: unknown) => void
+let onWrite: WriteListener | null = null
+export const listenToWrites = (listener: WriteListener) => { onWrite = listener }
+const noticingFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init)
+  const method = (init?.method ?? 'GET').toUpperCase()
+  if (onWrite && response.ok && method !== 'GET' && method !== 'HEAD') {
+    try { onWrite(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, method, init?.body) } catch { /* never the write's problem */ }
+  }
+  return response
+}
+
 // Mutable client reference. In web mode, set immediately.
 // In desktop mode, set after localDb init (before React renders).
 let _client: any = null
@@ -16,6 +32,7 @@ let _client: any = null
 if (!isDesktop) {
   _client = supabaseUrl && supabaseAnonKey
     ? createClient<Database>(supabaseUrl, supabaseAnonKey, {
+        global: { fetch: noticingFetch },
         realtime: {
           params: {
             eventsPerSecond: 10,

@@ -5,7 +5,10 @@ import { asExrGrade } from '../lib/exr'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
+import { liveTable, readRows } from '../lib/liveChanges'
+import { whenTracesWritten } from '../lib/traceWrites'
 import type { Trace } from '../types/database'
+import type { Change } from '../lib/liveChanges'
 
 // Ceiling on how long atrium entry will wait for images to decode. Generous
 // enough for a normal atrium over a slow connection, short enough that a
@@ -280,8 +283,37 @@ export function useTraces(lobbyId: string | null) {
 
     loadTraces()
 
-    // Subscribe to new traces in this lobby
-    const channel = supabase
+    // Others' traces as they save them (lib/liveChanges): rows read again,
+    // except what's changed here and not saved yet, or deleted here.
+    const receiveRows = (rows: any[]) => {
+      for (const row of rows) {
+        const { traces: here, userId, pendingChanges, deletedTraces } = useGameStore.getState()
+        if (pendingChanges.has(row.id) || deletedTraces.has(row.id)) continue
+        // As below: someone else's new trace is theirs to undo.
+        if (row.user_id !== userId && !here.some(t => t.id === row.id)) adoptTraces([row.id])
+        addTrace(mapRowToTrace(row))
+      }
+    }
+    const applyChange = async (change: Change) => {
+      if (!supabase) return
+      for (const id of change.gone ?? []) removeTrace(id)
+      if (change.ids?.length) receiveRows(await readRows(supabase, 'traces', lobbyId, change.ids))
+      if (change.all) {
+        // All of them: what's here and saved but no longer there was deleted.
+        // Only what was here before the read -- a trace made during it isn't
+        // in the read, and isn't gone.
+        await whenTracesWritten()
+        const before = new Set(useGameStore.getState().traces.map(t => t.id))
+        const rows = await fetchAllLobbyTraces(supabase, lobbyId)
+        receiveRows(rows)
+        const there = new Set(rows.map((row: any) => row.id))
+        const { pendingChanges } = useGameStore.getState()
+        for (const id of before) if (!there.has(id) && !pendingChanges.has(id)) removeTrace(id)
+      }
+    }
+
+    // Supabase's change feed, where the atrium has no room.
+    const feed = () => { const channel = supabase
       .channel(`lobby-${lobbyId}-traces`)
       .on(
         'postgres_changes',
@@ -340,6 +372,9 @@ export function useTraces(lobbyId: string | null) {
         }
       )
       .subscribe()
+      return () => { channel.unsubscribe() }
+    }
+    const stopLive = liveTable(lobbyId, 'traces', feed, applyChange)
 
     // Measured again once things settle after a change -- a trace added or
     // removed, a save, and on desktop a media file or the atrium's mirror
@@ -366,7 +401,7 @@ export function useTraces(lobbyId: string | null) {
 
     return () => {
       cancelled = true
-      channel.unsubscribe()
+      stopLive()
       window.clearTimeout(refreshTimer)
       window.removeEventListener('atrium:vault-synced', onVaultChange)
       window.removeEventListener('atrium:vault-write-complete', onVaultChange)

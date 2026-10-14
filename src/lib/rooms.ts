@@ -55,6 +55,41 @@ type Status = (status: string) => void
 // What another page in the room is, by its connection.
 type Seat = { id: string; meta: Record<string, unknown> }
 
+// The room in use now, for what isn't presence (lib/liveChanges): which
+// atrium's, and whether it's being reached ('trying': joining, or back after a
+// drop), there ('live'), or given up on ('gone', Supabase's channel instead).
+export type RoomStatus = 'trying' | 'live' | 'gone'
+let inUse: { lobbyId: string; status: RoomStatus; room: RoomChannel } | null = null
+const statusWatchers = new Set<() => void>()
+const roomListeners = new Map<string, Set<(payload: unknown) => void>>()
+function setStatus(room: RoomChannel, lobbyId: string, status: RoomStatus | null) {
+  if (status === null) {
+    if (inUse?.room !== room) return
+    inUse = null
+  } else inUse = { lobbyId, status, room }
+  statusWatchers.forEach(watch => watch())
+}
+/** How the atrium's room is doing; null while it has none. */
+export const roomStatus = (lobbyId: string): RoomStatus | null => (inUse?.lobbyId === lobbyId ? inUse.status : null)
+export function watchRooms(watch: () => void) {
+  statusWatchers.add(watch)
+  return () => { statusWatchers.delete(watch) }
+}
+/** To everyone else in the room in use -- held while it's being reached
+ *  again. False when there's none to say it in. */
+export function sendThroughRoom(event: string, payload: unknown): boolean {
+  if (!inUse || inUse.status === 'gone') return false
+  void inUse.room.send({ type: 'broadcast', event, payload })
+  return true
+}
+/** What others in the room say of `event`. */
+export function onRoomEvent(event: string, listener: (payload: unknown) => void) {
+  const listeners = roomListeners.get(event) ?? new Set()
+  roomListeners.set(event, listeners)
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
 /** The atrium's presence channel: its room, or Supabase's channel by the name
  *  and options it always had. */
 export function presenceChannel(lobbyId: string, options: Parameters<NonNullable<typeof supabase>['channel']>[1]): RealtimeChannel {
@@ -86,6 +121,7 @@ class RoomChannel {
     this.url = url.replace(/\/$/, '')
     this.lobbyId = lobbyId
     this.viaSupabase = viaSupabase
+    setStatus(this, lobbyId, 'trying')
   }
 
   on(type: string, filter: { event: string }, callback: Callback) {
@@ -132,6 +168,7 @@ class RoomChannel {
 
   async unsubscribe() {
     this.closed = true
+    setStatus(this, this.lobbyId, null)
     window.clearInterval(this.pinger)
     this.socket?.close()
     return this.fallback ? this.fallback.unsubscribe() : 'ok'
@@ -175,6 +212,7 @@ class RoomChannel {
         this.failures = 0
         this.ref = message.ref
         this.settle(message.list)
+        setStatus(this, this.lobbyId, 'live')
         this.status('SUBSCRIBED')
         // Back after a drop: what this page had announced, announced again;
         // and what was said meanwhile.
@@ -189,6 +227,7 @@ class RoomChannel {
       this.socket = null
       // Never opened, or lost and not had back: Supabase, for the rest of the visit.
       if (!this.opened || ++this.failures > RETRIES) { this.giveUp(); return }
+      setStatus(this, this.lobbyId, 'trying')
       window.setTimeout(() => void this.connect(), 1000 * 2 ** this.failures)
     }
     this.heardAt = performance.now()
@@ -224,6 +263,7 @@ class RoomChannel {
       const claimed = typeof payload.userId === 'string' ? payload.userId : typeof payload.from === 'string' ? userOf(payload.from) : null
       if (claimed !== null && claimed !== message.u) return
       this.emit('broadcast', message.e, { type: 'broadcast', event: message.e, payload: message.p })
+      roomListeners.get(message.e)?.forEach(listener => listener(message.p))
     }
   }
 
@@ -235,6 +275,7 @@ class RoomChannel {
   private giveUp() {
     if (this.fallback || this.closed) return
     console.info('[atrium] the room could not be reached: presence through Supabase')
+    setStatus(this, this.lobbyId, 'gone')
     const fallback = this.viaSupabase()
     for (const { type, event, callback } of this.listeners) (fallback as unknown as Listening).on(type, { event }, callback)
     this.fallback = fallback

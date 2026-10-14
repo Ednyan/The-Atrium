@@ -364,11 +364,49 @@ and the atrium's live save updates (traces, layers, links, locations) still
 subscribe through Supabase, which holds the connection open anyway. Step 1
 lifts the presence *message* caps (2 million a month, 100 a second).
 
-**Step 2: live saves through the room.** After a save, the saver tells the room
-what changed (the rows, or a note to fetch them when large). Others apply it as
-they apply a database change event today, and the Supabase subscriptions are
-dropped while the room is up. Then a visitor holds no Supabase realtime
-connection at all.
+**Step 2, built (2026-10-14): live saves through the room** (`lib/liveChanges`).
+Every write the web app makes goes through one `fetch`: lib/supabase hands
+supabase-js a wrapper. Each write that succeeds on traces, layers, links or
+locations is announced in the room: which rows by id, read from the
+request's id filter or body, or the whole table when the write didn't say.
+A trace's deletion also announces its links, which the database deletes with
+it (on delete cascade).
+- **Hearing:** others read those rows again, from their own atrium only, one
+  read at a time per table, and apply them with the table's own code. Edits
+  not yet saved there, and deletions queued there, are left alone.
+- **Choosing the path:** `liveTable` picks per atrium. The room while it has
+  one (joining, live, or back after a drop). Supabase's change feed, as
+  before, when there's no room, or the room was given up on. The desktop app
+  has no room, so it's unchanged.
+- **The database stays the record:** an announcement only says where to look,
+  and reads still go through its rules.
+
+With the room up, a visitor opens **no Supabase realtime channel at all**:
+- presence goes through the room;
+- live saves go through the room.
+
+**That lifts the 200-connections ceiling.** Harness, two people through a local
+room:
+
+| Ana's action | Seen at Ben's after |
+|---|---|
+| a new trace | 51 ms |
+| a saved move | 1 ms |
+| a whole-table change | 6 ms |
+| a deletion | 1 ms |
+| a location | 55 ms |
+| a link | 3 ms |
+
+Ben's unsaved edit survived Ana's save of the same trace. With the room
+unreachable, or none configured, all four Supabase feeds open as before.
+
+**Known gap:** a write by someone whose room couldn't be reached isn't
+announced. The others see it on their next visit.
+
+**Rollout:** saves are announced in the room from the start, but heard through
+it only where `localStorage['atrium.livesaves'] = 'room'` (`'feed'` turns it
+off) until it has been tried between real browsers. Then `VIA_ROOM_BY_DEFAULT`
+in lib/liveChanges becomes true.
 
 **Later, the original idea:**
 - The roster moves onto the direct connections. Each peer announces its name
