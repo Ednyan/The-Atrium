@@ -38,11 +38,16 @@ export default {
     const atrium = url.pathname.match(ATRIUM)?.[1]
     if (!atrium) return new Response('Not found', { status: 404 })
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })
-    // A browser's WebSocket can't carry headers: the token comes in the URL.
-    const user = await whoIs(url.searchParams.get('token'), env)
+    // A browser's WebSocket can't carry headers: the token comes as a
+    // subprotocol after "atrium" -- or, from the first version of the page,
+    // in the URL.
+    const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map(part => part.trim())
+    const token = offered[0] === 'atrium' && offered[1] ? offered[1] : url.searchParams.get('token')
+    const user = await whoIs(token, env)
     if (!user) return new Response('Not signed in', { status: 401 })
     const headers = new Headers(request.headers)
     headers.set('X-Atrium-User', user)
+    headers.set('X-Atrium-Protocol', offered[0] === 'atrium' ? 'atrium' : '')
     return env.ROOMS.get(env.ROOMS.idFromName(atrium)).fetch(new Request(request.url, { headers }))
   },
 }
@@ -79,7 +84,10 @@ export class Room extends DurableObject<Env> {
     // Who's here already.
     const here = this.ctx.getWebSockets().filter(ws => ws !== server).map(ws => ws.deserializeAttachment() as Seat).filter(other => other.meta)
     server.send(JSON.stringify({ t: 'state', ref: seat.ref, list: here.map(({ user, ref, meta }) => ({ id: user, ref, meta })) }))
-    return new Response(null, { status: 101, webSocket: client })
+    // The subprotocol asked for, agreed to: a browser that offered one closes
+    // a socket whose answer doesn't name it.
+    const protocol = request.headers.get('X-Atrium-Protocol')
+    return new Response(null, { status: 101, webSocket: client, headers: protocol ? { 'Sec-WebSocket-Protocol': protocol } : {} })
   }
 
   async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer) {

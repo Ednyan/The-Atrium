@@ -151,7 +151,16 @@ class RoomChannel {
     const token = session?.access_token
     this.userId = session?.user?.id ?? null
     if (!token) { this.giveUp(); return }
-    const socket = new WebSocket(`${this.url}/room/${this.lobbyId}?token=${encodeURIComponent(token)}`)
+    // The token as a subprotocol, not in the address, where errors, logs and
+    // policy reports would show it. And a socket refused outright -- Firefox
+    // throws when the page's policy blocks the address -- is Supabase at once.
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(`${this.url}/room/${this.lobbyId}`, ['atrium', token])
+    } catch {
+      this.giveUp()
+      return
+    }
     this.socket = socket
     let open = false
     const late = window.setTimeout(() => { if (!open) socket.close() }, OPEN_MS)

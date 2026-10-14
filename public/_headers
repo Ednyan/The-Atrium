@@ -65,8 +65,9 @@
   #                             of those downloads, and the feature failed on
   #                             every trace. data: is there because ImportAtrium
   #                             fetches its own data: URLs to turn embedded
-  #                             files back into blobs.
-  Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  #                             files back into blobs. wss://rooms is the
+  #                             atrium's room (workers/rooms, lib/rooms).
+  Content-Security-Policy: default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co wss://rooms.digitalatrium.org; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
 # The video relay (public/embed/; see throughRelay in src/lib/embedUrl.ts): the
 # one page anything is meant to frame -- the desktop app on macOS and Linux,
