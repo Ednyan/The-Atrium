@@ -49,6 +49,67 @@ next phase has proved itself.
   browser. The current realtime path wherever a direct connection can't be
   made (see Risks).
 
+## Free at any size, and what can't be (2026-10-14)
+
+The rule: whatever can be free for any number of people is free for
+everyone. Whatever grows a bill with use, and has no free way round it, is
+for the paid plan only. Every free path degrades rather than breaks when a
+free allowance runs out.
+
+**Storage, by where an atrium lives**
+
+| Where | Who can open it | Free at any size? | Ceiling, and what happens past it |
+|---|---|---|---|
+| The PC (desktop vault) | the owner; others by exported file | Yes: the owner's disk | None for us |
+| The browser (phase 7) | the owner; others live while the owner's tab is open, or by exported file | Yes: the owner's browser | None for us. Browsers may clear it unless persistent storage is granted |
+| The owner's Google Drive | anyone it's shared with, any time | Yes, up to the app's daily Drive budget | Our app has 400 million quota units a day, for all its users together. Above that, Google plans to bill; prices due later in 2026, with 90 days' notice. Estimate below |
+| Our cloud (Supabase or Cloudflare) | anyone, any time | **No**: storage and downloads grow the bill | Paid plan. Existing free cloud atriums keep their limits |
+
+**Drive's daily budget, estimated.** The costs per call are: checking for a
+change, 5 units; downloading a file, 200; saving, 50. Assume an hour a day
+of use, checking every 5 seconds, a save a minute, and a fresh atrium's
+pictures downloaded once and then cached. That's about 11,000 units per
+person, so roughly **35,000 people a day** before the threshold. The
+assumptions that make this hold:
+- Saves reach people online over direct connections (phase 2), so Drive
+  downloads are only for whoever wasn't there.
+- Pictures are cached in the browser after their first download.
+- Change checks read metadata only (files.get or changes.list), never the
+  files.
+
+Two more limits: 1 TB of downloads a day per app, and a public file
+downloaded very often can be locked for about a day (unofficial reports).
+Popular public atriums are mirrored to R2 (phase 8).
+
+**Live presence**
+
+| Part | Free at any size? | Ceiling, and what happens past it |
+|---|---|---|
+| Cursors and laser between people connected directly | Yes: no server carries them | None |
+| The introduction and the roster (who's here) | **Not on Supabase**: 200 connections at once, for the whole app, and 2 million messages a month | Move it (phase 3). Cloudflare Durable Objects (free plan: 100,000 requests a day, with 20 WebSocket messages counted as one; past the limit, requests fail rather than bill). Public Nostr relays (the approach Trystero takes) as the free fallback, with no server of ours |
+| The relay, for the 10–20% of pairs that can't connect directly, and for "Hide my IP address" | Up to Cloudflare's 1,000 GB a month | Capped at 800 GB (built). Past it, those people get a cursor every few seconds through the channel. Sending fewer, batched updates over the relay only would stretch the allowance about three times. A paid plan could guarantee the relay |
+
+**Free relays elsewhere** are small: Metered's Open Relay (20 GB a month on
+its own page, 500 MB on another), ExpressTURN (about 100 GB, unconfirmed),
+Turnix (10 GB), Xirsys (0.5 GB). Running our own relay on Oracle Cloud's
+Always Free tier gives 10 TB a month of outbound traffic, but it's a server
+to keep alive, and Oracle reclaims instances it judges idle.
+
+**Sharing an atrium that lives only in a browser** needs no server while
+its owner is there: guests are introduced (through the free introducers
+above), connect directly, and get the atrium from the owner's browser. Once
+the owner's tab closes, nobody can reach it. Available any time means Drive
+or the paid cloud.
+
+**Small central things that stay**, all within free tiers:
+- the list of public atriums (tiny rows in Supabase);
+- their pictures (R2: 10 GB stored and 10 million reads a month free, with
+  no download fees);
+- bans;
+- relay passes;
+- accounts. Google sign-in costs us nothing, and Supabase Auth covers 50,000
+  monthly users.
+
 ## Ground rules for every phase
 
 1. **Additive.** Nothing existing is removed in the phase that adds its
@@ -393,9 +454,11 @@ later, optional and reversible (export first).
 | The relay bills past its free tier | $0.05 per GB after 1,000 GB a month; what happens without a card isn't documented | `relay-pass` refuses past 800 GB in the last 31 days, read from Cloudflare's analytics; those people fall back to the channel. A cursor moving every frame is about 8 KB/s, so 800 GB is ~28,000 hours of one hidden cursor moving non-stop |
 | R2 needs a card on file | Secondhand reports: activating R2 asks for a payment method, though the free tier isn't charged | Pictures stay in Supabase Storage until its 5 GB of downloads a month gets tight |
 | Brand review trips over supabase.co | Community reports: the sign-in callback is on Supabase's domain, which we can't prove we own | Drive gets its own Google Cloud project, whose only domain is digitalatrium.org |
+| The introducer runs out first | Supabase's free tier: 200 connections at once for the whole app, 2 million messages a month | Phase 3 moves introductions and the roster to Durable Objects (fail closed past 100,000 requests a day), with public Nostr relays as fallback |
+| Someone burns the Drive budget on purpose | Drive's quota is the app's, and anyone signed in through it spends from it | Lower the per-person-per-minute quota in Google Cloud; watch the daily total |
 | Everyone-to-everyone gets heavy | Data-only meshes go far beyond video's ~4, but no measured number | Measure in phase 1; a partial mesh in phase 3 |
 | Popular Drive files get locked | Third-party reports; threshold unpublished | R2 mirror (phase 8) |
-| Google changes billing or policy | The Drive API page announces billing details in 2026 (charges tied to egress above 1 TB a day per project) | Keep Supabase and local paths alive; watch the page |
+| Google bills Drive past a threshold | Since May 2026 Drive counts quota units: 1,000,000 a minute per app, 325,000 per person, and a daily threshold of 400 million per app that can't be raised. Billing above it is planned, with details later in 2026 and 90 days' notice | Cache media, check for changes by metadata, send saves directly (phase 2); a per-person daily budget in the app; keep the local and Supabase paths alive |
 | Token renewal UX | Browser tokens are short-lived | Measure in the phase 4 spike |
 | Guest's first visit needs the Picker | `drive.file` requires it | One-time step, designed in phase 5 |
 | Phones sleep background tabs | Direct connections drop | Reconnect on resume; the presence fallback stays |
@@ -409,3 +472,4 @@ later, optional and reversible (export first).
 - draw.io: [Cloud storage](https://drawio.com/blog/cloud-storage-diagrams), [Real-time collaboration](https://www.drawio.com/blog/real-time-collaboration-diagrams.html)
 - WebRTC: [TURN share estimates (Twilio FAQ)](https://www.twilio.com/docs/api/stun-turn/faq), [Tauri WebRTC on Linux](https://github.com/tauri-apps/tauri/discussions/8426)
 - Browser SQLite: [SQLite WASM persistence](https://sqlite.org/wasm/doc/tip/persistence.md)
+- Checked 2026-10-14: [Drive API usage limits (quota units, the daily threshold)](https://developers.google.com/workspace/drive/api/guides/limits), [Drive release notes (May 2026)](https://developers.google.com/workspace/drive/release-notes), [Supabase pricing (realtime: 200 connections, 2 M messages)](https://supabase.com/pricing), [Durable Objects pricing (free plan)](https://developers.cloudflare.com/durable-objects/platform/pricing), [Open Relay](https://www.metered.ca/tools/openrelay/), [free TURN list](https://gist.github.com/sagivo/3a4b2f2c7ac6e1b5267c2f1f59ac6c6b), [Oracle Always Free](https://www.oracle.com/cloud/free/), [Trystero](https://npmjs.com/package/trystero)
