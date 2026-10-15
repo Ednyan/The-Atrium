@@ -1,11 +1,9 @@
 // Local database adapter that mimics the Supabase client API
 // so all existing components work without changes.
-// Uses Tauri SQL plugin (SQLite) for persistence.
+// SQLite for persistence: Tauri's SQL plugin in the desktop app, SQLite in
+// WebAssembly in a browser -- both through lib/localPlatform.
 
-import Database from '@tauri-apps/plugin-sql'
-import { invoke } from '@tauri-apps/api/core'
-import { appDataDir, join } from '@tauri-apps/api/path'
-import { mkdir, exists } from '@tauri-apps/plugin-fs'
+import { Database, invoke, appDataDir, join, mkdir, exists, fileUrl } from './localPlatform'
 import { carryLinks } from './traceLinks'
 import { carriedFrameId, freshIds } from './frames'
 import { flattenLegacyOrder } from './order'
@@ -3056,8 +3054,7 @@ export async function resolveLocalStreamUrl(url: string): Promise<string> {
     const filePath = await resolveLocalMediaFilePath(url)
     if (!filePath) return url
 
-    const { convertFileSrc } = await import('@tauri-apps/api/core')
-    const streamUrl = convertFileSrc(filePath)
+    const streamUrl = await fileUrl(filePath)
     resolvedStreamUrlCache.set(url, streamUrl)
     return streamUrl
   } catch {

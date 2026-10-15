@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@pixi/unsafe-eval": "^7.4.3",
+    "@sqlite.org/sqlite-wasm": "^3.53.4-build2",
     "@supabase/supabase-js": "^2.39.0",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",

@@ -32,6 +32,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['pixi.js', '@supabase/supabase-js'],
-    exclude: ['@tauri-apps/api', '@tauri-apps/plugin-sql', '@tauri-apps/plugin-fs', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-shell'],
+    exclude: ['@tauri-apps/api', '@tauri-apps/plugin-sql', '@tauri-apps/plugin-fs', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-shell', '@sqlite.org/sqlite-wasm'],
   },
 })
