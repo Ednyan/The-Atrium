@@ -85,9 +85,39 @@ function announce(change: Change) {
   for (const piece of pieces) if (!sendThroughRoom('changes', piece)) return
 }
 
+// Writes close together told as one: a save writes a row a request, and a
+// group of traces moved should arrive moved, all at once -- not a trace at a
+// time. Told QUIET_MS after the last, or MOST_WAIT_MS after the first. Each
+// row as its last write left it: changed, or gone.
+const QUIET_MS = 120
+const MOST_WAIT_MS = 1500
+const gathered = new Map<LiveTable, { rows: Map<string, 'ids' | 'gone'>; all: boolean }>()
+let quiet = 0
+let firstAt = 0
+function gather(change: Change) {
+  const table = gathered.get(change.t) ?? { rows: new Map(), all: false }
+  gathered.set(change.t, table)
+  for (const id of change.ids ?? []) table.rows.set(id, 'ids')
+  for (const id of change.gone ?? []) table.rows.set(id, 'gone')
+  if (change.all) table.all = true
+  const now = performance.now()
+  if (!firstAt) firstAt = now
+  window.clearTimeout(quiet)
+  quiet = window.setTimeout(tell, Math.max(0, Math.min(QUIET_MS, firstAt + MOST_WAIT_MS - now)))
+}
+function tell() {
+  firstAt = 0
+  for (const [t, { rows, all }] of gathered) {
+    const ids = [...rows].filter(([, last]) => last === 'ids').map(([id]) => id)
+    const gone = [...rows].filter(([, last]) => last === 'gone').map(([id]) => id)
+    announce({ t, ...(ids.length ? { ids } : {}), ...(gone.length ? { gone } : {}), ...(all ? { all } : {}) })
+  }
+  gathered.clear()
+}
+
 listenToWrites((url, method, body) => {
   const change = changeOf(url, method, body)
-  if (change) announce(change)
+  if (change) gather(change)
 })
 
 /** Keep an atrium's table live: `feed` subscribes to Supabase's change feed
@@ -125,11 +155,13 @@ export function liveTable(lobbyId: string, table: LiveTable, feed: () => () => v
 
 /** Rows of this atrium's `table` by id, read in pieces short enough for a URL. */
 export async function readRows(client: any, table: LiveTable, lobbyId: string, ids: string[]): Promise<any[]> {
-  const rows: any[] = []
-  for (let at = 0; at < ids.length; at += 100) {
-    const { data, error } = await client.from(table).select('*').eq('lobby_id', lobbyId).in('id', ids.slice(at, at + 100))
+  const pieces: string[][] = []
+  for (let at = 0; at < ids.length; at += 100) pieces.push(ids.slice(at, at + 100))
+  // Side by side, then handed over together.
+  const read = await Promise.all(pieces.map(async piece => {
+    const { data, error } = await client.from(table).select('*').eq('lobby_id', lobbyId).in('id', piece)
     if (error) throw error
-    rows.push(...(data ?? []))
-  }
-  return rows
+    return data ?? []
+  }))
+  return read.flat()
 }

@@ -124,6 +124,10 @@ interface GameState {
   clearOtherUsers: () => void
   addTrace: (trace: Trace) => void
   removeTrace: (traceId: string) => void
+  // Others' saves, many at once (useTraces): one change to the list, so a
+  // group moved shows moved in one go. Not counted as made here.
+  receiveTraces: (traces: Trace[]) => void
+  removeTraces: (traceIds: Iterable<string>) => void
   setTraces: (traces: Trace[]) => void
   clearLobbyData: () => void  // Clear all lobby-specific data
   
@@ -398,6 +402,27 @@ export const useGameStore = create<GameState>((set, get) => ({
   removeTrace: (traceId) =>
     set((state) => {
       return { traces: state.traces.filter(t => t.id !== traceId) }
+    }),
+
+  receiveTraces: (incoming) =>
+    set((state) => {
+      const at = new Map(state.traces.map((t, i) => [t.id, i]))
+      const traces = [...state.traces]
+      for (const trace of incoming) {
+        const i = at.get(trace.id)
+        if (i !== undefined) traces[i] = trace
+        else {
+          at.set(trace.id, traces.length)
+          traces.push(trace)
+        }
+      }
+      return { traces }
+    }),
+
+  removeTraces: (traceIds) =>
+    set((state) => {
+      const gone = new Set(traceIds)
+      return { traces: state.traces.filter(t => !gone.has(t.id)) }
     }),
   
   setTraces: (traces) => {

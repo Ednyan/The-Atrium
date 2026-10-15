@@ -400,6 +400,22 @@ room:
 Ben's unsaved edit survived Ana's save of the same trace. With the room
 unreachable, or none configured, all four Supabase feeds open as before.
 
+**The first save wins** (the user's rule, 2026-10-15). Someone else's save of
+a trace you've changed but not saved replaces your change; only what you change
+after it counts. A deletion you haven't saved is undone too.
+- While your own save of that trace is under way, theirs is left alone. Yours
+  lands after it and is the record. The trace is read again once your save is
+  done, so both sides show what the database kept.
+- A whole-table read can't tell which rows they changed, so it leaves your
+  unsaved changes alone.
+- Supabase's feed (the fallback) can't tell your own save's echo from someone
+  else's, so it keeps the old rule there.
+
+**A save arrives whole.** A save writes one request per row. Writes within
+120 ms of each other (1.5 s at most) are announced as one, and applied in one
+store update (`receiveTraces`). A group of 30 moved traces arrives in a single
+step, about 170 ms after the save.
+
 **Known gap:** a write by someone whose room couldn't be reached isn't
 announced. The others see it on their next visit.
 

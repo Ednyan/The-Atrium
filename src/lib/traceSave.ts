@@ -73,6 +73,12 @@ function settle(written: Written) {
 
 // Said once when saving starts failing, not at every retry after.
 let failing = false
+
+// The traces a save is writing right now. Someone else's save of one of them
+// that arrives meanwhile is older than this one's: this one lands after it,
+// and is the record (useTraces reads it again once this is done).
+let writing: ReadonlySet<string> = new Set()
+export const isBeingWritten = (id: string) => writing.has(id)
 function failed(message: string) {
   if (!failing) showToast(message)
   failing = true
@@ -99,6 +105,7 @@ async function write(): Promise<boolean> {
     const linksDeleted = [...deletedLinks]
     const locationsChanged = locations.filter(l => pendingLocations.has(l.id))
     const locationsDeleted = [...deletedLocations]
+    writing = new Set([...changed.map(tr => tr.id), ...deleted])
 
     // Connections removed before their traces: on the web a trace's deletion
     // takes its connections with it anyway, but the desktop shim doesn't
@@ -142,6 +149,7 @@ async function write(): Promise<boolean> {
     failed(t('atrium.hud.notSaved'))
     return false
   } finally {
+    writing = new Set()
     useGameStore.getState().setIsSavingChanges(false)
   }
 }
@@ -149,6 +157,8 @@ async function write(): Promise<boolean> {
 // Everything changed up to now written, after any save already under way:
 // whether all of it was. For Save, Ctrl+S, and leaving or closing.
 let inFlight: Promise<boolean> | null = null
+/** Once the save under way, if any, is over -- written or not. */
+export const whenSaveDone = (): Promise<unknown> => inFlight ?? Promise.resolve()
 export function saveAllChanges(): Promise<boolean> {
   if (inFlight) return inFlight.then(() => saveAllChanges())
   const saving = write().finally(() => { inFlight = null })

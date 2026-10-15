@@ -7,6 +7,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
 import { liveTable, readRows } from '../lib/liveChanges'
 import { whenTracesWritten } from '../lib/traceWrites'
+import { isBeingWritten, whenSaveDone } from '../lib/traceSave'
 import type { Trace } from '../types/database'
 import type { Change } from '../lib/liveChanges'
 
@@ -283,21 +284,47 @@ export function useTraces(lobbyId: string | null) {
 
     loadTraces()
 
-    // Others' traces as they save them (lib/liveChanges): rows read again,
-    // except what's changed here and not saved yet, or deleted here.
-    const receiveRows = (rows: any[]) => {
+    // Others' traces as they save them (lib/liveChanges), rows read again.
+    // The first save wins: someone else's save of a trace changed here and
+    // not saved yet takes its place -- what was changed here goes, and only
+    // what's changed after counts. Except while this page's own save of it is
+    // under way: that one lands after theirs and is the record, so it's read
+    // again once done, to show whichever the database kept. A whole-table read
+    // (`theirsWin` false) can't tell which rows they changed, and leaves
+    // what's unsaved here alone.
+    const receiveRows = (rows: any[], theirsWin: boolean) => {
+      const { traces: here, userId, pendingChanges, deletedTraces, receiveTraces } = useGameStore.getState()
+      const known = new Set(here.map(t => t.id))
+      const afterSave: string[] = [], overruled: string[] = [], adopted: string[] = []
+      const taken: Trace[] = []
       for (const row of rows) {
-        const { traces: here, userId, pendingChanges, deletedTraces } = useGameStore.getState()
-        if (pendingChanges.has(row.id) || deletedTraces.has(row.id)) continue
+        const unsaved = pendingChanges.has(row.id) || deletedTraces.has(row.id)
+        if (unsaved && !theirsWin) continue
+        if (isBeingWritten(row.id)) { afterSave.push(row.id); continue }
+        if (unsaved) overruled.push(row.id)
         // As below: someone else's new trace is theirs to undo.
-        if (row.user_id !== userId && !here.some(t => t.id === row.id)) adoptTraces([row.id])
-        addTrace(mapRowToTrace(row))
+        if (row.user_id !== userId && !known.has(row.id)) adopted.push(row.id)
+        taken.push(mapRowToTrace(row))
+      }
+      if (overruled.length) {
+        useGameStore.setState(state => {
+          const pending = new Set(state.pendingChanges)
+          const deleted = new Set(state.deletedTraces)
+          for (const id of overruled) { pending.delete(id); deleted.delete(id) }
+          return { pendingChanges: pending, deletedTraces: deleted }
+        })
+      }
+      adoptTraces(adopted)
+      // All at once: a group moved arrives moved.
+      if (taken.length) receiveTraces(taken)
+      if (afterSave.length && supabase) {
+        void whenSaveDone().then(async () => { if (!cancelled) receiveRows(await readRows(supabase, 'traces', lobbyId, afterSave), false) })
       }
     }
     const applyChange = async (change: Change) => {
       if (!supabase) return
-      for (const id of change.gone ?? []) removeTrace(id)
-      if (change.ids?.length) receiveRows(await readRows(supabase, 'traces', lobbyId, change.ids))
+      if (change.gone?.length) useGameStore.getState().removeTraces(change.gone)
+      if (change.ids?.length) receiveRows(await readRows(supabase, 'traces', lobbyId, change.ids), true)
       if (change.all) {
         // All of them: what's here and saved but no longer there was deleted.
         // Only what was here before the read -- a trace made during it isn't
@@ -305,10 +332,10 @@ export function useTraces(lobbyId: string | null) {
         await whenTracesWritten()
         const before = new Set(useGameStore.getState().traces.map(t => t.id))
         const rows = await fetchAllLobbyTraces(supabase, lobbyId)
-        receiveRows(rows)
+        receiveRows(rows, false)
         const there = new Set(rows.map((row: any) => row.id))
         const { pendingChanges } = useGameStore.getState()
-        for (const id of before) if (!there.has(id) && !pendingChanges.has(id)) removeTrace(id)
+        useGameStore.getState().removeTraces([...before].filter(id => !there.has(id) && !pendingChanges.has(id)))
       }
     }
 
