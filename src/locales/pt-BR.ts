@@ -565,6 +565,7 @@ const ptBR: Catalogue = {
   'atrium.overlay.exitHint': 'De qualquer lugar: Ctrl+Alt+Shift+X, ou o botão na prévia do app na barra de tarefas',
   'atrium.overlay.exited': 'Modo sobreposição desligado',
   'atrium.browser.inUse': 'Os Atriums deste navegador estão abertos em outra aba. Feche-a ou continue nela.',
+  'atrium.browser.unsupported': 'Este navegador não consegue guardar atriums: ele bloqueia o que eles precisam (WebAssembly ou o armazenamento do site). Uma janela anônima, o Modo de Isolamento ou uma configuração de segurança pode causar isso.',
   'atrium.hud.manage': "Configurações do Atrium",
   'atrium.hud.saveAtrium': 'Exportar o átrio para…',
   'atrium.menu.exportImage': 'Exportar como imagem',

@@ -567,6 +567,7 @@ const ru: Catalogue = {
   'atrium.overlay.exitHint': 'Откуда угодно: Ctrl+Alt+Shift+X или кнопка в превью приложения на панели задач',
   'atrium.overlay.exited': 'Режим оверлея выключен',
   'atrium.browser.inUse': 'Atriums этого браузера открыты в другой вкладке. Закройте её или продолжите там.',
+  'atrium.browser.unsupported': 'Этот браузер не может хранить атриумы: он блокирует то, что им нужно (WebAssembly или хранилище сайта). Причиной может быть приватное окно, режим блокировки или настройка безопасности.',
   'atrium.hud.manage': "Настройки Atrium",
   'atrium.hud.saveAtrium': 'Экспортировать атриум в…',
   'atrium.menu.exportImage': 'Экспорт в изображение',

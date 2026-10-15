@@ -534,6 +534,7 @@ const zh: Catalogue = {
   'atrium.overlay.exitHint': '在任何地方：Ctrl+Alt+Shift+X，或任务栏预览中的按钮',
   'atrium.overlay.exited': '悬浮模式已关闭',
   'atrium.browser.inUse': '此浏览器的 Atrium 已在另一个标签页中打开。请关闭那个标签页，或在那里继续。',
+  'atrium.browser.unsupported': '此浏览器无法保存 Atrium：它阻止了所需的功能（WebAssembly 或网站存储）。可能是因为无痕窗口、锁定模式或安全设置。',
   'atrium.hud.manage': "Atrium 设置",
   'atrium.hud.saveAtrium': '将中庭导出到…',
   'atrium.menu.exportImage': '导出为图片',

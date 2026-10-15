@@ -109,8 +109,17 @@ async function handle(request: Request): Promise<unknown> {
   switch (request.op) {
     case 'open': {
       if (database) return true
-      const sqlite3: any = await sqlite3InitModule()
-      const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'atrium-vault', directory: '/.atrium-db' })
+      // What the engine needs that a browser can refuse -- WebAssembly (a site
+      // policy, Safari's Lockdown Mode) or its private files (a private
+      // window) -- said as one thing the page can explain.
+      let pool: any
+      try {
+        const sqlite3: any = await sqlite3InitModule()
+        pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'atrium-vault', directory: '/.atrium-db' })
+      } catch (error) {
+        console.error('[browser vault] refused:', error)
+        throw new Error('VAULT_UNSUPPORTED')
+      }
       database = new pool.OpfsSAHPoolDb('/atrium.db')
       return true
     }

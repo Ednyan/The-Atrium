@@ -535,6 +535,7 @@ const ko: Catalogue = {
   'atrium.overlay.exitHint': '어디서든: Ctrl+Alt+Shift+X, 또는 작업 표시줄 미리 보기의 버튼',
   'atrium.overlay.exited': '오버레이 모드 꺼짐',
   'atrium.browser.inUse': '이 브라우저의 Atrium이 다른 탭에서 열려 있어요. 그 탭을 닫거나 거기서 계속하세요.',
+  'atrium.browser.unsupported': '이 브라우저는 Atrium을 보관할 수 없어요. 필요한 기능(WebAssembly 또는 사이트 저장소)이 차단되어 있어요. 시크릿 창, 차단 모드, 보안 설정 때문일 수 있어요.',
   'atrium.hud.manage': "Atrium 설정",
   'atrium.hud.saveAtrium': '아트리움 내보내기…',
   'atrium.menu.exportImage': '이미지로 내보내기',

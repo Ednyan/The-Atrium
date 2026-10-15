@@ -33,7 +33,7 @@ import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
-import { browserGuest, endGuest, enterBrowserAtrium, isBrowserAtrium, isGuestHere, leaveBrowserAtrium } from './lib/browserAtriums'
+import { browserGuest, endGuest, enterBrowserAtrium, isBrowserAtrium, isGuestHere, leaveBrowserAtrium, vaultProblem } from './lib/browserAtriums'
 import { startOverlay } from './lib/overlay'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
@@ -1276,7 +1276,8 @@ function AppInner() {
         try {
           await enterBrowserAtrium(route.lobbyId, isAuthenticated ? null : browserGuest(t('browser.guestName')))
         } catch (error) {
-          setLobbyAccessError(error instanceof Error && error.message === 'VAULT_IN_USE' ? t('atrium.browser.inUse') : String(error))
+          const problem = vaultProblem(error)
+          setLobbyAccessError(problem ? t(problem) : String(error))
           return
         }
         setVerifiedLobbyId(route.lobbyId)

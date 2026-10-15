@@ -564,6 +564,7 @@ const de: Catalogue = {
   'atrium.overlay.exitHint': 'Von überall: Strg+Alt+Umschalt+X oder die Schaltfläche in der Taskleisten-Vorschau der App',
   'atrium.overlay.exited': 'Overlay-Modus aus',
   'atrium.browser.inUse': 'Die Atriums dieses Browsers sind in einem anderen Tab geöffnet. Schließe ihn oder arbeite dort weiter.',
+  'atrium.browser.unsupported': 'Dieser Browser kann keine Atrien speichern: Er blockiert, was sie brauchen (WebAssembly oder Website-Speicher). Das kann an einem privaten Fenster, dem Blockierungsmodus oder einer Sicherheitseinstellung liegen.',
   'atrium.hud.manage': "Atrium-Einstellungen",
   'atrium.hud.saveAtrium': 'Atrium exportieren nach…',
   'atrium.menu.exportImage': 'Als Bild exportieren',

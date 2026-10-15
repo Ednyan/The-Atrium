@@ -11,6 +11,7 @@
 
 import { cloudClient, supabase, switchDataClient } from './supabase'
 import { useGameStore } from '../store/gameStore'
+import type { TranslationKey } from '../locales/en'
 
 const KEY = 'atrium.browserAtriums'
 
@@ -35,6 +36,13 @@ export function forgetBrowserAtrium(lobbyId: string) {
 }
 
 export interface Maker { id: string; name: string; color: string }
+
+/** What to tell somebody when this browser's vault won't open, if it's
+ *  something they can act on: open in another tab, or refused by the browser. */
+export function vaultProblem(error: unknown): TranslationKey | null {
+  const message = error instanceof Error ? error.message : ''
+  return message === 'VAULT_IN_USE' ? 'atrium.browser.inUse' : message === 'VAULT_UNSUPPORTED' ? 'atrium.browser.unsupported' : null
+}
 
 /** Who's making things now, as the app has them: the account, or the guest. */
 function currentMaker(): Maker {

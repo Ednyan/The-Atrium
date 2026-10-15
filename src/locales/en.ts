@@ -515,6 +515,7 @@ export const en = {
   'atrium.overlay.exitHint': 'From anywhere: Ctrl+Alt+Shift+X, or the button on the app’s taskbar preview',
   'atrium.overlay.exited': 'Overlay mode off',
   'atrium.browser.inUse': "This browser's atriums are open in another tab. Close that tab, or carry on there.",
+  'atrium.browser.unsupported': "This browser can't keep atriums: it blocks what they need to run (WebAssembly or site storage). A private window, Lockdown Mode or a security setting can do this.",
   'atrium.hud.manage': "Atrium Settings",
   'atrium.hud.saveAtrium': 'Export Atrium to…',
   'atrium.menu.exportImage': 'Export as image',

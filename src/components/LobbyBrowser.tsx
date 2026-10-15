@@ -23,7 +23,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
-import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium } from '../lib/browserAtriums'
+import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium, vaultProblem } from '../lib/browserAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
@@ -313,7 +313,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (error) throw error
       setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true })))
     } catch (err) {
-      setError(err instanceof Error && err.message === 'VAULT_IN_USE' ? t('atrium.browser.inUse') : t('browser.errLoadLobbies', { message: String(err) }))
+      const problem = vaultProblem(err)
+      setError(problem ? t(problem) : t('browser.errLoadLobbies', { message: String(err) }))
     }
   }
 
@@ -568,7 +569,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       setNewLobbyIsPublic(true)
     } catch (err: any) {
       console.error('Error creating lobby:', err)
-      setError(err.message || t('browser.errCreateLobby'))
+      const problem = vaultProblem(err)
+      setError(problem ? t(problem) : err.message || t('browser.errCreateLobby'))
     }
   }
 

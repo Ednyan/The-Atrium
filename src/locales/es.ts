@@ -561,6 +561,7 @@ const es: Catalogue = {
   'atrium.overlay.exitHint': 'Desde cualquier sitio: Ctrl+Alt+Mayús+X, o el botón de la vista previa de la app en la barra de tareas',
   'atrium.overlay.exited': 'Modo superposición desactivado',
   'atrium.browser.inUse': 'Los Atriums de este navegador están abiertos en otra pestaña. Ciérrala o sigue en ella.',
+  'atrium.browser.unsupported': 'Este navegador no puede guardar atriums: bloquea lo que necesitan (WebAssembly o el almacenamiento del sitio). Puede deberse a una ventana privada, al modo de aislamiento o a un ajuste de seguridad.',
   'atrium.hud.manage': "Ajustes del Atrium",
   'atrium.hud.saveAtrium': 'Exportar el atrio a…',
   'atrium.menu.exportImage': 'Exportar como imagen',
