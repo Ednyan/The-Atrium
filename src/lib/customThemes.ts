@@ -84,10 +84,12 @@ export function themeModeOf(ref: ThemeRef, atrium: ThemeSettings | null | undefi
   return markedMode(ref, customs) ?? modeOf(themeOf(ref, atrium, customs))
 }
 
-// ---- On this device: what each atrium is seen in; the last theme of each kind ----
+// ---- On this device: what each atrium is seen in; its last theme of each kind ----
 
 const viewKey = (lobbyId: string) => `atrium.view.${lobbyId}`
-const lastKey = (mode: ThemeMode) => `atrium.lastTheme.${mode}`
+// Each atrium's own: light or dark pressed in one brings back what was last
+// seen of that kind there, never what was chosen in another.
+const lastKey = (lobbyId: string, mode: ThemeMode) => `atrium.lastTheme.${lobbyId}.${mode}`
 const read = (key: string) => { try { return localStorage.getItem(key) } catch { return null } }
 const write = (key: string, value: string) => { try { localStorage.setItem(key, value) } catch { /* for this visit only */ } }
 const isRef = (value: string | null): value is ThemeRef => !!value && (value === 'atrium' || /^(preset|special|custom):./.test(value))
@@ -97,19 +99,22 @@ export function readView(lobbyId: string, mode: ThemeMode): ThemeRef | null {
   const stored = read(viewKey(lobbyId))
   if (isRef(stored)) return stored
   // Before themes of one's own, pressing light/dark made an atrium follow it.
-  return read(`atrium.followTheme.${lobbyId}`) === '1' ? lastThemeOf(mode) : null
+  return read(`atrium.followTheme.${lobbyId}`) === '1' ? lastThemeOf(lobbyId, mode, null) : null
 }
 export const writeView = (lobbyId: string, ref: ThemeRef) => write(viewKey(lobbyId), ref)
 
-// One of your own, or a special theme, only while it's still there and still
-// of that kind: marked the other way since, it's the other kind's.
-export function lastThemeOf(mode: ThemeMode): ThemeRef {
-  const stored = read(lastKey(mode))
-  const marked = isRef(stored) && /^(custom|special):/.test(stored)
-  const fits = isRef(stored) && stored !== 'atrium' && (!marked || markedMode(stored, themes) === mode)
-  return fits ? stored : `preset:${defaultPresetFor(mode === 'light').id}`
+// The theme of that kind last seen in this atrium -- its own included -- while
+// it's still there and still of that kind (one of your own, or a special
+// theme, marked the other way since is the other kind's). None yet here: the
+// atrium's own if it's of that kind, else the default of that kind.
+export function lastThemeOf(lobbyId: string, mode: ThemeMode, atrium: ThemeSettings | null | undefined): ThemeRef {
+  const fits = (ref: ThemeRef) => (/^(custom|special):/.test(ref) ? markedMode(ref, themes) : themeModeOf(ref, atrium, themes)) === mode
+  const stored = read(lastKey(lobbyId, mode))
+  if (isRef(stored) && fits(stored)) return stored
+  if (atrium && fits('atrium')) return 'atrium'
+  return `preset:${defaultPresetFor(mode === 'light').id}`
 }
-export const rememberLast = (mode: ThemeMode, ref: ThemeRef) => { if (ref !== 'atrium') write(lastKey(mode), ref) }
+export const rememberLast = (lobbyId: string, mode: ThemeMode, ref: ThemeRef) => write(lastKey(lobbyId, mode), ref)
 
 // ---- The account's themes ---------------------------------------------------------
 

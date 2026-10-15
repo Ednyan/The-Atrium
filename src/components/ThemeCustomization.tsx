@@ -376,7 +376,7 @@ export function ThemeCustomization({ lobby, viewRef, onPick, canSaveForAtrium, o
                   aria-pressed={mine.mode === mode}
                   // Marked light or dark: the interface goes with it, and it's
                   // the last of its kind.
-                  onClick={() => { change({ mode }); rememberLast(mode, viewRef); setUiTheme(mode) }}
+                  onClick={() => { change({ mode }); rememberLast(lobby.id, mode, viewRef); setUiTheme(mode) }}
                   className={`flex-1 flex items-center justify-center gap-2 px-2 py-2 text-[10px] tracking-[0.12em] uppercase border transition-colors ${
                     mine.mode === mode ? 'bg-nier-bg text-nier-black border-nier-bg' : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60'
                   }`}

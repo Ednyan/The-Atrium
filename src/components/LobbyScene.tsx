@@ -772,11 +772,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const pickTheme = (ref: ThemeRef) => {
     seeIn(ref)
     const mode = themeModeOf(ref, currentLobby?.themeSettings, customThemesNow())
-    rememberLast(mode, ref)
+    rememberLast(lobbyId, mode, ref)
     if (mode !== uiTheme) setUiTheme(mode)
   }
-  // Light or dark pressed (after it has changed): the last theme of that kind.
-  const followSwitch = () => seeIn(lastThemeOf(uiTheme === 'light' ? 'dark' : 'light'))
+  // Light or dark pressed (after it has changed): this atrium's last theme of
+  // that kind -- and the one left, remembered as its last of its own kind, so
+  // pressing again comes back to it.
+  const followSwitch = () => {
+    const atrium = currentLobby?.themeSettings
+    rememberLast(lobbyId, themeModeOf(viewRef, atrium, customThemesNow()), viewRef)
+    seeIn(lastThemeOf(lobbyId, uiTheme === 'light' ? 'dark' : 'light', atrium))
+  }
   const viewTheme = useMemo(
     () => themeOf(viewRef, currentLobby?.themeSettings, customThemes) ?? currentLobby?.themeSettings,
     [viewRef, currentLobby?.themeSettings, customThemes, specialThemes],
