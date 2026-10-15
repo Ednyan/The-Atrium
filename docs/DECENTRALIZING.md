@@ -419,10 +419,9 @@ step, about 170 ms after the save.
 **Known gap:** a write by someone whose room couldn't be reached isn't
 announced. The others see it on their next visit.
 
-**Rollout:** saves are announced in the room from the start, but heard through
-it only where `localStorage['atrium.livesaves'] = 'room'` (`'feed'` turns it
-off) until it has been tried between real browsers. Then `VIA_ROOM_BY_DEFAULT`
-in lib/liveChanges becomes true.
+**Rollout:** tried by the user between Firefox and Chrome (2026-10-15), then on
+for everyone (`VIA_ROOM_BY_DEFAULT`). `localStorage['atrium.livesaves'] =
+'feed'` turns it off in one browser.
 
 **Later, the original idea:**
 - The roster moves onto the direct connections. Each peer announces its name

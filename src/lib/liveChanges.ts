@@ -33,10 +33,10 @@ const TABLES = new Set<string>(['traces', 'layers', 'trace_links', 'lobby_locati
 const IDS_PER_MESSAGE = 500
 // How long an atrium waits to be given a room before using the change feed.
 const ROOM_WAIT_MS = 6000
-// Tried before everyone has it: localStorage['atrium.livesaves'] = 'room' to
-// hear saves through the room in this browser, 'feed' for Supabase's feed.
-// Saves are announced in the room either way.
-const VIA_ROOM_BY_DEFAULT = false
+// Everyone's since 2026-10-15, after a try between real browsers.
+// localStorage['atrium.livesaves'] = 'feed' hears saves through Supabase's
+// feed in this browser instead. Saves are announced in the room either way.
+const VIA_ROOM_BY_DEFAULT = true
 function viaRoom() {
   try {
     const chosen = localStorage.getItem('atrium.livesaves')
