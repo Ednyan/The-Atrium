@@ -23,6 +23,7 @@ import { resolveLocalStreamUrl } from '../lib/localMedia'
 
 import ProfileCustomization from './ProfileCustomization'
 import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVENT } from '../lib/traceSave'
+import { TRACES_RECEIVED_EVENT } from '../lib/liveChanges'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss, fitFontSize, watchFonts, fontsLoadedVersion } from '../lib/textFit'
 import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
@@ -2057,6 +2058,38 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       window.removeEventListener(TRACE_SAVE_COMPLETED_EVENT, handleSaveCompleted)
       window.removeEventListener(TRACE_DISCARD_COMPLETED_EVENT, handleDiscarded)
     }
+  }, [])
+
+  // Someone else's save of a trace (lib/liveChanges): the first save wins, so
+  // what's drawn here for it gives way to the store's, as an undo's does
+  // (applyUpdateTarget) -- the local copy a drag left, and the customise
+  // panel's -- selected or not. Not under a drag or transform still going on:
+  // that is this user's change after theirs, and counts.
+  useEffect(() => {
+    const handleReceived = (event: Event) => {
+      const received = new Set((event as CustomEvent<string[]>).detail)
+      const moving = new Set<string>()
+      if (transformModeRef.current !== 'none') {
+        for (const id of multiSelectedIdsRef.current) moving.add(id)
+        if (selectedTraceIdRef.current) moving.add(selectedTraceIdRef.current)
+      }
+      const giveWay = <T,>(copies: Record<string, T>) => {
+        const gone = [...received].filter(id => id in copies && !moving.has(id))
+        if (gone.length === 0) return copies
+        const next = { ...copies }
+        for (const id of gone) delete next[id]
+        return next
+      }
+      setLocalTraceTransforms(giveWay)
+      setLocalShapePoints(giveWay)
+      const editing = editingTraceRef.current
+      if (editing && received.has(editing.id) && !moving.has(editing.id)) {
+        const now = useGameStore.getState().traces.find(t => t.id === editing.id)
+        if (now) setEditingTrace(now)
+      }
+    }
+    window.addEventListener(TRACES_RECEIVED_EVENT, handleReceived)
+    return () => window.removeEventListener(TRACES_RECEIVED_EVENT, handleReceived)
   }, [])
 
   // One action, one undo step: while `inOneStep` runs an action, the trace

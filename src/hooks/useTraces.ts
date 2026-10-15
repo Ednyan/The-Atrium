@@ -5,7 +5,7 @@ import { asExrGrade } from '../lib/exr'
 import { useGameStore, useGamePick } from '../store/gameStore'
 import { supabase, isDesktop } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
-import { liveTable, readRows } from '../lib/liveChanges'
+import { liveTable, readRows, TRACES_RECEIVED_EVENT } from '../lib/liveChanges'
 import { whenTracesWritten } from '../lib/traceWrites'
 import { isBeingWritten, whenSaveDone } from '../lib/traceSave'
 import type { Trace } from '../types/database'
@@ -316,7 +316,10 @@ export function useTraces(lobbyId: string | null) {
       }
       adoptTraces(adopted)
       // All at once: a group moved arrives moved.
-      if (taken.length) receiveTraces(taken)
+      if (taken.length) {
+        receiveTraces(taken)
+        window.dispatchEvent(new CustomEvent(TRACES_RECEIVED_EVENT, { detail: taken.map(t => t.id) }))
+      }
       if (afterSave.length && supabase) {
         void whenSaveDone().then(async () => { if (!cancelled) receiveRows(await readRows(supabase, 'traces', lobbyId, afterSave), false) })
       }
