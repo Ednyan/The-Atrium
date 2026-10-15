@@ -201,6 +201,13 @@ const ko: Catalogue = {
   'browser.deleteAtrium': 'Atrium 삭제',
   'browser.deleteConfirm': '이 Atrium을 삭제할까요? 안에 있는 trace가 모두 사라져요.',
   'browser.reportProblem': '문제 신고하기 · 기능 제안하기',
+  'browser.guestName': '게스트',
+  'browser.keptWhere': '보관 위치',
+  'browser.online': '온라인',
+  'browser.onlineHint': '초대한 사람과, 어느 기기에서든. 최대 3개.',
+  'browser.inBrowser': '이 브라우저에',
+  'browser.inBrowserHint': '무료, 제한 없음. 이 기기에서만, 나만.',
+  'browser.guestNote': '계정 없이는 Atrium이 이 브라우저에 나만을 위해 보관돼요. 로그인하면 공유할 수 있는 Atrium을 만들고 다른 사람들의 Atrium도 볼 수 있어요.',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': '저장 중',
@@ -238,6 +245,8 @@ const ko: Catalogue = {
   'auth.sendResetLink': '재설정 링크 보내기',
   'auth.or': '또는',
   'auth.continueWithGoogle': 'Google로 계속하기',
+  'auth.withoutAccount': '계정 없이 계속하기',
+  'auth.withoutAccountHint': 'Atrium은 이 브라우저에 보관돼요. 공유하려면 계정이 필요해요.',
   'auth.forgotPassword': '비밀번호를 잊으셨나요?',
   'auth.noAccount': '아직 계정이 없나요? 가입하기',
   'auth.haveAccount': '이미 계정이 있나요? 로그인',

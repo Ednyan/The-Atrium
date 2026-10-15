@@ -157,6 +157,13 @@ const de: Catalogue = {
   'browser.deleteAtrium': 'Atrium löschen',
   'browser.deleteConfirm': 'Dieses Atrium wirklich löschen? Alle Traces gehen verloren.',
   'browser.reportProblem': 'Problem melden oder Funktion vorschlagen',
+  'browser.guestName': 'Gast',
+  'browser.keptWhere': 'Speicherort',
+  'browser.online': 'Online',
+  'browser.onlineHint': 'Mit allen, die du einlädst, von jedem Gerät. Bis zu 3.',
+  'browser.inBrowser': 'In diesem Browser',
+  'browser.inBrowserHint': 'Kostenlos, ohne Limit. Nur auf diesem Gerät, nur für dich.',
+  'browser.guestNote': 'Ohne Konto bleiben deine Atrien in diesem Browser, nur für dich. Melde dich an, um Atrien zu erstellen, die du teilen kannst, und die der anderen zu sehen.',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': 'Speichert',
@@ -194,6 +201,8 @@ const de: Catalogue = {
   'auth.sendResetLink': 'Link zum Zurücksetzen senden',
   'auth.or': 'oder',
   'auth.continueWithGoogle': 'Mit Google fortfahren',
+  'auth.withoutAccount': 'Ohne Konto fortfahren',
+  'auth.withoutAccountHint': 'Deine Atrien bleiben in diesem Browser. Zum Teilen brauchst du ein Konto.',
   'auth.forgotPassword': 'Passwort vergessen?',
   'auth.noAccount': 'Noch kein Konto? Registrieren',
   'auth.haveAccount': 'Schon ein Konto? Anmelden',

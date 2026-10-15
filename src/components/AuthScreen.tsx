@@ -7,12 +7,14 @@ import { supabase, isDesktop } from '../lib/supabase'
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
   onBackToLanding?: () => void
+  /** On without an account: atriums kept in this browser (lib/browserAtriums). */
+  onGuest?: () => void
   // A failure handed back on an OAuth return URL, surfaced here so the user
   // sees why they were bounced instead of a silent trip to the homepage.
   initialError?: string
 }
 
-export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialError }: AuthScreenProps) {
+export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, initialError }: AuthScreenProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [email, setEmail] = useState('')
@@ -607,6 +609,16 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, initialErro
                 </svg>
                 {t('auth.continueWithGoogle')}
               </button>
+              {onGuest && (
+                <button
+                  type="button"
+                  onClick={onGuest}
+                  className="w-full py-3 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.15em] uppercase transition-all hover:border-nier-border/80 hover:text-nier-bg hover:bg-nier-border/10"
+                >
+                  {t('auth.withoutAccount')}
+                  <span className="block mt-1 text-[10px] tracking-wider normal-case text-nier-bg/60">{t('auth.withoutAccountHint')}</span>
+                </button>
+              )}
             </>
           )}
         </form>

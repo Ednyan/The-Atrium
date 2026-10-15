@@ -91,13 +91,15 @@ export function captureAtriumPreview(lobbyId: string, atrium: AtriumAsLeft) {
   const room = inView.length ? atrium.room(MAX_SIDE) : null
   const pictured = inView.length ? inView : traces
 
-  const make = () => void makePreview(lobbyId, pictured, links, layers, room, background, print)
+  // Through the client of the atrium left (lib/browserAtriums), whichever is current by then.
+  const client = supabase, local = isLocalData
+  const make = () => void makePreview(client, local, lobbyId, pictured, links, layers, room, background, print)
   if ('requestIdleCallback' in window) requestIdleCallback(make, { timeout: 4000 })
   else setTimeout(make, 1500)
 }
 
-async function makePreview(lobbyId: string, traces: Trace[], links: TraceLink[], layers: Layer[], room: RoomSnapshot | null, background: string, print: string) {
-  if (!supabase) return
+async function makePreview(client: any, local: boolean, lobbyId: string, traces: Trace[], links: TraceLink[], layers: Layer[], room: RoomSnapshot | null, background: string, print: string) {
+  if (!client) return
   try {
     const { blob } = await exportImage(traces, links, layers, {
       format: 'png', scale: 1, background, maxSide: MAX_SIDE, type: 'image/webp', quality: 0.8,
@@ -106,27 +108,27 @@ async function makePreview(lobbyId: string, traces: Trace[], links: TraceLink[],
         underlay: await roomPicture(room),
       }),
     })
-    const path = isLocalData ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
-    const { error } = await supabase.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: isLocalData })
+    const path = local ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
+    const { error } = await client.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: local })
     if (error) { console.warn('[preview] not uploaded:', error); return }
-    const url: string = supabase.storage.from('traces').getPublicUrl(path).data.publicUrl
+    const url: string = client.storage.from('traces').getPublicUrl(path).data.publicUrl
     // The vault's file was rewritten in place: what it's read as, read again.
-    if (isLocalData) await (await import('./localDb')).refreshLocalUrl(url)
-    const { data: before } = await (supabase.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
+    if (local) await (await import('./localDb')).refreshLocalUrl(url)
+    const { data: before } = await (client.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
     const at = new Date().toISOString()
-    const { error: saved } = await (supabase.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
+    const { error: saved } = await (client.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
     // Not kept: the file goes too.
     if (saved) {
       console.warn('[preview] not kept:', saved)
-      if (!isLocalData) void supabase.storage.from('traces').remove([path])
+      if (!local) void client.storage.from('traces').remove([path])
       return
     }
     try { localStorage.setItem(memoryKey(lobbyId), JSON.stringify({ print, at: Date.now() })) } catch { /* the next leave tries again */ }
     // The one it replaces, gone (its address, less any query an earlier
     // version gave it).
-    const previous = !isLocalData && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
+    const previous = !local && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
     if (previous && previous !== path) {
-      void supabase.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
+      void client.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
     }
     window.dispatchEvent(new CustomEvent<PreviewDetail>('atrium:preview', { detail: { lobbyId, url, at } }))
   } catch (error) {

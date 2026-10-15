@@ -3,7 +3,7 @@ import { asStrokeStyle } from '../lib/strokeStyle'
 import { asStrokeData } from '../lib/brushes'
 import { asExrGrade } from '../lib/exr'
 import { useGameStore, useGamePick } from '../store/gameStore'
-import { supabase, isLocalData } from '../lib/supabase'
+import { supabase, isLocalData, cloudClient } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
 import { liveTable, readRows, TRACES_RECEIVED_EVENT } from '../lib/liveChanges'
 import { whenTracesWritten } from '../lib/traceWrites'
@@ -39,7 +39,9 @@ export async function fetchAllLobbyTraces(client: any, lobbyId: string): Promise
     .eq('lobby_id', lobbyId)
     .order('created_at', { ascending: false })
 
-  if (isLocalData) {
+  // A local engine's (the desktop's, or a browser atrium's -- whatever page
+  // reads it) has no page limit, nor .range().
+  if (client !== cloudClient) {
     const { data, error } = await base()
     if (error) throw error
     return data ?? []

@@ -1,5 +1,5 @@
-import { ATRIUM_FILE_TYPE } from './atriumFile'
-import { supabase } from './supabase'
+import { ATRIUM_FILE_TYPE, readAsDataUrl } from './atriumFile'
+import { fetchMedia } from './exportImage'
 import { fetchAllLobbyTraces } from '../hooks/useTraces'
 import { drawRanks, inOrder } from './order'
 import { fileNameOf, saveFile } from './fileSave'
@@ -83,6 +83,22 @@ export function atriumEnvelope(
   }
 }
 
+// A local engine's files (local://, the desktop's or the browser's), inside
+// the file as data: an address on this device means nothing anywhere else.
+// One that can't be read stays as its address.
+export async function localFilesInside(traces: any[], onEach?: (done: number) => void) {
+  let done = 0
+  for (const trace of traces) {
+    for (const key of ['media_url', 'image_url'] as const) {
+      if (typeof trace[key] !== 'string' || !trace[key].startsWith('local://')) continue
+      const blob = await fetchMedia(trace[key])
+      if (!blob) continue
+      trace[key] = await readAsDataUrl(blob)
+      onEach?.(++done)
+    }
+  }
+}
+
 export interface AtriumDownloadResult {
   traceCount: number
   layerCount: number
@@ -94,10 +110,12 @@ export async function downloadAtrium(
   lobbyId: string,
   onProgress?: (message: string) => void,
 ): Promise<AtriumDownloadResult> {
-  if (!supabase) throw new Error('Not connected')
+  // The cloud's, or this browser's engine for one kept here.
+  const client = await (await import('./browserAtriums')).clientFor(lobbyId)
+  if (!client) throw new Error('Not connected')
 
   onProgress?.('Reading atrium...')
-  const { data: lobby, error: lobbyError } = await (supabase
+  const { data: lobby, error: lobbyError } = await (client
     .from('lobbies') as any)
     .select('name, theme_settings, is_public, max_players')
     .eq('id', lobbyId)
@@ -108,10 +126,11 @@ export async function downloadAtrium(
   onProgress?.('Reading traces...')
   // Paged, not a capped select -- a large atrium would otherwise export only
   // its newest slice and silently lose the rest.
-  const traces = await fetchAllLobbyTraces(supabase, lobbyId)
+  const traces = await fetchAllLobbyTraces(client, lobbyId)
+  await localFilesInside(traces)
 
   onProgress?.('Reading layers...')
-  const { data: layerRows } = await (supabase
+  const { data: layerRows } = await (client
     .from('layers') as any)
     .select('*')
     .eq('lobby_id', lobbyId)
@@ -125,13 +144,13 @@ export async function downloadAtrium(
   // presentation order, the framing someone composed -- so exporting without
   // them loses authored work, not just a convenience.
   onProgress?.('Reading locations...')
-  const { data: locationRows } = await (supabase
+  const { data: locationRows } = await (client
     .from('lobby_locations') as any)
     .select('*')
     .eq('lobby_id', lobbyId)
     .order('order_index', { ascending: true })
 
-  const { data: linkRows } = await (supabase
+  const { data: linkRows } = await (client
     .from('trace_links') as any)
     .select('*')
     .eq('lobby_id', lobbyId)

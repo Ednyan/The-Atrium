@@ -524,6 +524,30 @@ later, optional and reversible (export first).
   Without persistence, browsers may clear site data under storage pressure.
 - **Order:** independent of phases 4–6, so it can move earlier.
 
+**Built (2026-10-15).**
+- **The engine:** `lib/browserPlatform` + `lib/browserVault.worker` run the
+  desktop's database in the page (sqlite-wasm 3.53, SAH pool), and
+  `lib/localPlatform` picks Tauri or the browser. One tab holds the vault (Web
+  Locks); a second tab is told it's open elsewhere.
+- **Side by side:** `lib/browserAtriums` keeps which atriums are the
+  browser's. Inside one, the data client is the engine's (`switchDataClient`)
+  and `isLocalData` is true; leaving waits for every write before switching
+  back. A browser atrium's data never goes to the cloud. That includes its
+  preview, which is made through the client of the atrium it was taken in.
+- **The atrium browser:** browser atriums are listed with the cloud's under
+  Your Atriums, marked "In this browser", without Copy ID or Settings. "Create"
+  asks where to keep the new one, and past the cloud's three it can only go in
+  the browser. The count shows cloud atriums only.
+- **No account needed:** "Continue without an account" on the sign-in page.
+  The guest (one id per browser) sees this browser's atriums only, and is
+  asked to sign in for anything shared. Signing in ends guest mode; the
+  browser's atriums stay, owned by whoever uses this browser.
+- **Not losing work:** making a browser atrium asks the browser to keep its
+  storage (`navigator.storage.persist()`). Export lists browser atriums first,
+  for guests too, with their files inside the file.
+- **Not yet:** importing a file into a browser atrium (import still makes a
+  cloud atrium), and moving a browser atrium to the cloud.
+
 ## Phase 8: public atriums at scale
 
 - **Viewing:** a public atrium is "anyone with the link can view" in its

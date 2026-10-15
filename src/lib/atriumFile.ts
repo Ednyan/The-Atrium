@@ -56,7 +56,7 @@ export function nameFileTraces(file: AtriumFile, taken: string[] = []): Map<Reco
   return textNames
 }
 
-const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+export const readAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader()
   reader.onload = () => resolve(String(reader.result))
   reader.onerror = () => reject(reader.error)

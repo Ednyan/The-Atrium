@@ -158,6 +158,13 @@ const ptBR: Catalogue = {
   'browser.deleteAtrium': 'Excluir atrium',
   'browser.deleteConfirm': 'Tem certeza de que deseja excluir este atrium? Todos os traces serão perdidos.',
   'browser.reportProblem': 'Relatar um problema ou sugerir uma função',
+  'browser.guestName': 'Convidado',
+  'browser.keptWhere': 'Onde fica salvo',
+  'browser.online': 'Online',
+  'browser.onlineHint': 'Com quem você convidar, de qualquer dispositivo. Até 3.',
+  'browser.inBrowser': 'Neste navegador',
+  'browser.inBrowserHint': 'Grátis, sem limite. Só neste dispositivo, só para você.',
+  'browser.guestNote': 'Sem conta, seus atriums ficam neste navegador, só para você. Entre para criar atriums que você pode compartilhar e ver os dos outros.',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': 'Salvando',
@@ -195,6 +202,8 @@ const ptBR: Catalogue = {
   'auth.sendResetLink': 'Enviar link de redefinição',
   'auth.or': 'ou',
   'auth.continueWithGoogle': 'Continuar com o Google',
+  'auth.withoutAccount': 'Continuar sem conta',
+  'auth.withoutAccountHint': 'Seus atriums ficam neste navegador. Para compartilhá-los, é preciso uma conta.',
   'auth.forgotPassword': 'Esqueceu sua senha?',
   'auth.noAccount': 'Não tem uma conta? Cadastre-se',
   'auth.haveAccount': 'Já tem uma conta? Entrar',

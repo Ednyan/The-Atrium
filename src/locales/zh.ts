@@ -200,6 +200,13 @@ const zh: Catalogue = {
   'browser.deleteAtrium': '删除 Atrium',
   'browser.deleteConfirm': '确定要删除这个 Atrium 吗？其中所有的 trace 都会随之消失。',
   'browser.reportProblem': '报告问题或提出功能建议',
+  'browser.guestName': '访客',
+  'browser.keptWhere': '保存位置',
+  'browser.online': '在线',
+  'browser.onlineHint': '与你邀请的人共享，任何设备都能打开。最多 3 个。',
+  'browser.inBrowser': '此浏览器',
+  'browser.inBrowserHint': '免费，无上限。仅在此设备上，仅你可见。',
+  'browser.guestNote': '不登录时，你的 Atrium 只保存在此浏览器中，仅你可见。登录后可以创建能分享的 Atrium，也能看到其他人的。',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': '保存中',
@@ -237,6 +244,8 @@ const zh: Catalogue = {
   'auth.sendResetLink': '发送重置链接',
   'auth.or': '或',
   'auth.continueWithGoogle': '使用 Google 继续',
+  'auth.withoutAccount': '不使用账号继续',
+  'auth.withoutAccountHint': '你的 Atrium 会保存在此浏览器中。分享需要账号。',
   'auth.forgotPassword': '忘记密码？',
   'auth.noAccount': '还没有账号？立即注册',
   'auth.haveAccount': '已经有账号了？立即登录',

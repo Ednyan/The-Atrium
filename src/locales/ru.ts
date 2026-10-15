@@ -160,6 +160,13 @@ const ru: Catalogue = {
   'browser.deleteAtrium': 'Удалить атриум',
   'browser.deleteConfirm': 'Удалить этот атриум? Все трейсы будут потеряны.',
   'browser.reportProblem': 'Сообщить о проблеме или предложить функцию',
+  'browser.guestName': 'Гость',
+  'browser.keptWhere': 'Где хранится',
+  'browser.online': 'Онлайн',
+  'browser.onlineHint': 'С теми, кого пригласите, с любого устройства. До 3.',
+  'browser.inBrowser': 'В этом браузере',
+  'browser.inBrowserHint': 'Бесплатно, без лимита. Только на этом устройстве, только для вас.',
+  'browser.guestNote': 'Без аккаунта ваши атриумы хранятся в этом браузере, только для вас. Войдите, чтобы создавать атриумы, которыми можно делиться, и видеть чужие.',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': 'Сохранение',
@@ -197,6 +204,8 @@ const ru: Catalogue = {
   'auth.sendResetLink': 'Отправить ссылку для сброса',
   'auth.or': 'или',
   'auth.continueWithGoogle': 'Продолжить через Google',
+  'auth.withoutAccount': 'Продолжить без аккаунта',
+  'auth.withoutAccountHint': 'Ваши атриумы останутся в этом браузере. Чтобы делиться ими, нужен аккаунт.',
   'auth.forgotPassword': 'Забыли пароль?',
   'auth.noAccount': 'Нет аккаунта? Зарегистрироваться',
   'auth.haveAccount': 'Уже есть аккаунт? Войти',

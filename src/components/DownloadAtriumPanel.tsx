@@ -9,7 +9,7 @@ export interface DownloadableAtrium {
   ownerUsername?: string
   // How this atrium is reachable, shown as a chip so the reason it's in the
   // list is visible rather than implied.
-  access: 'owner' | 'admin' | 'public'
+  access: 'browser' | 'owner' | 'admin' | 'public'
 }
 
 interface DownloadAtriumPanelProps {
@@ -18,6 +18,7 @@ interface DownloadAtriumPanelProps {
 }
 
 const ACCESS_LABEL: Record<DownloadableAtrium['access'], TranslationKey> = {
+  browser: 'browser.inBrowser',
   owner: 'transfer.access.owned',
   admin: 'transfer.access.admin',
   public: 'transfer.access.public',

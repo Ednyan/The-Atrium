@@ -33,7 +33,7 @@ import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
-import { enterBrowserAtrium, isBrowserAtrium, leaveBrowserAtrium } from './lib/browserAtriums'
+import { browserGuest, endGuest, enterBrowserAtrium, isBrowserAtrium, isGuestHere, leaveBrowserAtrium } from './lib/browserAtriums'
 import { startOverlay } from './lib/overlay'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
@@ -717,6 +717,9 @@ const STORAGE_KEYS = {
 // kind of thing from the other direction: a desktop app sends someone here
 // precisely because they have no account and should not need one.
 const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest'])
+// And for somebody going on without an account (lib/browserAtriums): the
+// browser, and the atriums kept in it.
+const GUEST_ROUTES = new Set(['browse', 'atrium'])
 
 // Whether there may be a session to restore -- one kept from before, or one
 // arriving now from a sign-in elsewhere (an OAuth return). Without either, a
@@ -970,6 +973,8 @@ function AppInner() {
   // sign-in, or a profile the trigger failed to create. Holds the username
   // screen open until they pick one.
   const [pendingUsernameUser, setPendingUsernameUser] = useState<{ id: string; email: string } | null>(null)
+  // Going on without an account: this browser's atriums only, as its guest.
+  const [isGuest, setIsGuest] = useState(() => !isDesktop && isGuestHere())
   // An OAuth failure handed back on the return URL. Supabase reports these as
   // ?error=...&error_description=... rather than throwing, so without this the
   // app just rendered the landing page and the user saw an unexplained bounce
@@ -1259,7 +1264,7 @@ function AppInner() {
   // Verify lobby access when trying to access via URL
   useEffect(() => {
     const verifyLobbyAccess = async () => {
-      if (!supabase || !isAuthenticated) return
+      if (!supabase || !(isAuthenticated || isGuest)) return
       if (route.page !== 'atrium' || !route.lobbyId) return
       
       // If already verified for this lobby, skip
@@ -1268,9 +1273,8 @@ function AppInner() {
       // An atrium kept in this browser (lib/browserAtriums): nobody's access to
       // check, and its data through the browser's engine from here on.
       if (isBrowserAtrium(route.lobbyId)) {
-        const { userId, username, playerColor } = useGameStore.getState()
         try {
-          await enterBrowserAtrium(route.lobbyId, { id: userId!, name: username || 'You', color: playerColor || '#ffffff' }, true)
+          await enterBrowserAtrium(route.lobbyId, isAuthenticated ? null : browserGuest(t('browser.guestName')))
         } catch (error) {
           setLobbyAccessError(error instanceof Error && error.message === 'VAULT_IN_USE' ? t('atrium.browser.inUse') : String(error))
           return
@@ -1282,6 +1286,11 @@ function AppInner() {
       }
       // One of the cloud's: out of a browser atrium first, its writes done.
       await leaveBrowserAtrium()
+      // A guest is asked to sign in for it.
+      if (!isAuthenticated) {
+        navigate('/login')
+        return
+      }
       
       // In desktop mode, local user always has access — skip verification
       if (isDesktop) {
@@ -1450,7 +1459,7 @@ function AppInner() {
     }
     
     verifyLobbyAccess()
-  }, [route.page, route.lobbyId, isAuthenticated, verifiedLobbyId])
+  }, [route.page, route.lobbyId, isAuthenticated, isGuest, verifiedLobbyId])
 
   // Tracks whether a session was already in hand, so "just signed in" can be
   // told apart from "already signed in". onAuthStateChange fires for plenty of
@@ -1591,7 +1600,11 @@ function AppInner() {
                 ? urlRoute.lobbyId
                 : (explicitRoute ? null : storedLobbyId)
 
-              if (lobbyIdToRestore && supabase) {
+              if (lobbyIdToRestore && isBrowserAtrium(lobbyIdToRestore)) {
+                // Kept in this browser, which the cloud doesn't know: opened by
+                // verifyLobbyAccess.
+                navigate(`/atrium/${lobbyIdToRestore}`)
+              } else if (lobbyIdToRestore && supabase) {
                 const { data: lobbyExists } = await (supabase as any)
                   .from('lobbies')
                   .select('id')
@@ -1652,7 +1665,8 @@ function AppInner() {
         // away the URL on every signed-out boot -- so the Pinterest link page
         // a desktop app opens could never be reached by the people it exists
         // for, and landed them on the landing page instead.
-        if (!ACCOUNT_FREE_ROUTES.has(parseRoute().page)) {
+        const page = parseRoute().page
+        if (!ACCOUNT_FREE_ROUTES.has(page) && !(isGuestHere() && GUEST_ROUTES.has(page))) {
           navigate('/')
         }
         setLoading(false)
@@ -1834,6 +1848,20 @@ function AppInner() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [currentLobbyId])
 
+  // A guest is who makes things in this browser's atriums -- until they sign in.
+  useEffect(() => {
+    if (!isGuest) return
+    if (isAuthenticated) {
+      endGuest()
+      setIsGuest(false)
+      return
+    }
+    const guest = browserGuest(t('browser.guestName'))
+    setUserId(guest.id)
+    setUsername(guest.name)
+    setPlayerColor(guest.color)
+  }, [isGuest, isAuthenticated])
+
   // Out of an atrium kept in the browser, however it was left (lib/browserAtriums).
   useEffect(() => {
     if (route.page !== 'atrium') void leaveBrowserAtrium()
@@ -1884,6 +1912,11 @@ function AppInner() {
   }
 
   const handleJoinLobby = async (lobbyId: string, password?: string) => {
+    // Kept in this browser: nobody's access to check (verifyLobbyAccess opens it).
+    if (isBrowserAtrium(lobbyId)) {
+      navigate(`/atrium/${lobbyId}`)
+      return
+    }
     if (!supabase) return
 
     try {
@@ -2047,7 +2080,7 @@ function AppInner() {
     )
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !(isGuest && GUEST_ROUTES.has(currentPage))) {
     // In desktop mode, never show auth/landing (auto-auth handles it)
     if (isDesktop) {
       return (
@@ -2066,6 +2099,10 @@ function AppInner() {
         <AuthScreen
           onAuthSuccess={handleAuthSuccess}
           onBackToLanding={handleBackToLanding}
+          onGuest={() => {
+            setIsGuest(true)
+            navigate('/browse')
+          }}
           initialError={oauthError ?? undefined}
         />
       )
@@ -2136,7 +2173,9 @@ function AppInner() {
         <Suspense fallback={null}>
           <LobbyBrowser
             onJoinLobby={handleJoinLobby}
-            onClose={() => navigate('/welcome')}
+            onClose={() => navigate(isAuthenticated ? '/welcome' : '/')}
+            guest={!isAuthenticated}
+            onSignIn={() => navigate('/login')}
           />
         </Suspense>
         <KickedNotice notice={kickedNotice} onDismiss={() => setKickedNotice(null)} />

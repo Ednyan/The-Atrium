@@ -191,6 +191,13 @@ export const en = {
   'browser.deleteAtrium': 'Delete Atrium',
   'browser.deleteConfirm': 'Are you sure you want to delete this atrium? All traces will be lost.',
   'browser.reportProblem': 'Report a problem or suggest a feature',
+  'browser.guestName': 'Guest',
+  'browser.keptWhere': "Where it's kept",
+  'browser.online': 'Online',
+  'browser.onlineHint': 'Shared with whoever you invite, from any device. Up to 3.',
+  'browser.inBrowser': 'In this browser',
+  'browser.inBrowserHint': 'Free, no limit. Only on this device, only for you.',
+  'browser.guestNote': "Without an account, your atriums are kept in this browser, for you alone. Sign in to make atriums you can share, and to see everyone else's.",
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': 'Saving',
@@ -228,6 +235,8 @@ export const en = {
   'auth.sendResetLink': 'Send Reset Link',
   'auth.or': 'or',
   'auth.continueWithGoogle': 'Continue with Google',
+  'auth.withoutAccount': 'Continue without an account',
+  'auth.withoutAccountHint': 'Your atriums stay in this browser. Sharing them needs an account.',
   'auth.forgotPassword': 'Forgot your password?',
   'auth.noAccount': "Don't have an account? Sign up",
   'auth.haveAccount': 'Already have an account? Log in',

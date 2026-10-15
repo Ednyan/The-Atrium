@@ -23,6 +23,7 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
+import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium } from '../lib/browserAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
@@ -73,14 +74,35 @@ function AtriumPreview({ url }: { url?: string | null }) {
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
   playerCount?: number
+  // Kept in this browser (lib/browserAtriums), not the cloud.
+  inBrowser?: boolean
 }
+
+// A lobbies row as the lists show it.
+const asLobby = (lobby: any): LobbyWithOwner => ({
+  id: lobby.id,
+  name: lobby.name,
+  ownerUserId: lobby.owner_user_id,
+  passwordHash: null,
+  maxPlayers: lobby.max_players,
+  isPublic: lobby.is_public,
+  createdAt: lobby.created_at,
+  updatedAt: lobby.updated_at,
+  adminUserIds: lobby.admin_user_ids ?? [],
+  editPermissionMode: lobby.edit_permission_mode ?? 'all',
+  previewUrl: lobby.preview_url ?? null,
+  previewAt: lobby.preview_at ?? null,
+})
 
 interface LobbyBrowserProps {
   onJoinLobby: (lobbyId: string, password?: string) => void
   onClose: () => void
+  /** Without an account: this browser's atriums only. */
+  guest?: boolean
+  onSignIn?: () => void
 }
 
-export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
+export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: LobbyBrowserProps) {
   const { t } = useTranslation()
   const [lobbies, setLobbies] = useState<LobbyWithOwner[]>([])
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
@@ -89,11 +111,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   // settings, everything except the owner-only Admins tab) from the browser
   // too, without needing to enter the atrium first.
   const [adminLobbies, setAdminLobbies] = useState<LobbyWithOwner[]>([])
+  const [browserLobbies, setBrowserLobbies] = useState<LobbyWithOwner[]>([])
+  // Yours, wherever they're kept: last opened first.
+  const yours = useMemo(() => sortByLastVisited([...browserLobbies, ...userLobbies], lobby => lobby.id), [browserLobbies, userLobbies])
   useEffect(() => {
     const landed = (e: Event) => {
       const { lobbyId, url, at } = (e as CustomEvent<PreviewDetail>).detail
       const update = (list: LobbyWithOwner[]) => list.map(l => (l.id === lobbyId ? { ...l, previewUrl: url, previewAt: at } : l))
-      setUserLobbies(update); setAdminLobbies(update); setLobbies(update)
+      setUserLobbies(update); setAdminLobbies(update); setLobbies(update); setBrowserLobbies(update)
     }
     window.addEventListener('atrium:preview', landed)
     return () => window.removeEventListener('atrium:preview', landed)
@@ -106,6 +131,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   const [newLobbyName, setNewLobbyName] = useState('')
   const [newLobbyPassword, setNewLobbyPassword] = useState('')
   const [newLobbyIsPublic, setNewLobbyIsPublic] = useState(true)
+  // The new atrium kept in this browser rather than the cloud.
+  const [newInBrowser, setNewInBrowser] = useState(false)
+  const browserChoice = !isDesktop && newInBrowser
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null)
   const [passwordInput, setPasswordInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -182,6 +210,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
   // Initial load and clear active_lobby_id (user is browsing, not in a lobby)
   useEffect(() => {
     const clearAndLoad = async () => {
+      // The cloud's client again, if a browser atrium was just left.
+      await leaveBrowserAtrium()
       // Clear user's active_lobby_id since they're in the browser (not in a lobby)
       if (supabase) {
         const { data: { user } } = await supabase.auth.getUser()
@@ -272,9 +302,25 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     return () => clearInterval(refreshInterval)
   }, [])
 
+  // Atriums kept in this browser, from its engine -- not opened at all while
+  // there are none.
+  const loadBrowserLobbies = async () => {
+    const ids = isDesktop ? [] : browserAtriumIds()
+    if (ids.length === 0) { setBrowserLobbies([]); return }
+    try {
+      const { localClient } = await browserEngine()
+      const { data, error } = await localClient.from('lobbies').select('*').in('id', ids)
+      if (error) throw error
+      setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true })))
+    } catch (err) {
+      setError(err instanceof Error && err.message === 'VAULT_IN_USE' ? t('atrium.browser.inUse') : t('browser.errLoadLobbies', { message: String(err) }))
+    }
+  }
+
   const loadLobbies = async () => {
     if (!supabase) return
-    
+    void loadBrowserLobbies()
+
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -434,18 +480,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       })
 
       return {
-        id: lobby.id,
-        name: lobby.name,
-        ownerUserId: lobby.owner_user_id,
+        ...asLobby(lobby),
         passwordHash: hasPassword ? 'protected' : null, // Use hasPassword from RPC instead of raw password_hash
-        maxPlayers: lobby.max_players,
-        isPublic: lobby.is_public,
-        createdAt: lobby.created_at,
-        updatedAt: lobby.updated_at,
-        adminUserIds: lobby.admin_user_ids ?? [],
-        editPermissionMode: lobby.edit_permission_mode ?? 'all',
-        previewUrl: lobby.preview_url ?? null,
-        previewAt: lobby.preview_at ?? null,
         ownerUsername: profile?.username || 'Unknown',
         playerCount: count || 0,
       }
@@ -482,10 +518,12 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      // Kept in this browser (lib/browserAtriums), or the cloud's.
+      const client = browserChoice ? (await browserEngine()).localClient : supabase
+      const { data: { user } } = await client.auth.getUser()
       if (!user) throw new Error('Not authenticated')
 
-      if (!isDesktop) {
+      if (!isDesktop && !browserChoice) {
         const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
           p_user_id: user.id
         })
@@ -505,13 +543,14 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       const startingTheme = (await seasonalThemeNow())?.values
         ?? themeOf(`preset:${defaultPresetFor(light).id}`, null, []) ?? startingAtriumTheme(light)
 
-      const { data, error } = await (supabase!
+      // Nobody else reaches one kept in the browser: no password, not listed.
+      const { data, error } = await (client
         .from('lobbies') as any)
         .insert({
           name: newLobbyName,
           owner_user_id: user.id,
-          password_hash: newLobbyPassword || null,
-          is_public: newLobbyIsPublic,
+          password_hash: browserChoice ? null : newLobbyPassword || null,
+          is_public: !browserChoice && newLobbyIsPublic,
           max_players: 50,
           theme_settings: startingTheme,
         })
@@ -519,6 +558,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
         .single()
 
       if (error) throw error
+      if (browserChoice) rememberBrowserAtrium(data.id)
 
       // Join the newly created lobby
       onJoinLobby(data.id)
@@ -683,12 +723,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     if (!supabase) return
 
     try {
-      const { error } = await supabase
+      const { error } = await (await clientFor(lobbyId))
         .from('lobbies')
         .delete()
         .eq('id', lobbyId)
 
       if (error) throw error
+      forgetBrowserAtrium(lobbyId)
 
       loadLobbies()
       checkCanCreateLobby()
@@ -733,7 +774,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
     if (!supabase || !newName.trim()) return
     
     try {
-      const { error } = await (supabase
+      const { error } = await ((await clientFor(lobbyId))
         .from('lobbies') as any)
         .update({ name: newName.trim() })
         .eq('id', lobbyId)
@@ -741,9 +782,9 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
       if (error) throw error
 
       // Update local state for user lobbies
-      setUserLobbies(prev => prev.map(l => 
-        l.id === lobbyId ? { ...l, name: newName.trim() } : l
-      ))
+      const renamed = (list: LobbyWithOwner[]) => list.map(l => (l.id === lobbyId ? { ...l, name: newName.trim() } : l))
+      setUserLobbies(renamed)
+      setBrowserLobbies(renamed)
       // Also update the available servers list
       setLobbies(prev => prev.map(l => 
         l.id === lobbyId ? { ...l, name: newName.trim() } : l
@@ -927,9 +968,6 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
             <div className="flex items-center gap-2 mb-4">
               <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.createNew')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              {!canCreateMore && (
-                <span className="text-xs tracking-wider" style={{ color: '#FF6161' }}>{t('browser.limitReached')}</span>
-              )}
             </div>
 
             {showCreateLobby ? (
@@ -950,6 +988,31 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     maxLength={50}
                   />
                 </div>
+                {/* Where it's kept: the cloud's (shared, three at most) or this
+                    browser's (lib/browserAtriums) -- the only one for a guest. */}
+                {!isDesktop && !guest && (
+                  <div>
+                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.keptWhere')}</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[false, true].map(inBrowser => (
+                        <button
+                          key={String(inBrowser)}
+                          type="button"
+                          onClick={() => setNewInBrowser(inBrowser)}
+                          disabled={!inBrowser && !canCreateMore}
+                          aria-pressed={newInBrowser === inBrowser}
+                          className={`p-3 text-left border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${newInBrowser === inBrowser ? 'border-nier-bg text-nier-bg' : 'border-nier-border/30 text-nier-bg/70 hover:border-nier-border/60'}`}
+                        >
+                          <span className="block text-xs tracking-[0.12em] uppercase">{inBrowser ? t('browser.inBrowser') : t('browser.online')}</span>
+                          <span className="block mt-1 text-[11px] tracking-wide text-nier-bg/60">
+                            {inBrowser ? t('browser.inBrowserHint') : canCreateMore ? t('browser.onlineHint') : t('browser.limitReached')}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {!browserChoice && (
                 <div>
                   <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.passwordOptional')}</label>
                   <input
@@ -960,7 +1023,8 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     className="w-full bg-nier-blackLight border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
                   />
                 </div>
-                <Check checked={newLobbyIsPublic} label={isDesktop ? t('browser.localPublicLabel') : t('browser.publicLabel')} onChange={setNewLobbyIsPublic} />
+                )}
+                {!browserChoice && <Check checked={newLobbyIsPublic} label={isDesktop ? t('browser.localPublicLabel') : t('browser.publicLabel')} onChange={setNewLobbyIsPublic} />}
                 <div className="flex gap-3 pt-2">
                   {/* The cut corner every committing action wears. */}
                   <button
@@ -984,10 +1048,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               // inverts with the theme rather than sitting in it. Outlined,
               // it was the quietest thing on a screen whose whole purpose is
               // getting you into an atrium -- including a new one.
+              // Never out of room: past the cloud's three, it's kept in the browser.
               <button
-                onClick={() => setShowCreateLobby(true)}
-                disabled={!canCreateMore}
-                className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                onClick={() => {
+                  setNewInBrowser(guest || !canCreateMore)
+                  setShowCreateLobby(true)
+                }}
+                className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
                 style={{ clipPath: DONATE_CUT }}
               >
                 ◇ {t('browser.create')}
@@ -996,7 +1063,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
           </section>
 
           {/* Your Atriums */}
-          {userLobbies.length > 0 && (
+          {yours.length > 0 && (
             <section>
               <div className="flex items-baseline gap-3 mb-4">
                 <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
@@ -1007,12 +1074,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                     no such limit -- checkCanCreateLobby returns early there --
                     so showing "2/3" told desktop users they were running out
                     of something they cannot run out of. */}
+                {/* The cloud's, of its three; those kept in the browser aren't counted. */}
                 <span className="text-nier-bg/70 text-xs tabular-nums">
-                  {isDesktop ? userLobbies.length : `${userLobbies.length}/3`}
+                  {isDesktop || guest ? yours.length : `${userLobbies.length}/3`}
                 </span>
               </div>
               <div className={ROW_GRID}>
-                {userLobbies.map(lobby => (
+                {yours.map(lobby => (
                   <div key={lobby.id} className={`${ROW} group`}>
                     <AtriumPreview url={lobby.previewUrl} />
                     <div className={ROW_LAYOUT}>
@@ -1067,9 +1135,15 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                           </div>
                         )}
                         <div className={ROW_META}>
-                          <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
-                          <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
-                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
+                          {lobby.inBrowser ? (
+                            <span>◇ {t('browser.inBrowser')}</span>
+                          ) : (
+                            <>
+                              <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
+                              <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
+                              {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className={ROW_ACTIONS}>
@@ -1079,20 +1153,25 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                         >
                           {t('browser.enter')}
                         </button>
-                        <button
-                          onClick={() => copyLobbyId(lobby.id)}
-                          className={ROW_BUTTON}
-                          title={t('browser.copyIdTitle')}
-                        >
-                          {t('browser.copyId')}
-                        </button>
-                        <button
-                          onClick={() => setManagingLobbyId(lobby.id)}
-                          className={ROW_BUTTON}
-                          title={t('browser.manageTitle')}
-                        >
-                          {t('browser.manage')}
-                        </button>
+                        {/* Nobody to give an id to, nor to let in, for one kept in the browser. */}
+                        {!lobby.inBrowser && (
+                          <>
+                            <button
+                              onClick={() => copyLobbyId(lobby.id)}
+                              className={ROW_BUTTON}
+                              title={t('browser.copyIdTitle')}
+                            >
+                              {t('browser.copyId')}
+                            </button>
+                            <button
+                              onClick={() => setManagingLobbyId(lobby.id)}
+                              className={ROW_BUTTON}
+                              title={t('browser.manageTitle')}
+                            >
+                              {t('browser.manage')}
+                            </button>
+                          </>
+                        )}
                         {/* A word rather than a cross, matching Manage
                             beside it. The glyph was the only control here that
                             had to be guessed at, and it sat next to the one
@@ -1168,7 +1247,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               leaving the browser, while getting one in happened here. They're
               the same job seen from two directions, and this is where someone
               is already standing when they think of either. */}
-          {(
+          {(!guest || browserLobbies.length > 0) && (
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
@@ -1180,13 +1259,13 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   them read as unrelated actions. Three across on desktop is
                   still comfortable at this panel width. */}
               <div className="flex gap-2">
-                <button
+                {!guest && <button
                   onClick={() => setShowImport(true)}
                   disabled={!canCreateMore}
                   className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   ◇ {t('browser.importJson')}
-                </button>
+                </button>}
 
                 {/* Same format on both platforms, different machinery: the web
                     downloads a file, desktop writes one to a chosen folder. */}
@@ -1210,13 +1289,19 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                   </button>
                 )}
               </div>
-              {!canCreateMore && (
+              {!canCreateMore && !guest && (
                 <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{t('browser.limitReachedImport')}</p>
               )}
             </section>
           )}
 
-          {/* Public Atriums */}
+          {/* Public Atriums -- for a guest, what an account adds. */}
+          {guest ? (
+            <section className="border border-nier-border/20 p-5 flex flex-wrap items-center gap-4">
+              <p className="flex-1 min-w-[14rem] text-nier-bg/80 text-xs tracking-wide leading-relaxed">{t('browser.guestNote')}</p>
+              <button onClick={onSignIn} className={ROW_ENTER}>{t('auth.logIn')}</button>
+            </section>
+          ) : (
           <section>
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
@@ -1295,6 +1380,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
               )}
             </div>
           </section>
+          )}
         </div>
       </div>
 
@@ -1480,6 +1566,7 @@ export function LobbyBrowser({ onJoinLobby, onClose }: LobbyBrowserProps) {
                 out.push({ id: l.id, name: l.name, ownerUsername: l.ownerUsername, access })
               }
             }
+            add(browserLobbies, 'browser')
             add(userLobbies, 'owner')
             add(adminLobbies, 'admin')
             add(lobbies, 'public')

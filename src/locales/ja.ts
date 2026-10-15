@@ -197,6 +197,13 @@ const ja: Catalogue = {
   'browser.deleteAtrium': 'Atrium を削除',
   'browser.deleteConfirm': 'この Atrium を削除しますか？ 中の trace はすべて失われます。',
   'browser.reportProblem': '問題を報告する・機能を提案する',
+  'browser.guestName': 'ゲスト',
+  'browser.keptWhere': '保存先',
+  'browser.online': 'オンライン',
+  'browser.onlineHint': '招待した人と、どの端末からでも。最大 3 つ。',
+  'browser.inBrowser': 'このブラウザ',
+  'browser.inBrowserHint': '無料・無制限。この端末だけ、あなただけ。',
+  'browser.guestNote': 'アカウントなしでは、Atrium はこのブラウザにあなただけのために保存されます。ログインすると、共有できる Atrium を作ったり、ほかの人の Atrium を見たりできます。',
 
   // ---------------------------------------------------------- in an atrium
   'atrium.saving': '保存中',
@@ -234,6 +241,8 @@ const ja: Catalogue = {
   'auth.sendResetLink': '再設定リンクを送る',
   'auth.or': 'または',
   'auth.continueWithGoogle': 'Google で続ける',
+  'auth.withoutAccount': 'アカウントなしで続ける',
+  'auth.withoutAccountHint': 'Atrium はこのブラウザに保存されます。共有するにはアカウントが必要です。',
   'auth.forgotPassword': 'パスワードをお忘れですか？',
   'auth.noAccount': 'アカウントをお持ちでないですか？ 登録する',
   'auth.haveAccount': 'すでにアカウントをお持ちですか？ ログイン',

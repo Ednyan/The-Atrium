@@ -1,8 +1,8 @@
 import { ATRIUM_FILE_TYPE } from '../lib/atriumFile'
 import { useState, useEffect } from 'react'
-import { localClient, resolveLocalUrl } from '../lib/localDb'
+import { localClient } from '../lib/localDb'
 import { useTranslation } from '../lib/i18n'
-import { atriumEnvelope } from '../lib/atriumDownload'
+import { atriumEnvelope, localFilesInside } from '../lib/atriumDownload'
 import { fileNameOf, saveFile } from '../lib/fileSave'
 
 interface ExportDatabaseProps {
@@ -88,30 +88,9 @@ export default function ExportDatabase({ onClose }: ExportDatabaseProps) {
       const locations = (locationRows || []) as any[]
       const { data: linkRows } = await localClient.from('trace_links').select('*').eq('lobby_id', selectedLobbyId)
 
-      // Embed local:// media as base64 data URLs
+      // Its files inside it, as data.
       setProgress(t('desktop.export.embedding'))
-      let embedded = 0
-      for (const trace of lobbyTraces) {
-        if (trace.media_url?.startsWith('local://')) {
-          try {
-            const dataUrl = await resolveLocalUrl(trace.media_url)
-            if (dataUrl !== trace.media_url) {
-              trace.media_url = dataUrl
-              embedded++
-              setProgress(t('desktop.export.embeddingCount', { count: embedded }))
-            }
-          } catch { /* leave as-is if file missing */ }
-        }
-        if (trace.image_url?.startsWith('local://')) {
-          try {
-            const dataUrl = await resolveLocalUrl(trace.image_url)
-            if (dataUrl !== trace.image_url) {
-              trace.image_url = dataUrl
-              embedded++
-            }
-          } catch { /* leave as-is if file missing */ }
-        }
-      }
+      await localFilesInside(lobbyTraces, count => setProgress(t('desktop.export.embeddingCount', { count })))
 
       const exportData = atriumEnvelope(
         'Digital Atrium Desktop',
