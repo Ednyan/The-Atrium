@@ -557,6 +557,7 @@ const ru: Catalogue = {
   'atrium.overlay.exit': 'Выйти из режима оверлея',
   'atrium.overlay.exitHint': 'Откуда угодно: Ctrl+Alt+Shift+X или кнопка в превью приложения на панели задач',
   'atrium.overlay.exited': 'Режим оверлея выключен',
+  'atrium.browser.inUse': 'Atriums этого браузера открыты в другой вкладке. Закройте её или продолжите там.',
   'atrium.hud.manage': "Настройки Atrium",
   'atrium.hud.saveAtrium': 'Экспортировать атриум в…',
   'atrium.menu.exportImage': 'Экспорт в изображение',

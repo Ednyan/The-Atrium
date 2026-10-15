@@ -554,6 +554,7 @@ const de: Catalogue = {
   'atrium.overlay.exit': 'Overlay-Modus beenden',
   'atrium.overlay.exitHint': 'Von überall: Strg+Alt+Umschalt+X oder die Schaltfläche in der Taskleisten-Vorschau der App',
   'atrium.overlay.exited': 'Overlay-Modus aus',
+  'atrium.browser.inUse': 'Die Atriums dieses Browsers sind in einem anderen Tab geöffnet. Schließe ihn oder arbeite dort weiter.',
   'atrium.hud.manage': "Atrium-Einstellungen",
   'atrium.hud.saveAtrium': 'Atrium exportieren nach…',
   'atrium.menu.exportImage': 'Als Bild exportieren',

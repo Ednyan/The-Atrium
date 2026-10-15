@@ -2475,6 +2475,31 @@ class MockChannel {
   unsubscribe(): void {}
 }
 
+// ---- In a browser (lib/browserAtriums) ----
+
+let browserReady: Promise<void> | null = null
+/** The browser's vault, opened once (VAULT_IN_USE while another tab has it),
+ *  and who's making things in it now: the account signed in, or this
+ *  browser's guest -- their profile here kept as they are. */
+export async function openBrowserVault(maker: { id: string; name: string; color: string }): Promise<void> {
+  await (browserReady ??= initLocalDb().catch(error => { browserReady = null; throw error }))
+  if (!db) throw new Error('no database')
+  LOCAL_USER_ID = maker.id
+  LOCAL_USERNAME = maker.name
+  const known = (await db.select('SELECT id FROM profiles WHERE id = ?', [maker.id])) as any[]
+  if (known.length > 0) {
+    await db.execute('UPDATE profiles SET display_name = ?, player_color = ? WHERE id = ?', [maker.name, maker.color, maker.id])
+    return
+  }
+  // profiles.username is unique: two people sharing a browser can share a name.
+  let username = maker.name
+  for (let n = 2; ((await db.select('SELECT 1 FROM profiles WHERE username = ?', [username])) as any[]).length > 0; n++) username = `${maker.name} ${n}`
+  await db.execute(
+    'INSERT INTO profiles (id, username, email, display_name, player_color) VALUES (?, ?, ?, ?, ?)',
+    [maker.id, username, 'local@browser', maker.name, maker.color],
+  )
+}
+
 // ---- The main local client (drop-in for supabase) ----
 
 export const localClient = {

@@ -524,6 +524,7 @@ const zh: Catalogue = {
   'atrium.overlay.exit': '退出悬浮模式',
   'atrium.overlay.exitHint': '在任何地方：Ctrl+Alt+Shift+X，或任务栏预览中的按钮',
   'atrium.overlay.exited': '悬浮模式已关闭',
+  'atrium.browser.inUse': '此浏览器的 Atrium 已在另一个标签页中打开。请关闭那个标签页，或在那里继续。',
   'atrium.hud.manage': "Atrium 设置",
   'atrium.hud.saveAtrium': '将中庭导出到…',
   'atrium.menu.exportImage': '导出为图片',

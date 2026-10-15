@@ -525,6 +525,7 @@ const ko: Catalogue = {
   'atrium.overlay.exit': '오버레이 모드 끝내기',
   'atrium.overlay.exitHint': '어디서든: Ctrl+Alt+Shift+X, 또는 작업 표시줄 미리 보기의 버튼',
   'atrium.overlay.exited': '오버레이 모드 꺼짐',
+  'atrium.browser.inUse': '이 브라우저의 Atrium이 다른 탭에서 열려 있어요. 그 탭을 닫거나 거기서 계속하세요.',
   'atrium.hud.manage': "Atrium 설정",
   'atrium.hud.saveAtrium': '아트리움 내보내기…',
   'atrium.menu.exportImage': '이미지로 내보내기',

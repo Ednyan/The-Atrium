@@ -15,7 +15,7 @@
 // (by the atrium's owner or an admin, whoever uploaded it: add_lobby_preview.sql),
 // so none is left behind. In a vault, one file an atrium, rewritten.
 
-import { supabase, isDesktop } from './supabase'
+import { supabase, isLocalData } from './supabase'
 import { exportImage, loadPicture } from './exportImage'
 import type { Layer, Trace } from '../types/database'
 import type { TraceLink } from './traceLinks'
@@ -106,25 +106,25 @@ async function makePreview(lobbyId: string, traces: Trace[], links: TraceLink[],
         underlay: await roomPicture(room),
       }),
     })
-    const path = isDesktop ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
-    const { error } = await supabase.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: isDesktop })
+    const path = isLocalData ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
+    const { error } = await supabase.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: isLocalData })
     if (error) { console.warn('[preview] not uploaded:', error); return }
     const url: string = supabase.storage.from('traces').getPublicUrl(path).data.publicUrl
     // The vault's file was rewritten in place: what it's read as, read again.
-    if (isDesktop) await (await import('./localDb')).refreshLocalUrl(url)
+    if (isLocalData) await (await import('./localDb')).refreshLocalUrl(url)
     const { data: before } = await (supabase.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
     const at = new Date().toISOString()
     const { error: saved } = await (supabase.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
     // Not kept: the file goes too.
     if (saved) {
       console.warn('[preview] not kept:', saved)
-      if (!isDesktop) void supabase.storage.from('traces').remove([path])
+      if (!isLocalData) void supabase.storage.from('traces').remove([path])
       return
     }
     try { localStorage.setItem(memoryKey(lobbyId), JSON.stringify({ print, at: Date.now() })) } catch { /* the next leave tries again */ }
     // The one it replaces, gone (its address, less any query an earlier
     // version gave it).
-    const previous = !isDesktop && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
+    const previous = !isLocalData && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
     if (previous && previous !== path) {
       void supabase.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
     }

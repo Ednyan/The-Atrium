@@ -15,7 +15,7 @@
 // for another room service (a test one).
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
-import { isDesktop, supabase } from './supabase'
+import { supabase, isLocalData } from './supabase'
 import { userOf } from './peers'
 
 // The room service (workers/rooms), on the site's own domain.
@@ -33,7 +33,7 @@ const PING_MS = 30_000
 const MOST_HELD = 100
 
 export function roomUrl(): string {
-  if (isDesktop || typeof WebSocket === 'undefined') return ''
+  if (isLocalData || typeof WebSocket === 'undefined') return ''
   let chosen: string | null = null
   try { chosen = localStorage.getItem('atrium.rooms') } catch { /* none */ }
   if (chosen === 'off') return ''

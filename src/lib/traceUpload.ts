@@ -4,7 +4,7 @@
 // panel once had a copy of this that never swapped a new trace over to its
 // vault file and said nothing when the write failed.
 
-import { supabase, isDesktop } from './supabase'
+import { supabase, isLocalData } from './supabase'
 import { showToast } from './toast'
 import { t } from './i18n'
 import { setVaultWriteProgress, trackVaultWrite } from './vaultWrites'
@@ -45,7 +45,7 @@ export async function uploadTraceFile(file: File, lobbyId: string, userId: strin
   const fileName = `${userId}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${fileExt}`
   const storagePath = `${lobbyId}/${fileName}`
 
-  if (isDesktop && supabase) {
+  if (isLocalData && supabase) {
     const localUrl = `local://traces/${storagePath}`
 
     // Shown from the file the user dropped -- complete, and nothing is

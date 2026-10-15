@@ -3,7 +3,7 @@ import { asStrokeStyle } from '../lib/strokeStyle'
 import { asStrokeData } from '../lib/brushes'
 import { asExrGrade } from '../lib/exr'
 import { useGameStore, useGamePick } from '../store/gameStore'
-import { supabase, isDesktop } from '../lib/supabase'
+import { supabase, isLocalData } from '../lib/supabase'
 import { adoptTraces } from '../lib/layerUndo'
 import { liveTable, readRows, TRACES_RECEIVED_EVENT } from '../lib/liveChanges'
 import { whenTracesWritten } from '../lib/traceWrites'
@@ -39,7 +39,7 @@ export async function fetchAllLobbyTraces(client: any, lobbyId: string): Promise
     .eq('lobby_id', lobbyId)
     .order('created_at', { ascending: false })
 
-  if (isDesktop) {
+  if (isLocalData) {
     const { data, error } = await base()
     if (error) throw error
     return data ?? []
@@ -219,7 +219,7 @@ export function useTraces(lobbyId: string | null) {
           // browser fetches the bytes itself, when it needs them, off the main
           // thread -- and the decode pass below still waits for the images, so
           // they are ready when the atrium appears exactly as before.
-          const resolveLocalDisplayUrl = isDesktop
+          const resolveLocalDisplayUrl = isLocalData
             ? (await import('../lib/localDb')).resolveLocalStreamUrl
             : null
 

@@ -521,6 +521,7 @@ const ja: Catalogue = {
   'atrium.overlay.exit': 'オーバーレイを終了',
   'atrium.overlay.exitHint': 'どこからでも：Ctrl+Alt+Shift+X、またはタスクバーのプレビューにあるボタン',
   'atrium.overlay.exited': 'オーバーレイを終了しました',
+  'atrium.browser.inUse': 'このブラウザの Atrium は別のタブで開かれています。そのタブを閉じるか、そちらで続けてください。',
   'atrium.hud.manage': "Atrium の設定",
   'atrium.hud.saveAtrium': 'アトリウムを書き出す…',
   'atrium.menu.exportImage': '画像として書き出し',

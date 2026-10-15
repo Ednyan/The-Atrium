@@ -1,4 +1,4 @@
-import { supabase, isDesktop } from './supabase'
+import { supabase, isDesktop, isLocalData } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { isUrlAnImage } from './imageDetection'
 
@@ -93,7 +93,7 @@ export async function convertEmbedToInternalImage(traceId: string): Promise<{ ok
     const fileName = `${store.userId}_${Date.now()}.${ext}`
 
     let finalUrl: string
-    if (isDesktop) {
+    if (isLocalData) {
       const storagePath = `${trace.lobbyId ?? 'unfiled'}/${fileName}`
       const localUrl = `local://traces/${storagePath}`
       const blobUrl = URL.createObjectURL(blob)

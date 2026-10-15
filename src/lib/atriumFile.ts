@@ -8,7 +8,7 @@
 // importIntoAtrium adds one's traces to the atrium that's open, where the
 // view is, as one step of undo.
 
-import { supabase, isDesktop } from './supabase'
+import { supabase, isDesktop, isLocalData } from './supabase'
 import { useGameStore, LOBBY_SIZE_LIMIT } from '../store/gameStore'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { createGroup } from '../hooks/useLayers'
@@ -147,7 +147,7 @@ export function standInRow(row: Record<string, any>): Record<string, any> {
 // pictures and files stay behind for now -- the web atrium's storage is small
 // and a desktop vault's needn't be. (Uploading from the desktop to the web has
 // always worked this way.) Read from the file's own app name.
-export const mediaStaysBehind = (file: Pick<AtriumFile, 'app'>) => !isDesktop && /desktop/i.test(file.app ?? '')
+export const mediaStaysBehind = (file: Pick<AtriumFile, 'app'>) => !isLocalData && /desktop/i.test(file.app ?? '')
 
 // What an .atrium file is, to a browser: its own type, so none of them adds
 // .json to its name on the way down (it's JSON inside, but an .atrium file).
@@ -164,7 +164,7 @@ export const ATRIUM_FILE_TYPE = 'application/vnd.digital-atrium+json'
 export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number }, lobbyId: string, userId: string, onProgress?: (done: number, total: number) => void): Promise<ImportIntoResult> {
   const behind = mediaStaysBehind(file)
   // Room for it, on the web, where an atrium has a size.
-  if (!isDesktop && !behind) {
+  if (!isLocalData && !behind) {
     const needed = file.traces.reduce((sum, tr) => sum + dataUrlBytes(tr.media_url) + dataUrlBytes(tr.image_url), 0)
     const free = Math.max(0, LOBBY_SIZE_LIMIT - useGameStore.getState().getLobbySizeBytes())
     if (needed > free) return Promise.reject(new ImportTooLargeError(needed, free))

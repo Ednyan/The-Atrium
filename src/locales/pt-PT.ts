@@ -558,6 +558,7 @@ const ptPT: Catalogue = {
   'atrium.overlay.exit': 'Sair do modo sobreposição',
   'atrium.overlay.exitHint': 'De qualquer lado: Ctrl+Alt+Shift+X, ou o botão na pré-visualização da aplicação na barra de tarefas',
   'atrium.overlay.exited': 'Modo sobreposição desligado',
+  'atrium.browser.inUse': 'Os Atriums deste browser estão abertos noutro separador. Feche-o ou continue nele.',
   'atrium.hud.manage': "Definições do Atrium",
   'atrium.hud.saveAtrium': 'Exportar o átrio para…',
   'atrium.menu.exportImage': 'Exportar como imagem',

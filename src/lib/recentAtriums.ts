@@ -20,7 +20,7 @@
 // exactly one thing the sort consults and no question of which wins. The merge
 // keeps whichever timestamp is later.
 
-import { supabase, isDesktop } from './supabase'
+import { supabase, isLocalData } from './supabase'
 
 const KEY = 'lobby_recentAtriums'
 
@@ -111,7 +111,7 @@ export function sortByLastVisited<T>(items: T[], idOf: (item: T) => string): T[]
  * entering an atrium.
  */
 async function pushVisit(lobbyId: string) {
-  if (isDesktop || !supabase) return
+  if (isLocalData || !supabase) return
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -137,7 +137,7 @@ async function pushVisit(lobbyId: string) {
  * visit made in another browser arrives.
  */
 export async function mergeRemoteVisits(): Promise<void> {
-  if (isDesktop || !supabase) return
+  if (isLocalData || !supabase) return
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { UserPresence, Trace, Layer, LobbyLocation } from '../types/database'
-import { isDesktop } from '../lib/supabase'
+import { isDesktop, isLocalData } from '../lib/supabase'
 import { t } from '../lib/i18n'
 import { recordTraceCreated } from '../lib/supportAppeal'
 import type { TraceLink } from '../lib/traceLinks'
@@ -554,7 +554,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (useTraces), in moments, so the measurement stands on its own. An
     // average per trace would add a few hundred kB for a video of hundreds of
     // MB, and take as much off for deleting one.
-    if (isDesktop && state.serverLobbySize !== null) return state.serverLobbySize
+    if (isLocalData && state.serverLobbySize !== null) return state.serverLobbySize
     // If we have a server-reported size, use it as baseline and add delta for new traces
     if (state.serverLobbySize !== null) {
       const traceDelta = state.traces.length - state.serverLobbySizeTraceCount
@@ -575,7 +575,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   isLobbyFull: () => {
-    if (isDesktop) return false
+    if (isLocalData) return false
     return get().getLobbySizeBytes() >= LOBBY_SIZE_LIMIT
   },
 }))

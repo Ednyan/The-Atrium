@@ -4,7 +4,7 @@
 // history is the one timeline -- an undo is a change like any other, saved
 // the same way -- and it outlasts a save.
 
-import { isDesktop, supabase } from './supabase'
+import { supabase, isLocalData } from './supabase'
 import { useGameStore } from '../store/gameStore'
 import { showToast } from './toast'
 import { t, tCount } from './i18n'
@@ -267,7 +267,7 @@ export async function discardAllChanges(lobbyId: string): Promise<boolean> {
     if (!rows) return false
     const traces = rows.map(mapRowToTrace)
     // Desktop: each local file's URL worked out before it's drawn, as on entry.
-    if (isDesktop) {
+    if (isLocalData) {
       const { resolveLocalStreamUrl } = await import('./localDb')
       const local = new Set(traces.flatMap(tr => [tr.mediaUrl, tr.imageUrl]).filter((url): url is string => !!url?.startsWith('local://')))
       await Promise.allSettled([...local].map(url => resolveLocalStreamUrl(url)))

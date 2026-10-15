@@ -26,7 +26,7 @@ import { LobbyManagement } from './LobbyManagement'
 import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
-import { supabase, isDesktop } from '../lib/supabase'
+import { supabase, isDesktop, isLocalData } from '../lib/supabase'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
@@ -1613,7 +1613,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Imported brushes live in the vault, so only desktop has any. Read once,
   // the first time drawing opens, and only what makeBrushTip would have made.
   useEffect(() => {
-    if (!isDrawingMode || !isDesktop || customBrushesLoadedRef.current) return
+    if (!isDrawingMode || !isLocalData || customBrushesLoadedRef.current) return
     customBrushesLoadedRef.current = true
     void (async () => {
       try {
@@ -1914,7 +1914,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [isGhostEntry, setIsGhostEntry] = useState(false)
 
   useEffect(() => {
-    if (!supabase || !lobbyId || isDesktop) return
+    if (!supabase || !lobbyId || isLocalData) return
     let cancelled = false
 
     const resolve = async () => {
@@ -2468,7 +2468,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // A file: picked, then placed in the middle of the view as a drop would
       // be (placeFilesAsTraces; a spreadsheet as its sheets). The web app
       // can't take files from the computer yet: said, as a dropped file has it.
-      if (!isDesktop) {
+      if (!isLocalData) {
         setShowLocalFileBlockedDialog(true)
         return
       }
@@ -2941,7 +2941,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const pasteOnCanvas = (data: DataTransfer): boolean => {
     if (!canEditRef.current) return false
     const at = { x: positionRef.current.x, y: positionRef.current.y }
-    const pictures = isDesktop ? [...data.files].filter(file => file.type.startsWith('image/')) : []
+    const pictures = isLocalData ? [...data.files].filter(file => file.type.startsWith('image/')) : []
     if (pictures.length > 0) {
       if (ensureLobbyHasSpace()) void placeFilesAsTraces(pictures, at.x, at.y)
       return true
@@ -4381,7 +4381,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // (lib/pdfTraces); Extract Pages on its menu turns it into one picture a
     // page. Several are placed side by side. Desktop only, matching where the
     // type exists at all.
-    const droppedPdfs = isDesktop
+    const droppedPdfs = isLocalData
       ? droppedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
       : []
     if (droppedPdfs.length > 0 && userId) {
@@ -4397,7 +4397,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
 
     // A dropped PowerPoint deck: a document trace, its slides paged.
-    const droppedDecks = isDesktop ? droppedFiles.filter(f => DECK_FILE.test(f.name)) : []
+    const droppedDecks = isLocalData ? droppedFiles.filter(f => DECK_FILE.test(f.name)) : []
     if (droppedDecks.length > 0) {
       await placeDecks(droppedDecks, { x: worldX, y: worldY })
       return
@@ -4405,7 +4405,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
     // A dropped spreadsheet becomes its sheets and charts, grouped
     // (lib/sheetTraces). Desktop only, as PDFs are.
-    const droppedSheets = isDesktop ? droppedFiles.filter(f => SPREADSHEET_FILE.test(f.name)) : []
+    const droppedSheets = isLocalData ? droppedFiles.filter(f => SPREADSHEET_FILE.test(f.name)) : []
     if (droppedSheets.length > 0) {
       const paths = await filePaths(droppedSheets)
       for (const [i, sheet] of droppedSheets.entries()) await importSpreadsheetHere(sheet, { x: worldX, y: worldY }, paths[i])
@@ -4446,7 +4446,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     // Real files from the OS filesystem -- desktop only. The web app can't
     // upload/convert local files into internal image/audio/video traces yet.
     if (droppedFiles.length > 0) {
-      if (!isDesktop) {
+      if (!isLocalData) {
         setShowLocalFileBlockedDialog(true)
         return
       }
@@ -4498,7 +4498,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
 
   useEffect(() => {
-    if (!isDesktop) return
+    if (!isLocalData) return
 
     const handlePaste = async (e: ClipboardEvent) => {
       if (e.defaultPrevented || isEditableTarget(e.target)) return
@@ -4915,7 +4915,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                style={{ backgroundColor: 'rgba(203, 203, 203, 0.08)', border: '2px dashed rgba(143, 143, 143, 0.5)' }}>
             <div className="bg-nier-black/80 border border-nier-border px-6 py-3">
               <p className="text-nier-bg text-sm tracking-[0.15em] uppercase font-mono">
-                {isDesktop ? t('atrium.hud.dropFile') : t('atrium.hud.dropLink')}
+                {isLocalData ? t('atrium.hud.dropFile') : t('atrium.hud.dropLink')}
               </p>
             </div>
           </div>
@@ -5038,7 +5038,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             button, its words the size of theirs. */}
         {(() => {
           const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-          const pct = isDesktop ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+          const pct = isLocalData ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
           const used = formatSize(sizeBytes, language)
           const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
           return (
@@ -5046,13 +5046,13 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               data-hud="true"
               data-usage=""
               tabIndex={0}
-              title={isDesktop ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
+              title={isLocalData ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
               className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
               style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
               <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
-              {!isDesktop && (
+              {!isLocalData && (
                 <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
                   <span
                     className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
@@ -5493,7 +5493,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                     </button>
                   </div>
                 ))}
-                {isDesktop && (
+                {isLocalData && (
                   <>
                     <button
                       type="button"
@@ -5763,7 +5763,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               { label: `◇ ${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
               { label: `~ ${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
               { label: `⬚ ${t('atrium.trace.type.frame')}`, type: 'frame' as const, shape: undefined },
-              ...(isDesktop ? [
+              ...(isLocalData ? [
                 { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
                 { label: `◇ ${t('atrium.trace.type.video')}`, type: 'video' as const, shape: undefined },

@@ -553,6 +553,7 @@ const fr: Catalogue = {
   'atrium.overlay.exit': 'Quitter le mode superposition',
   'atrium.overlay.exitHint': 'De n’importe où : Ctrl+Alt+Maj+X, ou le bouton de l’aperçu de l’app dans la barre des tâches',
   'atrium.overlay.exited': 'Mode superposition désactivé',
+  'atrium.browser.inUse': 'Les Atriums de ce navigateur sont ouverts dans un autre onglet. Fermez-le ou continuez-y.',
   'atrium.hud.manage': "Réglages de l’Atrium",
   'atrium.hud.saveAtrium': 'Exporter l’atrium vers…',
   'atrium.menu.exportImage': 'Exporter en image',

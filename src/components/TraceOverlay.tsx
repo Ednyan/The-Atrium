@@ -11,7 +11,7 @@ import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { Trace } from '../types/database'
-import { supabase, isDesktop } from '../lib/supabase'
+import { supabase, isDesktop, isLocalData } from '../lib/supabase'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
 import { useLatestHandlers } from '../hooks/useLatestHandlers'
 import { showToast } from '../lib/toast'
@@ -790,7 +790,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // one page ahead: this is a nicety, and racing further ahead would compete
   // with the page the user is actually looking at.
   const prefetchNextPage = useCallback(async (trace: Trace, currentPage: number) => {
-    if (!isDesktop || !supabase || !lobbyId || !trace.mediaUrl) return
+    if (!isLocalData || !supabase || !lobbyId || !trace.mediaUrl) return
     const total = documentPageCountRef.current[trace.id]
     const next = currentPage + 1
     if (!total || next > total) return
@@ -817,7 +817,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // persisting it would mean one person paging through moved the document for
   // everyone else reading it.
   useEffect(() => {
-    if (!isDesktop) return
+    if (!isLocalData) return
 
     for (const trace of traces) {
       if (trace.type !== 'document' || !trace.mediaUrl || isDeckFile(trace.mediaUrl)) continue
@@ -1776,7 +1776,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
   // Resolve local:// URLs for audio/video traces in desktop mode
   useEffect(() => {
-    if (!isDesktop) return
+    if (!isLocalData) return
     traces.forEach(trace => {
       if ((trace.type === 'audio' || trace.type === 'video') && trace.mediaUrl?.startsWith('local://')) {
         if (localMediaUrls[trace.id]) return
@@ -2006,7 +2006,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     undoStackRef.current = []
     redoStackRef.current = []
     setHistoryReach(false, false)
-    if (isDesktop && lobbyId) void import('../lib/localDb').then(m => m.releaseHeldMedia(lobbyId))
+    if (isLocalData && lobbyId) void import('../lib/localDb').then(m => m.releaseHeldMedia(lobbyId))
   }, [lobbyId])
   const knownTraceIdsRef = useRef<Set<string> | null>(null)
 

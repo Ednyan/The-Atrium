@@ -33,6 +33,7 @@ import ThemeToggle from './components/ThemeToggle'
 import LanguageToggle from './components/LanguageToggle'
 import { useGameStore, useGamePick } from './store/gameStore'
 import { supabase, isDesktop } from './lib/supabase'
+import { enterBrowserAtrium, isBrowserAtrium, leaveBrowserAtrium } from './lib/browserAtriums'
 import { startOverlay } from './lib/overlay'
 import { useTraces } from './hooks/useTraces'
 import { useTraceLinks } from './hooks/useTraceLinks'
@@ -1263,6 +1264,24 @@ function AppInner() {
       
       // If already verified for this lobby, skip
       if (verifiedLobbyId === route.lobbyId) return
+
+      // An atrium kept in this browser (lib/browserAtriums): nobody's access to
+      // check, and its data through the browser's engine from here on.
+      if (isBrowserAtrium(route.lobbyId)) {
+        const { userId, username, playerColor } = useGameStore.getState()
+        try {
+          await enterBrowserAtrium(route.lobbyId, { id: userId!, name: username || 'You', color: playerColor || '#ffffff' }, true)
+        } catch (error) {
+          setLobbyAccessError(error instanceof Error && error.message === 'VAULT_IN_USE' ? t('atrium.browser.inUse') : String(error))
+          return
+        }
+        setVerifiedLobbyId(route.lobbyId)
+        setCurrentLobbyId(route.lobbyId)
+        localStorage.setItem(STORAGE_KEYS.CURRENT_LOBBY, route.lobbyId)
+        return
+      }
+      // One of the cloud's: out of a browser atrium first, its writes done.
+      await leaveBrowserAtrium()
       
       // In desktop mode, local user always has access — skip verification
       if (isDesktop) {
@@ -1814,6 +1833,11 @@ function AppInner() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [currentLobbyId])
+
+  // Out of an atrium kept in the browser, however it was left (lib/browserAtriums).
+  useEffect(() => {
+    if (route.page !== 'atrium') void leaveBrowserAtrium()
+  }, [route.page])
 
   // Persist current lobby to localStorage
   //

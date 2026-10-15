@@ -505,6 +505,7 @@ export const en = {
   'atrium.overlay.exit': 'Exit overlay mode',
   'atrium.overlay.exitHint': 'From anywhere: Ctrl+Alt+Shift+X, or the button on the app’s taskbar preview',
   'atrium.overlay.exited': 'Overlay mode off',
+  'atrium.browser.inUse': "This browser's atriums are open in another tab. Close that tab, or carry on there.",
   'atrium.hud.manage': "Atrium Settings",
   'atrium.hud.saveAtrium': 'Export Atrium to…',
   'atrium.menu.exportImage': 'Export as image',

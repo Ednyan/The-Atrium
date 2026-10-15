@@ -45,6 +45,21 @@ if (!isDesktop) {
 // ESM live binding: `export let` means importers see the latest value
 export let supabase: any = _client
 
+// The cloud's client, whatever the data client is now.
+export const cloudClient: any = _client
+// This atrium's data lives on this device -- the desktop app's vault, or this
+// browser's (lib/browserAtriums) -- not in the cloud: local files and sizes,
+// no cloud limits, and the local engine's gaps (CLAUDE.md). Always so on
+// desktop; on the web, while inside an atrium kept in the browser.
+export let isLocalData = isDesktop
+/** The data client from here on: a browser atrium's engine, or (null) the
+ *  cloud's again. lib/browserAtriums decides when -- never under a write. */
+export function switchDataClient(client: unknown | null) {
+  if (isDesktop) return
+  supabase = client ?? cloudClient
+  isLocalData = client !== null
+}
+
 // Initialize local DB when running in Tauri  
 export const localDbReady: Promise<void> = isDesktop
   ? import('./localDb').then(async (mod) => {

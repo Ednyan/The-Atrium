@@ -555,6 +555,7 @@ const it: Catalogue = {
   'atrium.overlay.exit': 'Esci dalla sovrapposizione',
   'atrium.overlay.exitHint': 'Da ovunque: Ctrl+Alt+Maiusc+X, o il pulsante nell’anteprima dell’app sulla barra delle applicazioni',
   'atrium.overlay.exited': 'Sovrapposizione disattivata',
+  'atrium.browser.inUse': 'Gli Atrium di questo browser sono aperti in un’altra scheda. Chiudila o continua lì.',
   'atrium.hud.manage': "Impostazioni Atrium",
   'atrium.hud.saveAtrium': 'Esporta l’atrio in…',
   'atrium.menu.exportImage': 'Esporta come immagine',

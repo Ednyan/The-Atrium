@@ -34,6 +34,9 @@ export function queueLayerChange<T>(change: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** Once every layer change queued so far has run (lib/browserAtriums). */
+export const whenLayerChangesDone = (): Promise<unknown> => tail
+
 // For gestures that mean "do this once", like Ctrl+G: a second press while a
 // change is still under way is dropped rather than queued. Queued, it would
 // make a second group and move everything out of the first into it.
