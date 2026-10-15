@@ -4,6 +4,7 @@ import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
+import KeptWhere from './KeptWhere'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -990,30 +991,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                     maxLength={50}
                   />
                 </div>
-                {/* Where it's kept: the cloud's (shared, three at most) or this
-                    browser's (lib/browserAtriums) -- the only one for a guest. */}
-                {!isDesktop && !guest && (
-                  <div>
-                    <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.keptWhere')}</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[false, true].map(inBrowser => (
-                        <button
-                          key={String(inBrowser)}
-                          type="button"
-                          onClick={() => setNewInBrowser(inBrowser)}
-                          disabled={!inBrowser && !canCreateMore}
-                          aria-pressed={newInBrowser === inBrowser}
-                          className={`p-3 text-left border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${newInBrowser === inBrowser ? 'border-nier-bg text-nier-bg' : 'border-nier-border/30 text-nier-bg/70 hover:border-nier-border/60'}`}
-                        >
-                          <span className="block text-xs tracking-[0.12em] uppercase">{inBrowser ? t('browser.inBrowser') : t('browser.online')}</span>
-                          <span className="block mt-1 text-[11px] tracking-wide text-nier-bg/60">
-                            {inBrowser ? t('browser.inBrowserHint') : canCreateMore ? t('browser.onlineHint') : t('browser.limitReached')}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* A guest's only go in the browser. */}
+                {!isDesktop && !guest && <KeptWhere inBrowser={newInBrowser} canCloud={canCreateMore} onChange={setNewInBrowser} />}
                 {!browserChoice && (
                 <div>
                   <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.passwordOptional')}</label>
@@ -1249,7 +1228,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               leaving the browser, while getting one in happened here. They're
               the same job seen from two directions, and this is where someone
               is already standing when they think of either. */}
-          {(!guest || browserLobbies.length > 0) && (
+          {(
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
@@ -1261,13 +1240,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   them read as unrelated actions. Three across on desktop is
                   still comfortable at this panel width. */}
               <div className="flex gap-2">
-                {!guest && <button
+                <button
                   onClick={() => setShowImport(true)}
-                  disabled={!canCreateMore}
-                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                 >
                   ◇ {t('browser.importJson')}
-                </button>}
+                </button>
 
                 {/* Same format on both platforms, different machinery: the web
                     downloads a file, desktop writes one to a chosen folder. */}
@@ -1291,9 +1269,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   </button>
                 )}
               </div>
-              {!canCreateMore && !guest && (
-                <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>{t('browser.limitReachedImport')}</p>
-              )}
             </section>
           )}
 
@@ -1530,6 +1505,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       {/* Import Atrium Modal */}
       {showImport && (
         <ImportAtrium
+          canCloud={!guest && canCreateMore}
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
         />

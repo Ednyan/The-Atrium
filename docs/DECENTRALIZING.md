@@ -545,8 +545,11 @@ later, optional and reversible (export first).
 - **Not losing work:** making a browser atrium asks the browser to keep its
   storage (`navigator.storage.persist()`). Export lists browser atriums first,
   for guests too, with their files inside the file.
-- **Not yet:** importing a file into a browser atrium (import still makes a
-  cloud atrium), and moving a browser atrium to the cloud.
+- **Import** asks where to keep the new atrium too, and guests can import.
+  Into the browser, files kept in our cloud are copied in, so the copy stands
+  on its own. Size: 14 MB into the cloud, 512 MB into the browser.
+- **Moving between the two** is export then import, for now. A one-step
+  "Move" can come later.
 
 ## Phase 8: public atriums at scale
 

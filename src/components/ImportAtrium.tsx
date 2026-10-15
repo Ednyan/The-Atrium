@@ -4,17 +4,24 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
 import { AtriumFileError, fileOrderKeys, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
-import { forceImport, isKnownTraceType, mediaStaysBehind, nameFileTraces, setForceImport, standInRow } from '../lib/atriumFile'
+import { forceImport, isKnownTraceType, mediaStaysBehind, nameFileTraces, readAsDataUrl, setForceImport, standInRow } from '../lib/atriumFile'
+import { browserEngine, rememberBrowserAtrium } from '../lib/browserAtriums'
+import { fetchMedia } from '../lib/exportImage'
 import { Check } from './ShapeStyleControls'
+import KeptWhere from './KeptWhere'
 
 interface ImportAtriumProps {
   onClose: () => void
   onImported: () => void
+  /** Room for one more in the cloud (signed in, under its three). */
+  canCloud: boolean
 }
 
-// An atrium on the web holds 10 MB; a file carries its pictures as text, a
-// third bigger. Desktop atriums have no limit but the machine's.
-const MAX_FILE_SIZE = (isDesktop ? 512 : 14) * 1024 * 1024
+// An atrium in the cloud holds 10 MB; a file carries its pictures as text, a
+// third bigger. One kept on this device -- the desktop's vault, or this
+// browser -- has no limit but the machine's.
+const CLOUD_MAX = 14 * 1024 * 1024
+const LOCAL_MAX = 512 * 1024 * 1024
 
 // Enough names to go looking with, not so many that the notice becomes a wall.
 const MISSING_NAMES_SHOWN = 4
@@ -36,12 +43,15 @@ function describeTrace(trace: Record<string, any>): string {
   return `${trace.type ?? 'trace'} trace`
 }
 
-export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps) {
+export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAtriumProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'select' | 'preview' | 'importing' | 'done' | 'error'>('select')
   const [parsed, setParsed] = useState<AtriumFile | null>(null)
   const [atriumName, setAtriumName] = useState('')
-  const [fileSizeMB, setFileSizeMB] = useState('')
+  const [fileSize, setFileSize] = useState(0)
+  const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(1)
+  // Into this browser rather than the cloud (lib/browserAtriums).
+  const [inBrowser, setInBrowser] = useState(!isDesktop && !canCloud)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
   // Import succeeded but something was lost or refused -- distinct from
@@ -57,12 +67,12 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
     setError('')
 
-    if (file.size > MAX_FILE_SIZE) {
-      setError(t('transfer.import.tooLarge', { size: (file.size / (1024 * 1024)).toFixed(1), max: MAX_FILE_SIZE / (1024 * 1024) }))
+    if (file.size > LOCAL_MAX) {
+      setError(t('transfer.import.tooLarge', { size: (file.size / (1024 * 1024)).toFixed(1), max: LOCAL_MAX / (1024 * 1024) }))
       return
     }
 
-    setFileSizeMB((file.size / (1024 * 1024)).toFixed(1))
+    setFileSize(file.size)
 
     try {
       const data = parseAtriumFile(await file.text())
@@ -77,6 +87,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
   const handleImport = async () => {
     if (!parsed || !supabase) return
+    // On this device (the desktop's vault, which is `supabase` there, or this
+    // browser's), or in the cloud.
+    const local = isDesktop || inBrowser
+    if (!local && fileSize > CLOUD_MAX) {
+      setError(t('transfer.import.tooLarge', { size: fileSizeMB, max: CLOUD_MAX / (1024 * 1024) }))
+      return
+    }
 
     if (atriumName.length < 3) {
       setError(t('transfer.import.nameTooShort'))
@@ -87,12 +104,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
     setError('')
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const client = inBrowser ? (await browserEngine()).localClient : supabase
+      const { data: { user } } = await client.auth.getUser()
       if (!user) throw new Error(t('transfer.import.notAuthenticated'))
 
-      if (!isDesktop) {
+      if (!local) {
         setProgress(t('transfer.import.checkingLimit'))
-        const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
+        const { data: count } = await (client as any).rpc('get_user_lobby_count', {
           p_user_id: user.id
         })
 
@@ -105,7 +123,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
 
       // Create the lobby
       setProgress(t('transfer.import.creating'))
-      const { data: lobby, error: lobbyErr } = await (supabase
+      const { data: lobby, error: lobbyErr } = await (client
         .from('lobbies') as any)
         .insert({
           name: atriumName,
@@ -120,6 +138,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       if (lobbyErr) throw lobbyErr
 
       const lobbyId = lobby.id
+      if (inBrowser) rememberBrowserAtrium(lobbyId)
 
       // Create layers and build ID mapping
       const layerIdMap: Record<string, string> = {}
@@ -129,7 +148,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       if (parsed.layers.length > 0) {
         setProgress(t('transfer.import.layers'))
         for (const layer of parsed.layers) {
-          const { data: inserted, error: layerErr } = await (supabase
+          const { data: inserted, error: layerErr } = await (client
             .from('layers') as any)
             .insert({
               name: layer.name,
@@ -205,7 +224,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             if (body[col] === null || body[col] === undefined) delete body[col]
           }
 
-          const { error: insertErr } = await (supabase!.from('traces') as any).insert(body)
+          const { error: insertErr } = await (client.from('traces') as any).insert(body)
           if (!insertErr) return null
 
           const message = insertErr.message || ''
@@ -267,13 +286,13 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
             const blob = await resp.blob()
             const ext = blob.type.split('/')[1]?.split(';')[0] || 'png'
             const fileName = `import_${user.id}_${Date.now()}_${suffix}_${imported}.${ext}`
-            const { error: uploadErr } = await supabase!.storage
+            const { error: uploadErr } = await client.storage
               .from('traces')
               .upload(fileName, blob, { contentType: blob.type })
 
             if (uploadErr) return { error: uploadErr.message || 'upload rejected' }
 
-            const { data: { publicUrl } } = supabase!.storage
+            const { data: { publicUrl } } = client.storage
               .from('traces')
               .getPublicUrl(fileName)
             return { url: publicUrl }
@@ -287,10 +306,20 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
         let mediaError = ''
 
         // From the desktop, onto the web: the layout, not the files (lib/atriumFile).
-        if (mediaStaysBehind(parsed)) {
+        if (mediaStaysBehind(parsed, local)) {
           if (mediaUrl?.startsWith('data:')) { mediaUrl = null; mediaError = 'files from the desktop app stay on the desktop for now' }
           if (imageUrl?.startsWith('data:')) { imageUrl = null; mediaError ||= 'files from the desktop app stay on the desktop for now' }
         }
+
+        // Into the browser, a file kept in our cloud comes too, so the copy
+        // here stands on its own whatever becomes of the cloud's.
+        const ownedHere = async (url: unknown) => {
+          if (!inBrowser || typeof url !== 'string' || !url.includes('/storage/v1/object/public/')) return url
+          const blob = await fetchMedia(url)
+          return blob ? await readAsDataUrl(blob) : url
+        }
+        mediaUrl = await ownedHere(mediaUrl)
+        imageUrl = await ownedHere(imageUrl)
 
         if (mediaUrl && mediaUrl.startsWith('data:')) {
           const result = await uploadDataUrl(mediaUrl, 'media')
@@ -371,7 +400,7 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
       let linkFailure = ''
       const linkRows = carryLinks(parsed.links, traceIds).map(l => ({ ...l, lobby_id: lobbyId }))
       if (linkRows.length > 0) {
-        const { error: linkErr } = await (supabase.from('trace_links') as any).insert(linkRows)
+        const { error: linkErr } = await (client.from('trace_links') as any).insert(linkRows)
         if (linkErr) linkFailure = linkErr.message || 'Unknown error'
         else linksImported = linkRows.length
       }
@@ -394,11 +423,11 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
           is_locked: !!loc.is_locked,
         }))
 
-        const { error: locErr } = await (supabase.from('lobby_locations') as any).insert(rows)
+        const { error: locErr } = await (client.from('lobby_locations') as any).insert(rows)
         if (locErr) {
           // is_locked only exists once add_location_lock.sql has been applied.
           // Retry without it rather than losing every location over one column.
-          const { error: retryErr } = await (supabase.from('lobby_locations') as any)
+          const { error: retryErr } = await (client.from('lobby_locations') as any)
             .insert(rows.map(({ is_locked: _isLocked, ...rest }) => rest))
           if (!retryErr) locationsImported = rows.length
         } else {
@@ -519,6 +548,12 @@ export default function ImportAtrium({ onClose, onImported }: ImportAtriumProps)
                 maxLength={50}
               />
             </div>
+
+            {!isDesktop && canCloud && (
+              <div className="mb-4">
+                <KeptWhere inBrowser={inBrowser} canCloud={canCloud} onChange={setInBrowser} />
+              </div>
+            )}
 
             <div className="mb-4">
               <Check

@@ -147,7 +147,7 @@ export function standInRow(row: Record<string, any>): Record<string, any> {
 // pictures and files stay behind for now -- the web atrium's storage is small
 // and a desktop vault's needn't be. (Uploading from the desktop to the web has
 // always worked this way.) Read from the file's own app name.
-export const mediaStaysBehind = (file: Pick<AtriumFile, 'app'>) => !isLocalData && /desktop/i.test(file.app ?? '')
+export const mediaStaysBehind = (file: Pick<AtriumFile, 'app'>, local = isLocalData) => !local && /desktop/i.test(file.app ?? '')
 
 // What an .atrium file is, to a browser: its own type, so none of them adds
 // .json to its name on the way down (it's JSON inside, but an .atrium file).
