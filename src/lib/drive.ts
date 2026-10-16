@@ -135,6 +135,23 @@ export async function shareWith(id: string, email: string, role: 'reader' | 'wri
   })
 }
 
+/** Readable by anyone who has its id -- Drive's "anyone with the link". */
+export async function shareByLink(id: string): Promise<void> {
+  await drive(`files/${id}/permissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'anyone', role: 'reader' }),
+  })
+}
+
+/** A file shared by link, read with the app's key alone: no one signed in, so
+ *  nothing drive.file has to have granted. */
+export async function readByLink(id: string): Promise<Blob> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${GOOGLE_API_KEY}`)
+  if (!response.ok) throw new Error(`Drive ${response.status}: ${(await response.text()).slice(0, 200)}`)
+  return response.blob()
+}
+
 export const whoAmI = async (): Promise<{ displayName: string; emailAddress: string }> =>
   (await (await drive('about?fields=user(displayName,emailAddress)')).json()).user
 

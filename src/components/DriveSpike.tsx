@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  createFolder, driveRetries, fileInfo, listFolder, loadGoogleSignIn, pickFolder, readFile, shareWith, whoAmI, writeFile,
+  createFolder, driveRetries, fileInfo, listFolder, loadGoogleSignIn, pickFolder, readByLink, readFile, shareByLink, shareWith, whoAmI, writeFile,
 } from '../lib/drive'
 
 // Phase 4's spike (docs/DECENTRALIZING.md): what Drive does for atriums, step
@@ -15,6 +15,7 @@ export default function DriveSpike() {
   const [busy, setBusy] = useState(false)
   const [folder, setFolder] = useState<string | null>(() => localStorage.getItem(FOLDER_KEY))
   const [email, setEmail] = useState('')
+  const [fileId, setFileId] = useState('')
   useEffect(() => { void loadGoogleSignIn().catch(() => {}) }, [])
 
   const say = (line: string) => setLog(lines => [...lines, `${new Date().toLocaleTimeString()}  ${line}`])
@@ -42,10 +43,10 @@ export default function DriveSpike() {
     }],
     ['Make a test atrium folder', async () => {
       const made = await createFolder(`Atrium test ${new Date().toLocaleString()}`)
-      await writeFile('atrium.json', json({ version: 1, traces: [] }), { parent: made.id })
+      const snapshot = await writeFile('atrium.json', json({ version: 1, traces: [] }), { parent: made.id })
       localStorage.setItem(FOLDER_KEY, made.id)
       setFolder(made.id)
-      return `${made.name} (${made.id})`
+      return `${made.name} (${made.id}); atrium.json is ${snapshot.id}`
     }],
     ['Read it back', async () => {
       const files = await listFolder(needFolder())
@@ -90,6 +91,11 @@ export default function DriveSpike() {
       const back = JSON.parse(await (await readFile(written.id)).text())
       return `written and read back (at ${back.at})`
     }],
+    ['Make a file shared by link', async () => {
+      const file = await writeFile('link-test.json', json({ hello: 'by link', at: Date.now() }), { parent: needFolder() })
+      await shareByLink(file.id)
+      return `link-test.json is ${file.id} -- paste that id on the other account`
+    }],
     ['Open a folder shared with me (Picker)', async () => {
       const picked = await pickFolder()
       if (!picked) return 'nothing picked'
@@ -120,6 +126,16 @@ export default function DriveSpike() {
         <input value={email} onChange={e => setEmail(e.target.value)} placeholder="second account's Gmail" className="flex-1 min-w-[12rem] bg-nier-blackLight border border-nier-border/30 text-nier-bg px-3 py-2 text-xs" />
         <button disabled={busy || !email.includes('@')} onClick={step(`Share the test folder with ${email}`, async () => { await shareWith(needFolder(), email.trim(), 'writer'); return 'shared as editor; Google emails them' })} className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs hover:border-nier-border/60 disabled:opacity-40">
           Share as editor
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <input value={fileId} onChange={e => setFileId(e.target.value.trim())} placeholder="a file id from the other account's log" className="flex-1 min-w-[12rem] bg-nier-blackLight border border-nier-border/30 text-nier-bg px-3 py-2 text-xs" />
+        <button disabled={busy || fileId.length < 10} onClick={step(`Read ${fileId.slice(0, 10)}… by its id`, async () => {
+          const as = await readFile(fileId).then(b => `${b.size} bytes`, (e: Error) => `refused (${e.message.slice(0, 90)})`)
+          const byLink = await readByLink(fileId).then(b => `${b.size} bytes`, (e: Error) => `refused (${e.message.slice(0, 90)})`)
+          return `as me: ${as}; by link with the key: ${byLink}`
+        })} className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs hover:border-nier-border/60 disabled:opacity-40">
+          Read it by its id
         </button>
       </div>
       <pre className="bg-nier-black border border-nier-border/20 p-3 text-[11px] text-nier-bg/80 whitespace-pre-wrap max-h-72 overflow-y-auto">{log.join('\n') || 'Nothing yet.'}</pre>
