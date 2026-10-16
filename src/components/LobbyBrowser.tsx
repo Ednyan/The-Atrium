@@ -5,8 +5,8 @@ import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
-import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, readInvite, type JoinStep } from '../lib/driveSync'
+import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
+import { createDriveAtrium, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, readInvite, rosterVersion, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -275,14 +275,21 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
       const me = { id: user.id, name: username || 'You' }
       let result = await joinDriveAtrium(asked.rosterId, me, setJoining)
-      // Added, and let in by the next owner's or admin's app to look: asked
-      // again every few seconds, while this stays open, until in.
+      // Added, and let in by the next owner's or admin's app to look: the
+      // roster's version watched, while this stays open, and the join asked
+      // again only once it moves (a download every few seconds is what
+      // Google's robot check answers).
       if (result.state === 'waiting') {
         setJoining('waiting')
         setJoinNote(t('browser.drive.waiting', { owner: asked.owner }))
+        let version = await rosterVersion(asked.rosterId)
         while (result.state === 'waiting' && inviteNow.current?.rosterId === asked.rosterId) {
-          await new Promise(wait => setTimeout(wait, 5000))
-          result = await joinDriveAtrium(asked.rosterId, me)
+          await new Promise(wait => setTimeout(wait, 10_000))
+          const now = await rosterVersion(asked.rosterId)
+          if (now !== version) {
+            version = now
+            result = await joinDriveAtrium(asked.rosterId, me)
+          }
         }
       }
       if (result.state === 'in') {
@@ -302,9 +309,29 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setJoinNote(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : message)
+      // "Failed to fetch": Google's robot check, whose page a browser can't read.
+      setJoinNote(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : /Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
     } finally {
       setJoining(null)
+    }
+  }
+
+  // An atrium kept in this browser, kept in Google Drive too, at any time.
+  const [converting, setConverting] = useState<string | null>(null)
+  const toDrive = async (lobby: LobbyWithOwner) => {
+    setConverting(lobby.id)
+    try {
+      // Google's window first, while the click counts.
+      await ensureSignedIn()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error(t('browser.errNotAuthenticated'))
+      await keepInDrive(lobby.id, lobby.name, { id: user.id, name: username || 'You' })
+      await loadBrowserLobbies()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : message)
+    } finally {
+      setConverting(null)
     }
   }
 
@@ -601,7 +628,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
     try {
       // Google's window first, while the click that asked still counts.
-      if (canDrive && newWhere === 'drive') await driveToken()
+      if (canDrive && newWhere === 'drive') await ensureSignedIn()
       // Kept in this browser (lib/browserAtriums), or the cloud's.
       const client = browserChoice ? (await browserEngine()).localClient : supabase
       const { data: { user } } = await client.auth.getUser()
@@ -1267,6 +1294,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         {lobby.inDrive && (
                           <button onClick={() => setSharingId(sharingId === lobby.id ? null : lobby.id)} className={ROW_BUTTON}>
                             {t('browser.drive.share')}
+                          </button>
+                        )}
+                        {lobby.inBrowser && !lobby.inDrive && canDrive && (
+                          <button disabled={converting !== null} onClick={() => void toDrive(lobby)} className={`${ROW_BUTTON} disabled:opacity-40`}>
+                            {converting === lobby.id ? t('browser.drive.converting') : t('browser.drive.convert')}
                           </button>
                         )}
                         {/* Nobody to give an id to, nor to let in, for one kept in the browser. */}

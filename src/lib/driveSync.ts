@@ -163,6 +163,19 @@ export async function createDriveAtrium(lobbyId: string, name: string, me: { id:
   // Admins it's shared with to edit can't share it on: only the owner makes admins.
   await store.noResharing(file.id)
   keep(lobbyId, { roster: file.id, folder, keys: await keysOf(new Map([[0, key]])), owner: true })
+  // A clean slate: what an earlier sync of this atrium kept (what it merged,
+  // what it read) isn't this one's, and would stop its first save -- all of
+  // it -- from ever going up.
+  await (await import('./localDb')).writeVaultJson(statePath(lobbyId), { merged: [], seen: [], last: null } satisfies State)
+}
+
+/** An atrium kept in this browser, kept in Drive too, at any time: made a
+ *  Drive atrium, and all of it sent up now rather than when it's next opened. */
+export async function keepInDrive(lobbyId: string, name: string, me: { id: string; name: string }): Promise<void> {
+  await createDriveAtrium(lobbyId, name, me)
+  await startDriveSync(lobbyId, me.id)
+  await syncNow()
+  await stopDriveSync()
 }
 
 // ---------------------------------------------------------------- invites and joining
@@ -177,6 +190,11 @@ export function inviteLink(lobbyId: string): string | null {
 export function inviteIn(hash: string): string | null {
   return hash.startsWith(INVITE_PREFIX) && hash.length > INVITE_PREFIX.length ? hash.slice(INVITE_PREFIX.length) : null
 }
+/** The roster's version, without downloading it: what someone waiting to be
+ *  let in watches -- a download every few seconds is what Google's robot
+ *  check answers. */
+export const rosterVersion = (rosterId: string) => store.version(rosterId)
+
 /** What an invite is to: read by link, no one signed in. */
 export async function readInvite(rosterId: string): Promise<{ lobbyId: string; name: string; owner: string }> {
   const roster = await readRoster(rosterId)
@@ -487,8 +505,12 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
       s.keyring = await keyringOf(roster, s.me, own.identity.privateJwk)
       keep(s.lobbyId, { ...s.kept, keys: await keysOf(s.keyring) })
     }
-    if (manages(member.role)) await letIn(s, roster)
   }
+  // Whom to let in -- looked for at every look, not only when the roster
+  // moves: someone invited makes their key pair in their profile, which the
+  // roster doesn't show.
+  const roster = s.roster.roster
+  if (manages(memberOf(roster, s.me)?.role) && roster.invited.length) await letIn(s, roster)
   return s.roster?.roster ?? null
 }
 
