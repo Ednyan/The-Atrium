@@ -199,6 +199,16 @@ export const en = {
   'browser.inBrowserHint': 'Free, no limit. Only on this device, only for you.',
   'browser.inDrive': 'In Google Drive',
   'browser.inDriveHint': 'Encrypted, in your own Google Drive. Free, no limit.',
+  'browser.drive.joinTitle': 'Join “{name}”',
+  'browser.drive.joinHint': 'It’s kept in Google Drive, encrypted. You’ll sign in to Google and choose it once, so the app may open it.',
+  'browser.drive.join': 'Join',
+  'browser.drive.notEditor': 'You can’t join this atrium yet: ask its owner to let your Google account edit it.',
+  'browser.drive.share': 'Share',
+  'browser.drive.inviteLink': 'Invite link (it holds the atrium’s key: send it only to people you trust)',
+  'browser.drive.copyLink': 'Copy link',
+  'browser.drive.copied': 'Link copied.',
+  'browser.drive.letEdit': 'Let someone edit (their Google address)',
+  'browser.drive.shared': 'Done: {email} may edit it now. Send them the invite link too.',
   'browser.guestNote': "Without an account, your atriums are kept in this browser, for you alone. Sign in to make atriums you can share, and to see everyone else's.",
 
   // ---------------------------------------------------------- in an atrium

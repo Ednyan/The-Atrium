@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, forgetDriveAtrium, isDriveAtrium } from '../lib/driveSync'
+import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, letEdit, readInvite, type Invite } from '../lib/driveSync'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -241,6 +241,56 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }, [])
 
   useEffect(() => startContributionsRefresh(setContributions), [])
+
+  // An invite to a Drive atrium, arrived in the address's # (lib/driveSync):
+  // read by link, then offered -- or, already joined here, simply opened.
+  const [invite, setInvite] = useState<(Invite & { lobbyId: string; name: string }) | null>(null)
+  const [joining, setJoining] = useState(false)
+  useEffect(() => {
+    const found = inviteIn(location.hash)
+    if (!found || !canDrive) return
+    history.replaceState(null, '', location.pathname)
+    readInvite(found)
+      .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : setInvite({ ...found, ...about })))
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+  }, [])
+  const joinInvite = async () => {
+    if (!invite) return
+    setJoining(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error(t('browser.errNotAuthenticated'))
+      const lobbyId = await joinDriveAtrium(invite, { id: user.id, name: username || 'You' })
+      // Its working copy, filled by the first sync (lib/driveSync, down first).
+      const { localClient } = await browserEngine()
+      const { data: had } = await localClient.from('lobbies').select('id').eq('id', lobbyId)
+      if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: lobbyId, name: invite.name, owner_user_id: user.id, is_public: false, max_players: 50 })
+      rememberBrowserAtrium(lobbyId)
+      setInvite(null)
+      onJoinLobby(lobbyId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message !== 'JOIN_CANCELLED') setError(message === 'NOT_AN_EDITOR' ? t('browser.drive.notEditor') : message)
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  // Sharing a Drive atrium: its invite link, and who may edit it.
+  const [sharingId, setSharingId] = useState<string | null>(null)
+  const [shareEmail, setShareEmail] = useState('')
+  const [shareNote, setShareNote] = useState('')
+  const shareTo = async (lobbyId: string) => {
+    setShareNote('')
+    try {
+      await driveToken()
+      await letEdit(lobbyId, shareEmail.trim())
+      setShareNote(t('browser.drive.shared', { email: shareEmail.trim() }))
+      setShareEmail('')
+    } catch (err) {
+      setShareNote(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   useEffect(() => {
     if (!isDesktop) return
@@ -989,6 +1039,16 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {invite && (
+            <section className="border border-nier-border/40 p-5 space-y-3">
+              <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.joinTitle', { name: invite.name })}</h3>
+              <p className="text-nier-bg/75 text-xs leading-relaxed">{t('browser.drive.joinHint')}</p>
+              <div className="flex gap-2">
+                <button onClick={() => void joinInvite()} disabled={joining} className={ROW_ENTER}>{t('browser.drive.join')}</button>
+                <button onClick={() => setInvite(null)} className={ROW_BUTTON}>{t('common.cancel')}</button>
+              </div>
+            </section>
+          )}
           {/* Create Lobby */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -1167,6 +1227,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         >
                           {t('browser.enter')}
                         </button>
+                        {lobby.inDrive && (
+                          <button onClick={() => { setSharingId(sharingId === lobby.id ? null : lobby.id); setShareNote('') }} className={ROW_BUTTON}>
+                            {t('browser.drive.share')}
+                          </button>
+                        )}
                         {/* Nobody to give an id to, nor to let in, for one kept in the browser. */}
                         {!lobby.inBrowser && (
                           <>
@@ -1197,6 +1262,21 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                           {t('common.delete')}
                         </button>
                       </div>
+                      {sharingId === lobby.id && (
+                        <div className="border-t border-nier-border/20 pt-3 space-y-2">
+                          <label className="block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase">{t('browser.drive.inviteLink')}</label>
+                          <div className="flex gap-2">
+                            <input readOnly value={inviteLink(lobby.id) ?? ''} onFocus={e => e.target.select()} className="flex-1 min-w-0 bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-[11px]" />
+                            <button onClick={() => void navigator.clipboard.writeText(inviteLink(lobby.id) ?? '').then(() => setShareNote(t('browser.drive.copied')))} className={ROW_BUTTON}>{t('browser.drive.copyLink')}</button>
+                          </div>
+                          <label className="block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase pt-1">{t('browser.drive.letEdit')}</label>
+                          <div className="flex gap-2">
+                            <input value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="name@gmail.com" className="flex-1 min-w-0 bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-xs" />
+                            <button disabled={!shareEmail.includes('@')} onClick={() => void shareTo(lobby.id)} className={`${ROW_BUTTON} disabled:opacity-40`}>{t('browser.drive.share')}</button>
+                          </div>
+                          {shareNote && <p className="text-nier-bg/75 text-[11px] leading-relaxed">{shareNote}</p>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

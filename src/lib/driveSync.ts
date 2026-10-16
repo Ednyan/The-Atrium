@@ -8,9 +8,11 @@
 // are read, opened and merged, and the changes that took are written into the
 // working copy and handed to the open atrium (lib/liveChanges, tellHere).
 //
-// One at a time, and up before down: what comes down never lands while a diff
-// is being taken, and an edit made here reaches Drive before the next pull
-// can be told it's older.
+// One at a time, so what comes down never lands while a diff is being taken;
+// and down before up -- the user's rule, the first save wins: an edit made
+// here gives way to one that reached Drive first (made while this one was
+// offline, say), and a fresh copy (someone just joined) is filled before
+// it's compared with anything.
 
 import * as drive from './drive'
 import {
@@ -23,6 +25,10 @@ import { tellHere, type LiveTable } from './liveChanges'
 export interface DriveStore {
   /** Can write now, without asking anyone to sign in. */
   canWrite(): boolean
+  /** Google's window, on a click. */
+  signIn(): Promise<void>
+  /** One file picked in the Picker, so the app may open it; null if not. */
+  pick(id: string): Promise<string | null>
   createFolder(name: string, parent?: string): Promise<{ id: string }>
   shareByLink(id: string): Promise<void>
   write(name: string, bytes: Uint8Array, place: { parent: string } | { id: string }): Promise<{ id: string }>
@@ -31,6 +37,8 @@ export interface DriveStore {
 }
 const googleDrive: DriveStore = {
   canWrite: drive.hasDriveToken,
+  signIn: async () => { await drive.driveToken() },
+  pick: drive.pickFile,
   createFolder: drive.createFolder,
   shareByLink: drive.shareByLink,
   write: (name, bytes, place) => drive.writeFile(name, new Blob([bytes as BlobPart]), place),
@@ -60,7 +68,7 @@ export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 
 // The head: the atrium's own id and who's in it -- whose folders to read.
 interface Member { user: string; name: string; folder: string }
-interface Head { v: 1; lobbyId: string; members: Member[] }
+interface Head { v: 1; lobbyId: string; name: string; members: Member[] }
 
 /** A new Drive atrium, of the atrium kept in this browser as `lobbyId`: its
  *  folder shared by link, its key, its head. Its first save, all of it, goes
@@ -69,9 +77,72 @@ export async function createDriveAtrium(lobbyId: string, name: string, me: { id:
   const key = await newAtriumKey()
   const folder = await store.createFolder(`${name} (Digital Atrium)`)
   await store.shareByLink(folder.id)
-  const head: Head = { v: 1, lobbyId, members: [{ user: me.id, name: me.name, folder: folder.id }] }
+  const head: Head = { v: 1, lobbyId, name, members: [{ user: me.id, name: me.name, folder: folder.id }] }
   const headFile = await store.write('atrium.head', await sealJson(key, head), { parent: folder.id })
   keep(lobbyId, { head: headFile.id, folder: folder.id, key: await keyToText(key) })
+}
+
+// ---------------------------------------------------------------- sharing and joining
+
+// An invite: the head's id and the key, in a link's `#` -- which a browser
+// never sends anywhere -- on the atrium browser (components/LobbyBrowser).
+export interface Invite { head: string; key: string }
+export const INVITE_PREFIX = '#join='
+export function inviteLink(lobbyId: string): string | null {
+  const kept = allKept()[lobbyId]
+  return kept ? `${location.origin}/browse${INVITE_PREFIX}${kept.head}.${kept.key}` : null
+}
+export function inviteIn(hash: string): Invite | null {
+  if (!hash.startsWith(INVITE_PREFIX)) return null
+  const [head, key] = hash.slice(INVITE_PREFIX.length).split('.')
+  return head && key ? { head, key } : null
+}
+/** What an invite is to: read by link, no one signed in. */
+export async function readInvite(invite: Invite): Promise<{ lobbyId: string; name: string }> {
+  const head = await unsealJson<Head>(await keyFromText(invite.key), await store.readByLink(invite.head))
+  return { lobbyId: head.lobbyId, name: head.name }
+}
+
+/** Someone may edit it: its head shared with their Google account as an
+ *  editor, so Google decides who can join (joinDriveAtrium). Send them the
+ *  invite link too -- it holds the key, which Google never sees. */
+export async function letEdit(lobbyId: string, email: string): Promise<void> {
+  const kept = allKept()[lobbyId]
+  if (!kept) throw new Error('not a Drive atrium')
+  await drive.shareWith(kept.head, email, 'writer', true)
+}
+
+/** Into an atrium one's invited to: Google's window, the head picked once
+ *  (drive.file opens nothing else), one's own folder, shared by link, and
+ *  one's name among the members. Then this browser keeps it; the caller makes
+ *  the working copy, which the first sync fills. */
+export async function joinDriveAtrium(invite: Invite, me: { id: string; name: string }): Promise<string> {
+  const key = await keyFromText(invite.key)
+  await store.signIn()
+  if (!(await store.pick(invite.head))) throw new Error('JOIN_CANCELLED')
+  const head = await unsealJson<Head>(key, await store.readByLink(invite.head))
+  let mine = head.members.find(member => member.user === me.id)
+  if (!mine) {
+    const folder = await store.createFolder(`${head.name} (Digital Atrium)`)
+    await store.shareByLink(folder.id)
+    mine = { user: me.id, name: me.name, folder: folder.id }
+    // Read, added to, written, read again: two joining at once don't lose one.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const now = await unsealJson<Head>(key, await store.readByLink(invite.head))
+      if (!now.members.some(member => member.user === me.id)) {
+        try {
+          await store.write('atrium.head', await sealJson(key, { ...now, members: [...now.members, mine] }), { id: invite.head })
+        } catch (error) {
+          // Google's no: the owner hasn't let this account edit.
+          if (/Drive 40[34]/.test(String(error))) throw new Error('NOT_AN_EDITOR')
+          throw error
+        }
+      }
+      if ((await unsealJson<Head>(key, await store.readByLink(invite.head))).members.some(member => member.user === me.id)) break
+    }
+  }
+  keep(head.lobbyId, { head: invite.head, folder: mine.folder, key: invite.key })
+  return head.lobbyId
 }
 
 // ---------------------------------------------------------------- in step, while open
@@ -123,7 +194,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
     window.clearTimeout(s.quiet)
     s.quiet = window.setTimeout(() => { if (session === s) void run(s, up) }, QUIET_MS)
   })
-  const both = async (x: Session) => { await up(x); await down(x) }
+  const both = async (x: Session) => { await down(x); await up(x) }
   void run(s, both)
   s.looking = window.setInterval(() => { if (session === s) void run(s, both) }, LOOK_MS)
 }
@@ -157,13 +228,13 @@ export function watchDriveSignIn(watcher: (needed: boolean) => void): () => void
 }
 /** On a click: Google's window, then what waited goes up. */
 export async function reconnectDrive(): Promise<void> {
-  await drive.driveToken()
+  await store.signIn()
   needSignIn(false)
   await syncNow()
 }
 
 /** Now, rather than at the next look: up, then down. For tests and a "sync now". */
-export const syncNow = () => (session ? run(session, async s => { await up(s); await down(s) }) : Promise.resolve())
+export const syncNow = () => (session ? run(session, async s => { await down(s); await up(s) }) : Promise.resolve())
 
 async function up(s: Session): Promise<void> {
   const at = tick(s.last, Date.now(), s.me)

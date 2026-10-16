@@ -209,6 +209,16 @@ const ko: Catalogue = {
   'browser.inBrowserHint': '무료, 제한 없음. 이 기기에서만, 나만.',
   'browser.inDrive': 'Google 드라이브에',
   'browser.inDriveHint': '암호화되어 내 Google 드라이브에. 무료, 제한 없음.',
+  'browser.drive.joinTitle': '“{name}”에 참여',
+  'browser.drive.joinHint': 'Google 드라이브에 암호화되어 보관돼요. Google에 로그인하고 한 번 선택하면 앱이 열 수 있어요.',
+  'browser.drive.join': '참여',
+  'browser.drive.notEditor': '아직 이 Atrium에 참여할 수 없어요. 소유자에게 내 Google 계정의 편집을 허용해 달라고 하세요.',
+  'browser.drive.share': '공유',
+  'browser.drive.inviteLink': '초대 링크(Atrium의 키가 들어 있어요. 믿을 수 있는 사람에게만 보내세요)',
+  'browser.drive.copyLink': '링크 복사',
+  'browser.drive.copied': '링크를 복사했어요.',
+  'browser.drive.letEdit': '편집 허용하기(상대의 Google 주소)',
+  'browser.drive.shared': '완료: 이제 {email} 님이 편집할 수 있어요. 초대 링크도 보내 주세요.',
   'browser.guestNote': '계정 없이는 Atrium이 이 브라우저에 나만을 위해 보관돼요. 로그인하면 공유할 수 있는 Atrium을 만들고 다른 사람들의 Atrium도 볼 수 있어요.',
 
   // ---------------------------------------------------------- in an atrium

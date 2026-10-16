@@ -130,9 +130,9 @@ export async function listFolder(id: string): Promise<DriveFile[]> {
   return (await (await drive(`files?q=${q}&fields=files(${FIELDS})&pageSize=1000`)).json()).files ?? []
 }
 
-/** Shared with someone by their Google address, as Drive shares: Google tells them. */
-export async function shareWith(id: string, email: string, role: 'reader' | 'writer'): Promise<void> {
-  await drive(`files/${id}/permissions?sendNotificationEmail=true`, {
+/** Shared with someone by their Google address; Google emails them unless `quietly`. */
+export async function shareWith(id: string, email: string, role: 'reader' | 'writer', quietly = false): Promise<void> {
+  await drive(`files/${id}/permissions?sendNotificationEmail=${!quietly}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'user', role, emailAddress: email }),
@@ -166,6 +166,31 @@ export async function listByLink(id: string): Promise<DriveFile[]> {
 
 export const whoAmI = async (): Promise<{ displayName: string; emailAddress: string }> =>
   (await (await drive('about?fields=user(displayName,emailAddress)')).json()).user
+
+/** One file, chosen through the Picker -- shown that file alone. Picking it
+ *  is what lets the app open it under drive.file: the head of a Drive
+ *  atrium, for someone joining it. */
+export async function pickFile(id: string): Promise<string | null> {
+  if (!GOOGLE_API_KEY) throw new Error("the Picker isn't set up in this build (VITE_GOOGLE_API_KEY)")
+  const oauth = await driveToken()
+  await script('https://apis.google.com/js/api.js')
+  const gapi = (window as any).gapi
+  await new Promise<void>(done => gapi.load('picker', done))
+  const { picker } = (window as any).google
+  return new Promise(resolve => {
+    new picker.PickerBuilder()
+      .addView(new picker.DocsView().setFileIds(id))
+      .setOAuthToken(oauth)
+      .setDeveloperKey(GOOGLE_API_KEY)
+      .setAppId(GOOGLE_PROJECT_NUMBER)
+      .setCallback((data: any) => {
+        if (data.action === picker.Action.PICKED) resolve(data.docs[0].id)
+        else if (data.action === picker.Action.CANCEL) resolve(null)
+      })
+      .build()
+      .setVisible(true)
+  })
+}
 
 /** A folder chosen through Google's Picker -- how someone a folder was shared
  *  with gives the app access to it, which drive.file asks for. */

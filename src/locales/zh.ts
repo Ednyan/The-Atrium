@@ -208,6 +208,16 @@ const zh: Catalogue = {
   'browser.inBrowserHint': '免费，无上限。仅在此设备上，仅你可见。',
   'browser.inDrive': '在 Google 云端硬盘',
   'browser.inDriveHint': '加密保存在你自己的 Google 云端硬盘中。免费，无上限。',
+  'browser.drive.joinTitle': '加入“{name}”',
+  'browser.drive.joinHint': '它加密保存在 Google 云端硬盘中。你需要登录 Google 并选择一次，应用才能打开它。',
+  'browser.drive.join': '加入',
+  'browser.drive.notEditor': '你还不能加入这个 Atrium：请让所有者允许你的 Google 账号编辑它。',
+  'browser.drive.share': '共享',
+  'browser.drive.inviteLink': '邀请链接（包含 Atrium 的密钥：只发给你信任的人）',
+  'browser.drive.copyLink': '复制链接',
+  'browser.drive.copied': '链接已复制。',
+  'browser.drive.letEdit': '允许他人编辑（对方的 Google 地址）',
+  'browser.drive.shared': '完成：{email} 现在可以编辑了。也请把邀请链接发给对方。',
   'browser.guestNote': '不登录时，你的 Atrium 只保存在此浏览器中，仅你可见。登录后可以创建能分享的 Atrium，也能看到其他人的。',
 
   // ---------------------------------------------------------- in an atrium

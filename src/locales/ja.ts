@@ -205,6 +205,16 @@ const ja: Catalogue = {
   'browser.inBrowserHint': '無料・無制限。この端末だけ、あなただけ。',
   'browser.inDrive': 'Google ドライブ',
   'browser.inDriveHint': '暗号化して、あなた自身の Google ドライブに。無料・無制限。',
+  'browser.drive.joinTitle': '「{name}」に参加',
+  'browser.drive.joinHint': 'Google ドライブに暗号化して保存されています。Google にログインして一度選ぶと、アプリが開けるようになります。',
+  'browser.drive.join': '参加',
+  'browser.drive.notEditor': 'この Atrium にはまだ参加できません。オーナーにあなたの Google アカウントへ編集を許可してもらってください。',
+  'browser.drive.share': '共有',
+  'browser.drive.inviteLink': '招待リンク（Atrium の鍵を含みます。信頼できる人にだけ送ってください）',
+  'browser.drive.copyLink': 'リンクをコピー',
+  'browser.drive.copied': 'リンクをコピーしました。',
+  'browser.drive.letEdit': '編集を許可する（相手の Google アドレス）',
+  'browser.drive.shared': '完了：{email} が編集できるようになりました。招待リンクも送ってください。',
   'browser.guestNote': 'アカウントなしでは、Atrium はこのブラウザにあなただけのために保存されます。ログインすると、共有できる Atrium を作ったり、ほかの人の Atrium を見たりできます。',
 
   // ---------------------------------------------------------- in an atrium

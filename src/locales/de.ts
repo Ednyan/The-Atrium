@@ -165,6 +165,16 @@ const de: Catalogue = {
   'browser.inBrowserHint': 'Kostenlos, ohne Limit. Nur auf diesem Gerät, nur für dich.',
   'browser.inDrive': 'In Google Drive',
   'browser.inDriveHint': 'Verschlüsselt, in deinem eigenen Google Drive. Kostenlos, ohne Limit.',
+  'browser.drive.joinTitle': '„{name}“ beitreten',
+  'browser.drive.joinHint': 'Es liegt verschlüsselt in Google Drive. Du meldest dich bei Google an und wählst es einmal aus, damit die App es öffnen darf.',
+  'browser.drive.join': 'Beitreten',
+  'browser.drive.notEditor': 'Du kannst diesem Atrium noch nicht beitreten: Bitte den Besitzer, deinem Google-Konto das Bearbeiten zu erlauben.',
+  'browser.drive.share': 'Teilen',
+  'browser.drive.inviteLink': 'Einladungslink (er enthält den Schlüssel des Atriums: schick ihn nur an Leute, denen du vertraust)',
+  'browser.drive.copyLink': 'Link kopieren',
+  'browser.drive.copied': 'Link kopiert.',
+  'browser.drive.letEdit': 'Jemanden bearbeiten lassen (seine Google-Adresse)',
+  'browser.drive.shared': 'Erledigt: {email} kann es jetzt bearbeiten. Schick ihm auch den Einladungslink.',
   'browser.guestNote': 'Ohne Konto bleiben deine Atrien in diesem Browser, nur für dich. Melde dich an, um Atrien zu erstellen, die du teilen kannst, und die der anderen zu sehen.',
 
   // ---------------------------------------------------------- in an atrium

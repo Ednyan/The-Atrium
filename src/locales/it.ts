@@ -166,6 +166,16 @@ const it: Catalogue = {
   'browser.inBrowserHint': 'Gratis, senza limiti. Solo su questo dispositivo, solo per te.',
   'browser.inDrive': 'In Google Drive',
   'browser.inDriveHint': 'Cifrato, nel tuo Google Drive. Gratis, senza limiti.',
+  'browser.drive.joinTitle': 'Unisciti a «{name}»',
+  'browser.drive.joinHint': 'È conservato in Google Drive, cifrato. Accederai a Google e lo sceglierai una volta, così l’app potrà aprirlo.',
+  'browser.drive.join': 'Unisciti',
+  'browser.drive.notEditor': 'Non puoi ancora unirti a questo atrium: chiedi al proprietario di far modificare il tuo account Google.',
+  'browser.drive.share': 'Condividi',
+  'browser.drive.inviteLink': 'Link di invito (contiene la chiave dell’atrium: mandalo solo a persone di cui ti fidi)',
+  'browser.drive.copyLink': 'Copia link',
+  'browser.drive.copied': 'Link copiato.',
+  'browser.drive.letEdit': 'Fai modificare qualcuno (il suo indirizzo Google)',
+  'browser.drive.shared': 'Fatto: {email} ora può modificarlo. Mandagli anche il link di invito.',
   'browser.guestNote': 'Senza account, i tuoi atrium restano in questo browser, solo per te. Accedi per creare atrium da condividere e vedere quelli degli altri.',
 
   // ---------------------------------------------------------- in an atrium
