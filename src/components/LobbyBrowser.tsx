@@ -259,7 +259,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       history.replaceState(null, '', location.pathname)
       readInvite(found)
         .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : (setJoinNote(''), setInvite({ rosterId: found, ...about }))))
-        .catch(err => setError(err instanceof Error ? err.message : String(err)))
+        .catch(err => {
+          const message = err instanceof Error ? err.message : String(err)
+          setError(/Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
+        })
     }
     look()
     window.addEventListener('hashchange', look)
@@ -280,7 +283,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       // Google's robot check answers).
       if (result.state === 'waiting') {
         setJoining('waiting')
-        setJoinNote(t('browser.drive.waiting', { owner: asked.owner }))
+        setJoinNote(t(result.why === 'otherAccount' ? 'browser.drive.waitingAccount' : 'browser.drive.waiting', { owner: asked.owner }))
         let version = await rosterVersion(asked.rosterId)
         while (result.state === 'waiting' && inviteNow.current?.rosterId === asked.rosterId) {
           await new Promise(wait => setTimeout(wait, 10_000))
@@ -1104,7 +1107,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   <li key={invitation.id} className="flex flex-wrap items-center gap-3">
                     <span className="flex-1 min-w-[10rem] text-nier-bg text-sm">
                       {invitation.name}
-                      <span className="block text-nier-bg/60 text-xs">{t('browser.drive.from', { name: invitation.from })}</span>
+                      <span className="block text-nier-bg/60 text-xs">{t('browser.drive.from', { name: invitation.from })}{invitation.at && ` · ${new Date(invitation.at).toLocaleString()}`}</span>
                     </span>
                     <button
                       onClick={() => {

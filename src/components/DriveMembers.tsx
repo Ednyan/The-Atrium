@@ -35,6 +35,8 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
       DB_UPDATE_NEEDED: t('browser.drive.dbUpdate'),
       PICK_CANCELLED: t('browser.drive.pickCancelled'),
     }
+    // Google's robot check, whose page a browser can't read.
+    if (/Failed to fetch|NetworkError|Load failed/.test(message)) return t('browser.drive.googleBusy')
     return known[message] ?? message
   }
   // Each change: Google's window first, while the click still counts.

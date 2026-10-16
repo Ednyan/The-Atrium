@@ -40,7 +40,8 @@ export interface DriveStore {
   pick(id: string): Promise<string | null>
   createFolder(name: string, parent?: string): Promise<{ id: string }>
   shareByLink(id: string): Promise<void>
-  write(name: string, bytes: Uint8Array, place: { parent: string } | { id: string }): Promise<{ id: string }>
+  /** Written; its id, and its version now where Drive says it. */
+  write(name: string, bytes: Uint8Array, place: { parent: string } | { id: string }): Promise<{ id: string; version?: string }>
   readByLink(id: string): Promise<Uint8Array>
   /** A file's version, without downloading it. */
   version(id: string): Promise<string>
@@ -76,7 +77,25 @@ export const useDriveStore = (next: DriveStore) => { store = next }
 
 const asJson = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
 const fromJson = <T>(bytes: Uint8Array): T => JSON.parse(new TextDecoder().decode(bytes))
-const readRoster = async (id: string) => fromJson<Roster>(await store.readByLink(id))
+// Rosters as last read, by their version, kept across reloads: a roster is
+// downloaded only once it has changed -- every anonymous download counts
+// toward Google's robot check, and those of everyone on one network add up.
+// Its version is only details, which Google lets be read freely.
+const ROSTERS = 'atrium.driveRosters'
+function rostersKept(): Record<string, { version: string; roster: Roster }> {
+  try { return JSON.parse(localStorage.getItem(ROSTERS) || '{}') ?? {} } catch { return {} }
+}
+async function readRosterAt(id: string, version: string): Promise<Roster> {
+  const kept = rostersKept()[id]
+  if (kept?.version === version) return kept.roster
+  const roster = fromJson<Roster>(await store.readByLink(id))
+  keepRoster(id, version, roster)
+  return roster
+}
+function keepRoster(id: string, version: string, roster: Roster) {
+  try { localStorage.setItem(ROSTERS, JSON.stringify({ ...rostersKept(), [id]: { version, roster } })) } catch { /* read again next time */ }
+}
+const readRoster = async (id: string) => readRosterAt(id, await store.version(id))
 
 // ---------------------------------------------------------------- one's own key pair
 
@@ -205,7 +224,7 @@ export async function readInvite(rosterId: string): Promise<{ lobbyId: string; n
 export type JoinStep = 'signIn' | 'keys' | 'folder'
 /** In: a member. Waiting: added, and let in by the next owner's or admin's
  *  app to look (now that one has a key pair). Not added, or blocked. */
-export type JoinResult = { lobbyId: string; state: 'in' | 'waiting' | 'notAdded' | 'blocked' }
+export type JoinResult = { lobbyId: string; state: 'in' | 'waiting' | 'notAdded' | 'blocked'; why?: 'noSecret' | 'otherAccount' }
 
 /** Into an atrium one's been added to: signed in, one's key pair, and -- a
  *  member -- one's folder for it, and its key. Again, while waiting, until in. */
@@ -230,15 +249,20 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
   const invited = roster.invited.find(invite => invite.user === me.id)
   if (invited?.keys) {
     const { data } = await (cloudClient.from('drive_invites') as any).select('secret').eq('to_user', me.id).eq('roster', rosterId).maybeSingle()
-    if (data?.secret) {
-      const keyring = await openWithSecret(base64ToBytes(data.secret), invited.keys)
+    // A secret that doesn't open it (an older invitation than the roster's): as none.
+    const keyring = data?.secret ? await openWithSecret(base64ToBytes(data.secret), invited.keys).catch(() => null) : null
+    if (keyring) {
       onStep('folder')
       const folder = await folderFor(own.root, lobbyId)
       keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false })
       return { lobbyId, state: 'in' }
     }
   }
-  return { lobbyId, state: member || invited ? 'waiting' : 'notAdded' }
+  // Waiting on someone who holds the key: a member with another Google
+  // account's key pair, or an invitation with no secret that opens it --
+  // either way, theirs to resend (or let in, next time they're in it).
+  if (member) return { lobbyId, state: 'waiting', why: 'otherAccount' }
+  return invited ? { lobbyId, state: 'waiting', why: 'noSecret' } : { lobbyId, state: 'notAdded' }
 }
 
 // ---------------------------------------------------------------- invitations
@@ -246,15 +270,16 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
 // One's invitations to Drive atriums, in the Atrium's own small table: which
 // atrium (its roster in Drive), its name, and who added one -- shown in the
 // atrium browser, so nobody needs a link (add_drive_invites.sql).
-export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string }
+export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: string }
 export async function myInvitations(me: string): Promise<Invitation[]> {
-  const { data, error } = await (cloudClient.from('drive_invites') as any).select('id, roster, lobby_id, name, from_user').eq('to_user', me)
+  const { data, error } = await (cloudClient.from('drive_invites') as any).select('id, roster, lobby_id, name, from_user, created_at').eq('to_user', me)
   if (error || !data?.length) return []
   const { data: senders } = await (cloudClient.from('profiles') as any).select('id, username, display_name').in('id', [...new Set(data.map((row: any) => row.from_user))])
   const names = new Map<string, string>((senders ?? []).map((row: any) => [row.id, row.display_name || row.username]))
   return data
     .filter((row: any) => !isDriveAtrium(row.lobby_id))
-    .map((row: any) => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: names.get(row.from_user) ?? '' }))
+    .map((row: any) => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: names.get(row.from_user) ?? '', at: row.created_at ?? '' }))
+    .sort((a: Invitation, b: Invitation) => (a.at < b.at ? 1 : -1))
 }
 export async function declineInvitation(id: string): Promise<void> {
   await (cloudClient.from('drive_invites') as any).delete().eq('id', id)
@@ -264,7 +289,8 @@ export async function declineInvitation(id: string): Promise<void> {
 // still standing -- the roster's sealed keys answer to the first.
 async function invite(to: string, from: string, roster: Roster, rosterId: string, secret: Uint8Array | null): Promise<void> {
   const table = cloudClient.from('drive_invites') as any
-  const { error } = await table.upsert({ to_user: to, from_user: from, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret) }, { onConflict: 'to_user,roster' })
+  // One per person per atrium: sent again, it replaces the last -- and is new again.
+  const { error } = await table.upsert({ to_user: to, from_user: from, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret), created_at: new Date().toISOString() }, { onConflict: 'to_user,roster' })
   if (error) throw new Error(/drive_invites/.test(error.message ?? '') ? 'DB_UPDATE_NEEDED' : error.message)
 }
 
@@ -282,13 +308,16 @@ export async function driveMembers(lobbyId: string, me: string): Promise<{ roste
 // An admin's app opens it once through the Picker (drive.file opens nothing
 // else) -- asked on their first change.
 async function writeRoster(kept: Kept, roster: Roster): Promise<void> {
+  let written: { version?: string }
   try {
-    await store.write('atrium.roster', asJson(roster), { id: kept.roster })
+    written = await store.write('atrium.roster', asJson(roster), { id: kept.roster })
   } catch (error) {
     if (!/Drive 40[34]/.test(String(error))) throw error
     if (!(await store.pick(kept.roster))) throw new Error('PICK_CANCELLED')
-    await store.write('atrium.roster', asJson(roster), { id: kept.roster })
+    written = await store.write('atrium.roster', asJson(roster), { id: kept.roster })
   }
+  // Kept as written: who wrote it needn't download it again.
+  keepRoster(kept.roster, written.version ?? await store.version(kept.roster), roster)
 }
 
 // A change to the roster: read fresh, changed, written, and the keys this
@@ -565,7 +594,7 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     throw error
   }
   if (s.roster?.version !== version) {
-    const roster = await readRoster(s.kept.roster)
+    const roster = await readRosterAt(s.kept.roster, version)
     s.roster = { version, roster }
     if (!placeOf(roster, s.me) && !roster.invited.some(invite => invite.user === s.me)) { setStatus({ ended: 'removed' }); return null }
     // Let in properly: the invitation, and any secret it held, deleted.
