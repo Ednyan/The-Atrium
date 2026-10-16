@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 
 import {
   admit, changesSince, invitedWritersOf, keyFromText, KeyMissing, keyringOf, keyToText, later, merge, newAtriumKey, newIdentity, newRoster,
-  newSecret, openWithSecret, placeOf, removeMember, rowsOf, seal, sealForSecret, sealJson, snapshotOf, tick, unseal, unsealJson, unwrapWith, wrapFor, writersOf,
+  newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, snapshotOf, tick, unseal, unsealJson, unwrapWith, wrapFor, writersOf,
   type Change, type Keyring, type Merged,
 } from '../src/lib/driveFormat.ts'
 
@@ -43,6 +43,16 @@ test('a key kept as text comes back the same key', async () => {
   const back = await keyFromText(await keyToText(key))
   assert.deepEqual(await unseal(ring(back), await seal(ring(key), new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]))
   await assert.rejects(keyFromText('short'))
+})
+
+test('a public key is the same key however its fields come back ordered', async () => {
+  const { publicJwk } = await newIdentity()
+  // As Postgres's jsonb hands it back: its fields in another order.
+  const reordered = Object.fromEntries(Object.entries(publicJwk).reverse()) as JsonWebKey
+  assert.notEqual(JSON.stringify(reordered), JSON.stringify(publicJwk))
+  assert.ok(sameKey(reordered, publicJwk))
+  assert.ok(!sameKey((await newIdentity()).publicJwk, publicJwk))
+  assert.ok(!sameKey(null, publicJwk))
 })
 
 test("the atrium's key, encrypted for one person, opens with their private key alone", async () => {

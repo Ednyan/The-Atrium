@@ -97,6 +97,11 @@ export async function newIdentity(): Promise<Identity> {
   return { publicJwk: await crypto.subtle.exportKey('jwk', pair.publicKey), privateJwk: await crypto.subtle.exportKey('jwk', pair.privateKey) }
 }
 
+/** The same public key, however its fields are ordered: a profile's comes
+ *  back from the database (jsonb) with them reordered. */
+export const sameKey = (a: JsonWebKey | null | undefined, b: JsonWebKey | null | undefined) =>
+  !!a && !!b && a.kty === b.kty && a.crv === b.crv && a.x === b.x && a.y === b.y
+
 // The atrium's key, encrypted for one public key: with a key agreed between it
 // and a one-off key pair, whose public half goes with it.
 export interface Wrapped { epk: JsonWebKey; iv: string; ct: string }

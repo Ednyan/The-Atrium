@@ -24,7 +24,7 @@ import * as drive from './drive'
 import { cloudClient } from './supabase'
 import {
   admit, base64ToBytes, bytesToBase64, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
-  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, sealForSecret, sealJson, tick, unsealJson, writersOf,
+  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, sameKey, sealForSecret, sealJson, tick, unsealJson, writersOf,
   type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Table,
 } from './driveFormat'
 import { tellHere, type LiveTable } from './liveChanges'
@@ -238,7 +238,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
   if (roster.blocked.includes(me.id)) return { lobbyId, state: 'blocked' }
   const member = memberOf(roster, me.id)
   // A member with this key pair (one made elsewhere waits to be let in again).
-  if (member && JSON.stringify(member.pub) === JSON.stringify(own.identity.publicJwk)) {
+  if (member && sameKey(member.pub, own.identity.publicJwk)) {
     onStep('folder')
     const folder = await folderFor(own.root, lobbyId)
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' })
@@ -645,7 +645,7 @@ async function letIn(s: Session, roster: Roster): Promise<void> {
   }
   for (const member of roster.members) {
     const profile = profiles.get(member.user)
-    if (profile?.drive_key && JSON.stringify(profile.drive_key) !== JSON.stringify(member.pub)) {
+    if (profile?.drive_key && !sameKey(profile.drive_key, member.pub)) {
       next = await admit(next, s.keyring, { user: member.user, name: member.name, root: profile.drive_root ?? member.root, pub: profile.drive_key }, member.role)
     }
   }
