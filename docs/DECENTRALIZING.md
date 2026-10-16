@@ -570,6 +570,18 @@ someone polling. Drive is the record for whoever wasn't there.
 6. Live through the room.
 7. Compaction, and removing a member.
 
+**Built so far (2026-10-16), for testers behind the Drive switch:**
+- Steps 1–4: `lib/driveFormat` (sealing, the clock, the merge, the diff),
+  `lib/driveSync` (create, the sync, invites, joining), the third place in
+  Create, Share on the card, the Join prompt.
+- The sync brings others' saves down before sending its own: the first save
+  wins, and a fresh copy is filled before it's compared.
+- Google's sign-in lasts an hour and needs a click to renew. Until it's
+  renewed, saves wait in the browser and a button asks to reconnect;
+  reading carries on without it.
+- Not yet: pictures and other media (they stay in the browser that added
+  them), live through the room, compaction, removing a member.
+
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.
 
