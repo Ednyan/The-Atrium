@@ -44,8 +44,8 @@ export async function seal(key: CryptoKey, plain: Uint8Array): Promise<Uint8Arra
 
 export async function unseal(key: CryptoKey, sealed: Uint8Array): Promise<Uint8Array> {
   if (sealed[0] !== SEALED_V1 || sealed.length < 1 + NONCE + 16) throw new Error('not a sealed atrium file')
-  const nonce = sealed.subarray(1, 1 + NONCE)
-  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, sealed.subarray(1 + NONCE)))
+  const nonce = sealed.subarray(1, 1 + NONCE) as BufferSource
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, sealed.subarray(1 + NONCE) as BufferSource))
 }
 
 export const sealJson = (key: CryptoKey, value: unknown) => seal(key, new TextEncoder().encode(JSON.stringify(value)))
