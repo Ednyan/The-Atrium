@@ -495,9 +495,21 @@ the folder, not what's in it.** Under `drive.file`, the second account saw
 none of the 30 files in `saves/`, and only the folder it had just picked in
 the atrium's folder. Each person reaches only the files they made or picked
 one by one. So phase 5's shared folder of everyone's saves doesn't work as
-written: nobody could read anyone else's files. Being checked next (in the
-panel): reading a file by its id, and reading a file shared "anyone with the
-link" with the app's key alone. Chrome's sign-in works.
+written: nobody could read anyone else's files. Chrome's sign-in works.
+
+**Then, by id (2026-10-16), as the second account:**
+
+| File | With their own permission | With the app's key alone |
+|---|---|---|
+| `atrium.json`, shared with them as editor | 404 | 404 |
+| `link-test.json`, shared "anyone with the link" | 404 | **read** |
+
+So the free way for collaborators to read each other's files is Drive's
+"anyone with the link" plus the app's key, with the ids passed through the
+room and the atrium's own file. Each person still writes only files they
+made. The catch: a file shared by link is readable by anyone who gets its
+id. Encrypting the files, with the key travelling in the invite link's `#`
+part (which never reaches a server), would keep them private.
 
 Still to run: Safari, and the desktop apps, which need their own sign-in.
 
