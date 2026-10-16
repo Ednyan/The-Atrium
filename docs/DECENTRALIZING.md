@@ -463,6 +463,37 @@ channel held open.
 **Gate:** all of the above work in Chrome, Firefox and Safari, and in the
 Windows (WebView2) and macOS (WKWebView) desktop apps.
 
+**The spike, built (2026-10-16).** `lib/drive` and the panel
+`components/DriveSpike`, shown with `localStorage['atrium.drivespike'] =
+'on'`. The Google Cloud project is `digitalatriumdrive`, apart from the
+Supabase login's; the domain is verified. The client id and the key come from
+the build (`VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_API_KEY`).
+
+**Firefox 157, first run (2026-10-16):**
+
+| Step | Time |
+|---|---|
+| Sign in (popup, consent) | works |
+| Folder + `atrium.json` | 2.3 s |
+| List + read a 25-byte file | 1.4 s (the read alone 0.9 s) |
+| 30 saves at once | all saved, no rate limits, 1.2–1.6 s each, 2.1 s in all |
+| Change check (metadata only) | 0.25–0.43 s, average 0.29 s |
+| 4 MB file | up 3.8 s, down 1.9 s |
+| Hidden app folder | works |
+| Sharing by address | works |
+| Picker | "The API developer key is invalid": the key's restrictions, being fixed |
+
+What it means: **a save takes about 1.4 s to land in Drive**, and someone
+polling sees it a check (0.3 s) and a read (0.9 s) later. So Drive is the
+record, not the live path. Live stays with the room: announce the save, or
+carry its content (phase 2's idea), so people online see it at once, with
+Drive behind it for whoever comes later. Third-party cookies: Firefox blocks
+them by default, and sign-in worked.
+
+Still to run: the Picker with a second account (does picking the shared
+folder give access to the files in it under `drive.file`?), Chrome, Safari,
+and the desktop apps, which need their own sign-in.
+
 ## Phase 5: Drive atriums (opt-in, new atriums only)
 
 **Format (a folder per atrium):**
