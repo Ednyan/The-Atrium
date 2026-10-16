@@ -511,6 +511,11 @@ made. The catch: a file shared by link is readable by anyone who gets its
 id. Encrypting the files, with the key travelling in the invite link's `#`
 part (which never reaches a server), would keep them private.
 
+**And a folder shared by link (2026-10-16):** a file made in it afterwards,
+never shared itself, is read by link with the key (40 bytes, 1.1–1.3 s), and
+the folder is listed with the key (0.36 s). So one shared folder per person
+is enough: their saves inherit it, and others find new ones by listing it.
+
 Still to run: Safari, and the desktop apps, which need their own sign-in.
 
 ## Phase 5: Drive atriums (opt-in, new atriums only)
@@ -541,8 +546,8 @@ The user chose to share by link, encrypted.
   save, named by its hybrid logical clock (time, counter, user), and their
   pictures, by content hash.
 - **Finding new saves:** list each member's folder with the key, then read
-  what's new (to be confirmed by the spike: does a folder shared by link
-  pass that to its files, and can it be listed with the key?).
+  what's new. Confirmed by the spike: files inherit their folder's link
+  sharing, and the folder lists with the key alone.
 - **Joining:** the invite link names the head file. The first time, the
   guest picks it once in the Picker (shown only that file). That gives them
   write access to it under `drive.file`, so they can add their folder to the
