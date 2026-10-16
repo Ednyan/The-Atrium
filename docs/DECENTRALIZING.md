@@ -515,36 +515,58 @@ Still to run: Safari, and the desktop apps, which need their own sign-in.
 
 ## Phase 5: Drive atriums (opt-in, new atriums only)
 
-**Format (a folder per atrium):**
-- `atrium.json`: a snapshot (traces, layers, links, theme, a version).
-- `saves/<userId>/<sequence>.json`: one small file per save, written only by
-  that person. No two people ever write to the same file, so nothing is
-  overwritten.
-- `media/<sha256>.<ext>`: content-addressed, like the vault.
-- `preview.webp`.
+**Rewritten 2026-10-16 after the phase 4 spike.** Under `drive.file`, a
+collaborator can't read your files even when you've shared them with them;
+only files shared "anyone with the link" can be read, with the app's key.
+The user chose to share by link, encrypted.
 
-**Merging:**
-- Per trace, the latest change wins. The order comes from a hybrid logical
-  clock (time, counter, user id), so a wrong system clock can't reorder
-  edits.
-- Deletions are kept as tombstones until compaction.
-- The owner's app folds saves into the snapshot now and then, so opening
-  stays fast.
+**Encrypted, by link.**
+- Each atrium has a random AES-GCM key, made in the owner's browser.
+- Every file the atrium writes to Drive is encrypted with it, pictures
+  included. Google, Cloudflare and anyone who finds a file id see only
+  ciphertext.
+- The key travels in the invite link's `#` part, which browsers never send
+  to a server. Each member keeps it in their own `drive.appdata` and in the
+  browser.
+- Removing someone means a new key and the atrium re-encrypted (the app does
+  it). Until then, they can still read what they already had.
 
-**Live:** phase 2's direct announcements. Anyone not connected checks the
-folder every few seconds. Drive can't notify browsers itself; its push
-notifications go to servers only.
+**Where it lives.**
+- **The working copy is a browser atrium** (phase 7): the app reads and
+  writes it as it does now, and a sync module carries saves to and from
+  Drive. Nothing else in the app needs to know where the atrium is kept.
+- **The owner's folder:** the head file (name, theme, members and their
+  folders, the latest snapshot), snapshots, and the owner's own saves.
+- **Each member's folder:** in their own Drive, shared by link. One file per
+  save, named by its hybrid logical clock (time, counter, user), and their
+  pictures, by content hash.
+- **Finding new saves:** list each member's folder with the key, then read
+  what's new (to be confirmed by the spike: does a folder shared by link
+  pass that to its files, and can it be listed with the key?).
+- **Joining:** the invite link names the head file. The first time, the
+  guest picks it once in the Picker (shown only that file). That gives them
+  write access to it under `drive.file`, so they can add their folder to the
+  members.
 
-**Sharing:**
-- Drive's permissions: view or edit.
-- A link that opens the atrium, where a first-time guest is taken through the
-  Picker once.
+**Merging.** Per row, the latest change wins, by its clock, so a wrong system
+clock can't reorder edits. Deletions are kept as tombstones until
+compaction. The owner's app folds saves into a new snapshot now and then.
 
-**Media:** fetched through the API with the viewer's permission, then cached
-locally (IndexedDB).
+**Live.** Through the room, as now, but carrying the save itself (encrypted)
+rather than only its ids, since Drive takes about 2.5 s to show a save to
+someone polling. Drive is the record for whoever wasn't there.
 
-**Unchanged:** Supabase atriums. A "Move this atrium to my Drive" action comes
-later, optional and reversible (export first).
+**Build order, each step testable:**
+1. The encryption and the file format, with the merge (unit tests).
+2. Making a Drive atrium, and saves going up.
+3. Opening one, and saves coming down.
+4. Invites and joining.
+5. Pictures and other media, encrypted, cached in the browser.
+6. Live through the room.
+7. Compaction, and removing a member.
+
+**Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
+my Drive" comes later.
 
 **Gate:** a two-person edit session on a Drive atrium survives:
 - simultaneous saves;
