@@ -566,9 +566,49 @@ someone polling. Drive is the record for whoever wasn't there.
 2. Making a Drive atrium, and saves going up.
 3. Opening one, and saves coming down.
 4. Invites and joining.
-5. Pictures and other media, encrypted, cached in the browser.
+5. Members and roles (below), before media, since it changes the format.
 6. Live through the room.
-7. Compaction, and removing a member.
+7. Pictures and other media, encrypted, cached in the browser.
+8. Compaction.
+
+**Members and roles (decided 2026-10-16).** The user chose: only people who
+have been added get in, and admins work as in cloud atriums. Built before
+media, because it changes the file format.
+
+- **Google decides who may change the member list.** The list
+  (`atrium.roster`) is a file in the owner's folder. Only the owner and the
+  admins may write it: it's shared with each admin's Google account as an
+  editor, with re-sharing turned off. It's readable by link, and it holds no
+  email addresses.
+- **Keys:** each person has an encryption key pair, kept in their own
+  Google account's hidden app folder (`drive.appdata`), so every device they
+  sign in on has it. The atrium's key is encrypted for each member, in the
+  roster. Every sealed file records which key generation sealed it.
+- **The invite link carries no key,** only which roster to read. Anyone
+  with it sees the atrium's name, and nothing of what's in it.
+- **Joining is a request.** It's made one of two ways:
+  - through a mailbox file (`atrium.mailbox`) that the owner or an admin
+    shared with the person's Google address ("add someone"). Google lets only
+    them write it, so it's approved automatically by the next owner's or
+    admin's app that looks;
+  - through the room, while an owner or admin is there to approve it.
+
+  Approval adds them to the roster and encrypts every key generation for
+  them.
+- **Roles:**
+  - viewers' saves are ignored;
+  - editors' are taken;
+  - admins also approve, remove and block, and add people;
+  - the owner also promotes admins and deletes.
+- **Removing someone** writes a roster without them and a new key
+  generation, encrypted for everyone else. Their saves after that are
+  ignored, and they can't read anything new (what they already had, they
+  keep). **Blocking** also refuses their requests from then on.
+- **Leave** (a member) removes it from that browser. **Delete** (the owner)
+  removes its folder from Drive, and it closes for everyone.
+- **Not protected:** who's present in the room. Its id is in the roster, so
+  anyone with the link and an account could see names and cursors (never
+  content).
 
 **Built so far (2026-10-16), for testers behind the Drive switch:**
 - Steps 1–4: `lib/driveFormat` (sealing, the clock, the merge, the diff),
