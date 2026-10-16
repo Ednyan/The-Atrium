@@ -1,16 +1,24 @@
 // What a Drive atrium writes to Drive (docs/DECENTRALIZING.md, phase 5):
-// every file sealed with the atrium's own key, and the saves they carry
-// merged by clock. Pure -- no Drive, no page -- so it's tested on its own.
+// every file sealed with the atrium's key, its members and what each may do,
+// and the saves the files carry merged by clock. Pure -- no Drive, no page --
+// so it's tested on its own.
 //
-// The key is made in the owner's browser and travels only in the invite
-// link's `#` part, which browsers never send to a server: Drive, the room
-// and anyone who finds a file's id see ciphertext.
+// Only members can read it. The atrium's key is never sent anywhere as it is:
+// each member has a key pair of their own (its private half in their own
+// Google account), and the roster holds the atrium's key encrypted for each
+// of them. A member removed gets a new key generation made without them, so
+// they can read nothing written after.
 
-// ---------------------------------------------------------------- the key
+// ---------------------------------------------------------------- the atrium's key, by generation
 
 const ALGORITHM = { name: 'AES-GCM', length: 256 } as const
 
 export const newAtriumKey = (): Promise<CryptoKey> => crypto.subtle.generateKey(ALGORITHM, true, ['encrypt', 'decrypt'])
+
+// Every generation of the atrium's key this member has: the newest seals,
+// any opens what it sealed.
+export type Keyring = Map<number, CryptoKey>
+export const newestOf = (keyring: Keyring) => Math.max(...keyring.keys())
 
 const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const fromBase64Url = (text: string) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0))
@@ -23,7 +31,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 export const base64ToBytes = (text: string) => Uint8Array.from(atob(text), ch => ch.charCodeAt(0))
 
-/** The key as text, for an invite link's `#` and for keeping. */
+/** A key as text, for keeping in this browser. */
 export const keyToText = async (key: CryptoKey) => toBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
 
 export async function keyFromText(text: string): Promise<CryptoKey> {
@@ -34,30 +42,83 @@ export async function keyFromText(text: string): Promise<CryptoKey> {
 
 // ---------------------------------------------------------------- sealing
 
-// A sealed file: this format's version, a fresh 12-byte nonce, then the
-// ciphertext with its tag. Opening one with the wrong key, or one changed by
-// anyone, throws rather than giving back anything.
-const SEALED_V1 = 1
+// A sealed file: this format's version, the key generation that sealed it
+// (4 bytes), a fresh 12-byte nonce, then the ciphertext with its tag. Opening
+// one without its generation, or one changed by anyone, throws rather than
+// giving back anything.
+const SEALED_V2 = 2
+const GEN = 4
 const NONCE = 12
+const HEAD = 1 + GEN + NONCE
 
-export async function seal(key: CryptoKey, plain: Uint8Array): Promise<Uint8Array> {
+/** Missing the generation that sealed it: the keyring is behind (the roster moved). */
+export class KeyMissing extends Error {
+  readonly generation: number
+  constructor(generation: number) {
+    super('KEY_MISSING')
+    this.generation = generation
+  }
+}
+
+export async function seal(keyring: Keyring, plain: Uint8Array): Promise<Uint8Array> {
+  const generation = newestOf(keyring)
   const nonce = crypto.getRandomValues(new Uint8Array(NONCE))
-  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, plain as BufferSource))
-  const sealed = new Uint8Array(1 + NONCE + cipher.length)
-  sealed[0] = SEALED_V1
-  sealed.set(nonce, 1)
-  sealed.set(cipher, 1 + NONCE)
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, keyring.get(generation)!, plain as BufferSource))
+  const sealed = new Uint8Array(HEAD + cipher.length)
+  sealed[0] = SEALED_V2
+  new DataView(sealed.buffer).setUint32(1, generation)
+  sealed.set(nonce, 1 + GEN)
+  sealed.set(cipher, HEAD)
   return sealed
 }
 
-export async function unseal(key: CryptoKey, sealed: Uint8Array): Promise<Uint8Array> {
-  if (sealed[0] !== SEALED_V1 || sealed.length < 1 + NONCE + 16) throw new Error('not a sealed atrium file')
-  const nonce = sealed.subarray(1, 1 + NONCE) as BufferSource
-  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, sealed.subarray(1 + NONCE) as BufferSource))
+export async function unseal(keyring: Keyring, sealed: Uint8Array): Promise<Uint8Array> {
+  if (sealed[0] !== SEALED_V2 || sealed.length < HEAD + 16) throw new Error('not a sealed atrium file')
+  const generation = new DataView(sealed.buffer, sealed.byteOffset).getUint32(1)
+  const key = keyring.get(generation)
+  if (!key) throw new KeyMissing(generation)
+  const nonce = sealed.subarray(1 + GEN, HEAD) as BufferSource
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, sealed.subarray(HEAD) as BufferSource))
 }
 
-export const sealJson = (key: CryptoKey, value: unknown) => seal(key, new TextEncoder().encode(JSON.stringify(value)))
-export const unsealJson = async <T>(key: CryptoKey, sealed: Uint8Array): Promise<T> => JSON.parse(new TextDecoder().decode(await unseal(key, sealed)))
+export const sealJson = (keyring: Keyring, value: unknown) => seal(keyring, new TextEncoder().encode(JSON.stringify(value)))
+export const unsealJson = async <T>(keyring: Keyring, sealed: Uint8Array): Promise<T> => JSON.parse(new TextDecoder().decode(await unseal(keyring, sealed)))
+
+// ---------------------------------------------------------------- a person's own key pair
+
+// For encrypting the atrium's key to one person: ECDH (P-256). The private
+// half stays with them (their Google account's hidden app folder); the public
+// half is in their profile, for whoever adds them.
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const
+export interface Identity { publicJwk: JsonWebKey; privateJwk: JsonWebKey }
+
+export async function newIdentity(): Promise<Identity> {
+  const pair = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']) as CryptoKeyPair
+  return { publicJwk: await crypto.subtle.exportKey('jwk', pair.publicKey), privateJwk: await crypto.subtle.exportKey('jwk', pair.privateKey) }
+}
+
+// The atrium's key, encrypted for one public key: with a key agreed between it
+// and a one-off key pair, whose public half goes with it.
+export interface Wrapped { epk: JsonWebKey; iv: string; ct: string }
+
+const agreed = (privateKey: CryptoKey, publicKey: CryptoKey, use: KeyUsage) =>
+  crypto.subtle.deriveKey({ name: 'ECDH', public: publicKey }, privateKey, ALGORITHM, false, [use])
+
+export async function wrapFor(publicJwk: JsonWebKey, key: CryptoKey): Promise<Wrapped> {
+  const oneOff = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']) as CryptoKeyPair
+  const theirs = await crypto.subtle.importKey('jwk', publicJwk, ECDH, true, [])
+  const iv = crypto.getRandomValues(new Uint8Array(NONCE))
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key))
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await agreed(oneOff.privateKey, theirs, 'encrypt'), raw))
+  return { epk: await crypto.subtle.exportKey('jwk', oneOff.publicKey), iv: bytesToBase64(iv), ct: bytesToBase64(ct) }
+}
+
+export async function unwrapWith(privateJwk: JsonWebKey, wrapped: Wrapped): Promise<CryptoKey> {
+  const mine = await crypto.subtle.importKey('jwk', privateJwk, ECDH, false, ['deriveKey'])
+  const theirs = await crypto.subtle.importKey('jwk', wrapped.epk, ECDH, true, [])
+  const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(wrapped.iv) as BufferSource }, await agreed(mine, theirs, 'decrypt'), base64ToBytes(wrapped.ct) as BufferSource)
+  return crypto.subtle.importKey('raw', raw, ALGORITHM, true, ['encrypt', 'decrypt'])
+}
 
 // ---------------------------------------------------------------- the clock
 
@@ -159,3 +220,90 @@ export function changesSince(merged: Merged, current: Partial<Record<Table, Reco
 
 /** Everything merged, as one snapshot (tombstones kept, so a late old save still can't revive a row). */
 export const snapshotOf = (merged: Merged): DriveSave => ({ v: 1, changes: [...merged.values()] })
+
+// ---------------------------------------------------------------- members
+
+// Who an atrium's members are and what each may do. The roster is a file only
+// the owner and admins can write -- Google decides that, by who it's shared
+// with -- readable by link, holding no addresses.
+//
+// owner: everything, and alone promotes admins and deletes the atrium.
+// admin: adds, removes and blocks people, and sets their roles.
+// editor: their saves are taken.
+// viewer: reads; their saves are ignored.
+export type Role = 'owner' | 'admin' | 'editor' | 'viewer'
+// `root`: their own Drive folder for atriums (by link), where this atrium's
+// saves of theirs are, in a folder named by its id. `grant`: for an admin,
+// their permission to write the roster, so it can be taken back.
+export interface Member { user: string; name: string; root: string; role: Role; pub: JsonWebKey; grant?: string }
+export interface Invited { user: string; name: string; role: Role }
+export interface Roster {
+  v: 2
+  lobbyId: string
+  name: string
+  members: Member[]
+  // Added before they had a key pair: let in by the next owner's or admin's
+  // app to look once they have one.
+  invited: Invited[]
+  blocked: string[]
+  // Each generation of the atrium's key, encrypted for each member.
+  keys: { n: number; for: Record<string, Wrapped> }[]
+}
+
+export const memberOf = (roster: Roster, user: string) => roster.members.find(member => member.user === user) ?? null
+export const manages = (role: Role | undefined) => role === 'owner' || role === 'admin'
+/** Those whose saves are taken: every member but the viewers. */
+export const writersOf = (roster: Roster) => roster.members.filter(member => member.role !== 'viewer')
+
+/** A new roster, its owner its only member, with the key's first generation. */
+export async function newRoster(lobbyId: string, name: string, owner: Omit<Member, 'role'>, key: CryptoKey): Promise<Roster> {
+  return { v: 2, lobbyId, name, members: [{ ...owner, role: 'owner' }], invited: [], blocked: [], keys: [{ n: 0, for: { [owner.user]: await wrapFor(owner.pub, key) } }] }
+}
+
+/** Someone let in: a member, every generation of the key encrypted for them, out of the invited. */
+export async function admit(roster: Roster, keyring: Keyring, person: Omit<Member, 'role'>, role: Role): Promise<Roster> {
+  if (roster.blocked.includes(person.user)) throw new Error('BLOCKED')
+  const keys = await Promise.all(roster.keys.map(async generation => {
+    const key = keyring.get(generation.n)
+    return key ? { ...generation, for: { ...generation.for, [person.user]: await wrapFor(person.pub, key) } } : generation
+  }))
+  return {
+    ...roster,
+    members: [...roster.members.filter(member => member.user !== person.user), { ...person, role }],
+    invited: roster.invited.filter(invite => invite.user !== person.user),
+    keys,
+  }
+}
+
+/** Someone out (and, `block`ed, kept out): not a member, and a new generation
+ *  of the key made without them -- returned with the keyring it joins. */
+export async function removeMember(roster: Roster, keyring: Keyring, user: string, block: boolean): Promise<{ roster: Roster; keyring: Keyring }> {
+  if (memberOf(roster, user)?.role === 'owner') throw new Error('the owner stays')
+  const members = roster.members.filter(member => member.user !== user)
+  const key = await newAtriumKey()
+  const n = Math.max(...roster.keys.map(generation => generation.n)) + 1
+  const wrapped: Record<string, Wrapped> = {}
+  for (const member of members) wrapped[member.user] = await wrapFor(member.pub, key)
+  return {
+    roster: {
+      ...roster,
+      members,
+      invited: roster.invited.filter(invite => invite.user !== user),
+      blocked: block && !roster.blocked.includes(user) ? [...roster.blocked, user] : roster.blocked,
+      // His copies of every generation out too: no device of his can open
+      // more than he already has.
+      keys: [...roster.keys.map(generation => ({ ...generation, for: Object.fromEntries(Object.entries(generation.for).filter(([who]) => who !== user)) })), { n, for: wrapped }],
+    },
+    keyring: new Map([...keyring, [n, key]]),
+  }
+}
+
+/** Every generation of the key encrypted for `user`, opened with their private key. */
+export async function keyringOf(roster: Roster, user: string, privateJwk: JsonWebKey): Promise<Keyring> {
+  const keyring: Keyring = new Map()
+  for (const generation of roster.keys) {
+    const wrapped = generation.for[user]
+    if (wrapped) keyring.set(generation.n, await unwrapWith(privateJwk, wrapped))
+  }
+  return keyring
+}

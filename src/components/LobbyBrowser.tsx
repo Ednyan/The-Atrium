@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
+import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
@@ -6,7 +6,8 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, JoinRefused, letEdit, readInvite, type Invite, type JoinStep } from '../lib/driveSync'
+import { createDriveAtrium, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, readInvite, type JoinStep } from '../lib/driveSync'
+import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -244,8 +245,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // An invite to a Drive atrium, arrived in the address's # (lib/driveSync):
   // read by link, then offered -- or, already joined here, simply opened.
-  const [invite, setInvite] = useState<(Invite & { lobbyId: string; name: string }) | null>(null)
-  const [joining, setJoining] = useState<JoinStep | 'opening' | null>(null)
+  const [invite, setInvite] = useState<{ rosterId: string; lobbyId: string; name: string; owner: string } | null>(null)
+  const inviteNow = useRef(invite)
+  inviteNow.current = invite
+  const [joining, setJoining] = useState<JoinStep | 'opening' | 'waiting' | null>(null)
+  const [joinNote, setJoinNote] = useState('')
   // Looked for as the browser opens, and again whenever the # changes: a link
   // pasted here, on this very page, changes only that and reloads nothing.
   useEffect(() => {
@@ -254,7 +258,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (!found || !canDrive) return
       history.replaceState(null, '', location.pathname)
       readInvite(found)
-        .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : setInvite({ ...found, ...about })))
+        .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : (setJoinNote(''), setInvite({ rosterId: found, ...about }))))
         .catch(err => setError(err instanceof Error ? err.message : String(err)))
     }
     look()
@@ -262,44 +266,52 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     return () => window.removeEventListener('hashchange', look)
   }, [])
   const joinInvite = async () => {
-    if (!invite) return
+    const asked = invite
+    if (!asked) return
+    setJoinNote('')
     setJoining('signIn')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      const lobbyId = await joinDriveAtrium(invite, { id: user.id, name: username || 'You' }, setJoining)
-      setJoining('opening')
-      // Its working copy, filled by the first sync (lib/driveSync, down first).
-      const { localClient } = await browserEngine()
-      const { data: had } = await localClient.from('lobbies').select('id').eq('id', lobbyId)
-      if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: lobbyId, name: invite.name, owner_user_id: user.id, is_public: false, max_players: 50 })
-      rememberBrowserAtrium(lobbyId)
-      setInvite(null)
-      onJoinLobby(lobbyId)
+      const me = { id: user.id, name: username || 'You' }
+      let result = await joinDriveAtrium(asked.rosterId, me, setJoining)
+      // Added, and let in by the next owner's or admin's app to look: asked
+      // again every few seconds, while this stays open, until in.
+      if (result.state === 'waiting') {
+        setJoining('waiting')
+        setJoinNote(t('browser.drive.waiting', { owner: asked.owner }))
+        while (result.state === 'waiting' && inviteNow.current?.rosterId === asked.rosterId) {
+          await new Promise(wait => setTimeout(wait, 5000))
+          result = await joinDriveAtrium(asked.rosterId, me)
+        }
+      }
+      if (result.state === 'in') {
+        setJoining('opening')
+        // Its working copy, filled by the first sync (lib/driveSync, down first).
+        const { localClient } = await browserEngine()
+        const { data: had } = await localClient.from('lobbies').select('id').eq('id', result.lobbyId)
+        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, owner_user_id: user.id, is_public: false, max_players: 50 })
+        rememberBrowserAtrium(result.lobbyId)
+        setInvite(null)
+        onJoinLobby(result.lobbyId)
+      } else if (result.state === 'notAdded') {
+        const { data: profile } = await (supabase.from('profiles') as any).select('username').eq('id', user.id).maybeSingle()
+        setJoinNote(t('browser.drive.notAdded', { owner: asked.owner, username: profile?.username ?? username }))
+      } else if (result.state === 'blocked') {
+        setJoinNote(t('browser.drive.blockedHere'))
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (err instanceof JoinRefused) setError(t(err.reason === 'notEditor' ? 'browser.drive.notEditor' : 'browser.drive.wrongFile', { account: err.account }))
-      else if (message !== 'JOIN_CANCELLED') setError(message)
+      setJoinNote(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : message)
     } finally {
       setJoining(null)
     }
   }
 
-  // Sharing a Drive atrium: its invite link, and who may edit it.
+  // Sharing a Drive atrium, on its card: components/DriveMembers.
   const [sharingId, setSharingId] = useState<string | null>(null)
-  const [shareEmail, setShareEmail] = useState('')
-  const [shareNote, setShareNote] = useState('')
-  const shareTo = async (lobbyId: string) => {
-    setShareNote('')
-    try {
-      await driveToken()
-      await letEdit(lobbyId, shareEmail.trim())
-      setShareNote(t('browser.drive.shared', { email: shareEmail.trim() }))
-      setShareEmail('')
-    } catch (err) {
-      setShareNote(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const [myId, setMyId] = useState('')
+  useEffect(() => { void supabase?.auth.getUser().then(({ data }: any) => setMyId(data?.user?.id ?? '')) }, [])
 
   useEffect(() => {
     if (!isDesktop) return
@@ -651,7 +663,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     } catch (err: any) {
       console.error('Error creating lobby:', err)
       const problem = vaultProblem(err)
-      setError(problem ? t(problem) : err.message || t('browser.errCreateLobby'))
+      setError(problem ? t(problem) : err.message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : err.message || t('browser.errCreateLobby'))
     }
   }
 
@@ -806,6 +818,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     if (!supabase) return
 
     try {
+      // A Drive atrium's owner deletes it from Drive, for everyone (Google's
+      // window first, while the click counts); anyone else leaves it.
+      if (isDriveAtrium(lobbyId) && isDriveOwner(lobbyId)) {
+        await ensureSignedIn()
+        await deleteDriveAtrium(lobbyId)
+      }
       const { error } = await (await clientFor(lobbyId))
         .from('lobbies')
         .delete()
@@ -813,7 +831,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
       if (error) throw error
       forgetBrowserAtrium(lobbyId)
-      // Out of this browser; still in Drive, where it's its owner's to remove.
       forgetDriveAtrium(lobbyId)
 
       loadLobbies()
@@ -1052,10 +1069,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             <section className="border border-nier-border/40 p-5 space-y-3">
               <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.joinTitle', { name: invite.name })}</h3>
               <p className="text-nier-bg/75 text-xs leading-relaxed">{t('browser.drive.joinHint')}</p>
+              {joinNote && <p className="text-nier-bg text-xs leading-relaxed">{joinNote}</p>}
               {joining ? (
                 // Some seconds, most of them Google's: said as they pass.
                 <div role="status">
-                  <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {t(`browser.drive.step.${joining}`)}</p>
+                  {joining !== 'waiting' && <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {t(`browser.drive.step.${joining}`)}</p>}
                   <div className="w-48 h-[3px] bg-nier-bg/15 overflow-hidden">
                     <div className="h-full bg-nier-bg/80 animate-nier-slide" />
                   </div>
@@ -1247,7 +1265,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                           {t('browser.enter')}
                         </button>
                         {lobby.inDrive && (
-                          <button onClick={() => { setSharingId(sharingId === lobby.id ? null : lobby.id); setShareNote('') }} className={ROW_BUTTON}>
+                          <button onClick={() => setSharingId(sharingId === lobby.id ? null : lobby.id)} className={ROW_BUTTON}>
                             {t('browser.drive.share')}
                           </button>
                         )}
@@ -1278,24 +1296,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                           onClick={() => setDeleteConfirmId(lobby.id)}
                           className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
                         >
-                          {t('common.delete')}
+                          {/* Someone else's Drive atrium is left, not deleted: it isn't theirs to delete. */}
+                          {lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete')}
                         </button>
                       </div>
-                      {sharingId === lobby.id && (
-                        <div className="border-t border-nier-border/20 pt-3 space-y-2">
-                          <label className="block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase">{t('browser.drive.inviteLink')}</label>
-                          <div className="flex gap-2">
-                            <input readOnly value={inviteLink(lobby.id) ?? ''} onFocus={e => e.target.select()} className="flex-1 min-w-0 bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-[11px]" />
-                            <button onClick={() => void navigator.clipboard.writeText(inviteLink(lobby.id) ?? '').then(() => setShareNote(t('browser.drive.copied')))} className={ROW_BUTTON}>{t('browser.drive.copyLink')}</button>
-                          </div>
-                          <label className="block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase pt-1">{t('browser.drive.letEdit')}</label>
-                          <div className="flex gap-2">
-                            <input value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="name@gmail.com" className="flex-1 min-w-0 bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-xs" />
-                            <button disabled={!shareEmail.includes('@')} onClick={() => void shareTo(lobby.id)} className={`${ROW_BUTTON} disabled:opacity-40`}>{t('browser.drive.share')}</button>
-                          </div>
-                          {shareNote && <p className="text-nier-bg/75 text-[11px] leading-relaxed">{shareNote}</p>}
-                        </div>
-                      )}
+                      {sharingId === lobby.id && <DriveMembers lobbyId={lobby.id} me={myId} buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
                     </div>
                   </div>
                 ))}
@@ -1614,16 +1619,16 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
             
-            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ {t('browser.deleteAtrium')}</h3>
+            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ {isDriveAtrium(deleteConfirmId) && !isDriveOwner(deleteConfirmId) ? t('browser.drive.leave') : t('browser.deleteAtrium')}</h3>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-6">
-              {t('browser.deleteConfirm')}
+              {!isDriveAtrium(deleteConfirmId) ? t('browser.deleteConfirm') : isDriveOwner(deleteConfirmId) ? t('browser.drive.deleteConfirm') : t('browser.drive.leaveConfirm')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => deleteLobby(deleteConfirmId)}
                 className="flex-1 py-2 bg-red-500/80 text-nier-strong text-xs tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
               >
-                {t('common.delete')}
+                {isDriveAtrium(deleteConfirmId) && !isDriveOwner(deleteConfirmId) ? t('browser.drive.leave') : t('common.delete')}
               </button>
               <button
                 onClick={() => setDeleteConfirmId(null)}

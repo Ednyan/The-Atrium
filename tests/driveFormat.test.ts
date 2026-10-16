@@ -4,33 +4,84 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  changesSince, keyFromText, keyToText, later, merge, newAtriumKey, rowsOf, seal, sealJson, snapshotOf, tick, unseal, unsealJson,
-  type Change, type Merged,
+  admit, changesSince, keyFromText, KeyMissing, keyringOf, keyToText, later, merge, newAtriumKey, newIdentity, newRoster,
+  removeMember, rowsOf, seal, sealJson, snapshotOf, tick, unseal, unsealJson, unwrapWith, wrapFor, writersOf,
+  type Change, type Keyring, type Merged,
 } from '../src/lib/driveFormat.ts'
 
-test('a sealed file opens with its key, and with nothing else', async () => {
+const ring = (...keys: CryptoKey[]): Keyring => new Map(keys.map((key, n) => [n, key]))
+
+test('a sealed file opens with its keyring, and with nothing else', async () => {
   const key = await newAtriumKey()
-  const sealed = await sealJson(key, { hello: 'atrium' })
-  assert.deepEqual(await unsealJson(key, sealed), { hello: 'atrium' })
+  const sealed = await sealJson(ring(key), { hello: 'atrium' })
+  assert.deepEqual(await unsealJson(ring(key), sealed), { hello: 'atrium' })
   // What Drive holds says nothing of what's in it.
   assert.equal(new TextDecoder().decode(sealed).includes('atrium'), false)
   // Sealed twice, two different files: nobody can tell two files hold the same.
-  assert.notDeepEqual(await sealJson(key, { hello: 'atrium' }), sealed)
+  assert.notDeepEqual(await sealJson(ring(key), { hello: 'atrium' }), sealed)
 
-  await assert.rejects(unseal(await newAtriumKey(), sealed))
+  await assert.rejects(unseal(ring(await newAtriumKey()), sealed))
   const changed = sealed.slice()
   changed[changed.length - 1] ^= 1
-  await assert.rejects(unseal(key, changed))
-  await assert.rejects(unseal(key, new Uint8Array([9, 1, 2, 3])))
+  await assert.rejects(unseal(ring(key), changed))
+  await assert.rejects(unseal(ring(key), new Uint8Array([9, 1, 2, 3])))
 })
 
-test("the key travels as text, as an invite link's # carries it", async () => {
+test('a file says which generation sealed it: the newest seals, any older one still opens', async () => {
+  const [first, second] = [await newAtriumKey(), await newAtriumKey()]
+  const old = await seal(ring(first), new Uint8Array([1]))
+  const both = ring(first, second)
+  const now = await seal(both, new Uint8Array([2]))
+  assert.deepEqual(await unseal(both, old), new Uint8Array([1]))
+  assert.deepEqual(await unseal(both, now), new Uint8Array([2]))
+  // Without the newer generation: KeyMissing, which says which.
+  await assert.rejects(unseal(ring(first), now), (e: unknown) => e instanceof KeyMissing && e.generation === 1)
+})
+
+test('a key kept as text comes back the same key', async () => {
   const key = await newAtriumKey()
-  const text = await keyToText(key)
-  assert.match(text, /^[A-Za-z0-9_-]{43}$/)
-  const back = await keyFromText(text)
-  assert.deepEqual(await unseal(back, await seal(key, new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]))
+  const back = await keyFromText(await keyToText(key))
+  assert.deepEqual(await unseal(ring(back), await seal(ring(key), new Uint8Array([1, 2, 3]))), new Uint8Array([1, 2, 3]))
   await assert.rejects(keyFromText('short'))
+})
+
+test("the atrium's key, encrypted for one person, opens with their private key alone", async () => {
+  const [ana, ben] = [await newIdentity(), await newIdentity()]
+  const key = await newAtriumKey()
+  const wrapped = await wrapFor(ana.publicJwk, key)
+  const opened = await unwrapWith(ana.privateJwk, wrapped)
+  assert.deepEqual(await unseal(ring(opened), await seal(ring(key), new Uint8Array([7]))), new Uint8Array([7]))
+  await assert.rejects(unwrapWith(ben.privateJwk, wrapped))
+})
+
+test('members: admitted, they read every generation; removed, they read nothing new', async () => {
+  const [ana, ben, cat] = [await newIdentity(), await newIdentity(), await newIdentity()]
+  const key = await newAtriumKey()
+  const person = (user: string, id: { publicJwk: JsonWebKey }) => ({ user, name: user, root: 'R-' + user, pub: id.publicJwk })
+  let roster = await newRoster('L', 'Atrium', person('ana', ana), key)
+  let keyring = ring(key)
+  assert.equal((await keyringOf(roster, 'ana', ana.privateJwk)).size, 1)
+  roster = await admit(roster, keyring, person('ben', ben), 'editor')
+  roster = await admit(roster, keyring, person('cat', cat), 'viewer')
+  assert.deepEqual(writersOf(roster).map(m => m.user), ['ana', 'ben'])
+  const before = await seal(keyring, new Uint8Array([1]))
+
+  // Ben out, and blocked: a new generation, made without him.
+  ;({ roster, keyring } = await removeMember(roster, keyring, 'ben', true))
+  const after = await seal(keyring, new Uint8Array([2]))
+  const bens = await keyringOf(roster, 'ben', ben.privateJwk)
+  assert.equal(bens.size, 0)
+  const cats = await keyringOf(roster, 'cat', cat.privateJwk)
+  assert.deepEqual(await unseal(cats, before), new Uint8Array([1]))
+  assert.deepEqual(await unseal(cats, after), new Uint8Array([2]))
+  assert.deepEqual(roster.blocked, ['ben'])
+  await assert.rejects(admit(roster, keyring, person('ben', ben), 'editor'))
+  // Someone new later reads the old generation too.
+  const dan = await newIdentity()
+  roster = await admit(roster, keyring, person('dan', dan), 'editor')
+  assert.deepEqual(await unseal(await keyringOf(roster, 'dan', dan.privateJwk), before), new Uint8Array([1]))
+  // The owner can't be removed.
+  await assert.rejects(removeMember(roster, keyring, 'ana', false))
 })
 
 test('the clock sorts as it orders, and never goes back', () => {

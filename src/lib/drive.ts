@@ -130,13 +130,43 @@ export async function listFolder(id: string): Promise<DriveFile[]> {
   return (await (await drive(`files?q=${q}&fields=files(${FIELDS})&pageSize=1000`)).json()).files ?? []
 }
 
-/** Shared with someone by their Google address; Google emails them unless `quietly`. */
-export async function shareWith(id: string, email: string, role: 'reader' | 'writer', quietly = false): Promise<void> {
-  await drive(`files/${id}/permissions?sendNotificationEmail=${!quietly}`, {
+/** Shared with someone by their Google address; Google emails them unless
+ *  `quietly`. The permission's id, to take it back (unshare). */
+export async function shareWith(id: string, email: string, role: 'reader' | 'writer', quietly = false): Promise<string> {
+  const response = await drive(`files/${id}/permissions?sendNotificationEmail=${!quietly}&fields=id`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'user', role, emailAddress: email }),
   })
+  return (await response.json()).id
+}
+
+export async function unshare(id: string, permission: string): Promise<void> {
+  await drive(`files/${id}/permissions/${permission}`, { method: 'DELETE' })
+}
+
+/** Those it's shared with to edit can't share it on: only its owner can. */
+export async function noResharing(id: string): Promise<void> {
+  await drive(`files/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ writersCanShare: false }) })
+}
+
+export async function trash(id: string): Promise<void> {
+  await drive(`files/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) })
+}
+
+/** A file in the app's hidden folder of the signed-in account's Drive, by
+ *  name; null if there's none. Signed in, so no robot check. */
+export async function readAppData(name: string): Promise<Blob | null> {
+  const found = await appDataFile(name)
+  return found ? (await drive(`files/${found}?alt=media`)).blob() : null
+}
+export async function writeAppData(name: string, content: Blob): Promise<void> {
+  const found = await appDataFile(name)
+  await writeFile(name, content, found ? { id: found } : { parent: 'appDataFolder' })
+}
+async function appDataFile(name: string): Promise<string | null> {
+  const q = encodeURIComponent(`name = '${name}'`)
+  return (await (await drive(`files?spaces=appDataFolder&q=${q}&fields=files(id)`)).json()).files?.[0]?.id ?? null
 }
 
 /** Readable by anyone who has its id -- Drive's "anyone with the link". */
