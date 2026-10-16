@@ -5,7 +5,7 @@
 // `.functions` at all, so this always reports itself unavailable there and
 // the caller (LobbyScene) falls back to a mailto: link instead.
 
-import { supabase, isDesktop } from './supabase'
+import { cloudClient, isDesktop } from './supabase'
 import { t } from './i18n'
 
 export interface FeedbackReport {
@@ -20,7 +20,7 @@ export interface FeedbackReport {
 }
 
 export function canSendFeedbackDirectly(): boolean {
-  return !isDesktop && !!supabase && typeof supabase.functions?.invoke === 'function'
+  return !isDesktop && !!cloudClient && typeof cloudClient.functions?.invoke === 'function'
 }
 
 export async function sendFeedbackReport(report: FeedbackReport): Promise<{ success: boolean; error?: string }> {
@@ -29,7 +29,7 @@ export async function sendFeedbackReport(report: FeedbackReport): Promise<{ succ
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke('send-feedback', {
+    const { data, error } = await cloudClient.functions.invoke('send-feedback', {
       body: { ...report, platform: isDesktop ? 'Desktop' : 'Web' },
     })
     if (error || data?.error) {

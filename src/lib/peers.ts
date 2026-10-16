@@ -29,7 +29,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { supabase, isLocalData, isSharedLocal } from './supabase'
+import { cloudClient, isLocalData, isSharedLocal } from './supabase'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // Longest wait for this side's addresses before sending what's known (ms).
@@ -99,11 +99,11 @@ const relayNow = () => (relay && relay.until > Date.now() ? relay : null)
 export function askForRelay(): Promise<boolean> {
   const now = Date.now()
   if (relay && relay.until - now > RENEW_MS) return Promise.resolve(true)
-  if ((isLocalData && !isSharedLocal) || !supabase || now - refusedAt < REFUSED_MS) return Promise.resolve(!!relayNow())
+  if ((isLocalData && !isSharedLocal) || !cloudClient || now - refusedAt < REFUSED_MS) return Promise.resolve(!!relayNow())
   return asking ??= (async () => {
     try {
       const { data, error } = await Promise.race([
-        supabase.functions.invoke('relay-pass'),
+        cloudClient.functions.invoke('relay-pass'),
         new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('no answer')), ASK_MS)),
       ])
       const servers = !error && Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : []

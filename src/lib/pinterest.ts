@@ -4,7 +4,7 @@
 // for now -- desktop OAuth needs a custom URL scheme/deep-link plugin this
 // app doesn't have yet.
 
-import { supabase } from './supabase'
+import { cloudClient } from './supabase'
 import { showToast } from './toast'
 import { t } from './i18n'
 import { isDesktop } from './supabase'
@@ -225,7 +225,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
     return { handled: true, success: false, error: 'Pinterest sign-in could not be verified. Please try connecting again.' }
   }
 
-  if (!supabase) {
+  if (!cloudClient) {
     return { handled: true, success: false, error: 'Not connected to the server.' }
   }
 
@@ -237,7 +237,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
       // Treated as an ordinary connect.
     }
 
-    const { data, error } = await supabase.functions.invoke('pinterest-oauth-exchange', {
+    const { data, error } = await cloudClient.functions.invoke('pinterest-oauth-exchange', {
       body: { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) },
     })
     // Cleared only now, not when it was read. The link page is already on
@@ -276,8 +276,8 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
 export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
   if (isDesktop) return getDesktopPinterestStatus()
-  if (!supabase) return { connected: false, username: null }
-  const { data, error } = await supabase.rpc('get_pinterest_connection_status')
+  if (!cloudClient) return { connected: false, username: null }
+  const { data, error } = await cloudClient.rpc('get_pinterest_connection_status')
   if (error || !data || data.length === 0) return { connected: false, username: null }
   return { connected: !!data[0].connected, username: data[0].pinterest_username ?? null }
 }
@@ -287,8 +287,8 @@ export async function disconnectPinterest(): Promise<void> {
   // itself: the connection belongs to the web account, and one machine
   // unlinking should not sign the account out everywhere.
   if (isDesktop) return unlinkDesktopPinterest()
-  if (!supabase) return
-  await supabase.rpc('disconnect_pinterest')
+  if (!cloudClient) return
+  await cloudClient.rpc('disconnect_pinterest')
 }
 
 export interface PinterestBoard {
@@ -318,8 +318,8 @@ async function callPinterestApi(body: Record<string, unknown>): Promise<any> {
   // every error check in the caller. It presents its link token over plain
   // fetch instead, and reaches the same Edge Function.
   if (isDesktop) return callPinterestApiAsLinkedDesktop(body)
-  if (!supabase) throw new Error('Not connected to the server.')
-  const { data, error } = await supabase.functions.invoke('pinterest-api', { body })
+  if (!cloudClient) throw new Error('Not connected to the server.')
+  const { data, error } = await cloudClient.functions.invoke('pinterest-api', { body })
   if (error) throw new Error(error.message || 'Pinterest request failed.')
   if (data?.error) throw new Error(data.error)
   return data

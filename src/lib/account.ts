@@ -10,7 +10,7 @@
 // side, and the code is compared against a hash the browser never sees. This is
 // transport.
 
-import { supabase } from './supabase'
+import { cloudClient } from './supabase'
 import { t } from './i18n'
 
 // A non-2xx arrives as a FunctionsHttpError whose `context` is the raw
@@ -40,10 +40,10 @@ export interface RequestCodeResult {
 }
 
 export async function requestDeletionCode(): Promise<RequestCodeResult> {
-  if (!supabase) return { success: false, error: 'Not connected to the server.' }
+  if (!cloudClient) return { success: false, error: 'Not connected to the server.' }
 
   try {
-    const { data, error } = await supabase.functions.invoke('request-deletion-code', {})
+    const { data, error } = await cloudClient.functions.invoke('request-deletion-code', {})
 
     if (error || data?.error) {
       const code = await reasonFrom(error, data)
@@ -70,10 +70,10 @@ export interface DeleteAccountResult {
 }
 
 export async function deleteMyAccount(code: string): Promise<DeleteAccountResult> {
-  if (!supabase) return { success: false, error: 'Not connected to the server.' }
+  if (!cloudClient) return { success: false, error: 'Not connected to the server.' }
 
   try {
-    const { data, error } = await supabase.functions.invoke('delete-account', {
+    const { data, error } = await cloudClient.functions.invoke('delete-account', {
       body: { code },
     })
 
@@ -85,7 +85,7 @@ export async function deleteMyAccount(code: string): Promise<DeleteAccountResult
       }
     }
 
-    await supabase.auth.signOut()
+    await cloudClient.auth.signOut()
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err?.message || t('profile.errDeleteAccount') }

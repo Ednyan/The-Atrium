@@ -13,18 +13,18 @@
 // Desktop has no Functions endpoint (see the platform split in CLAUDE.md), and
 // a desktop vault has no account to welcome, so it never asks.
 
-import { supabase, isDesktop } from './supabase'
+import { cloudClient, isDesktop } from './supabase'
 import { currentLanguage } from './i18n'
 
 let asked = false
 
 export async function maybeSendWelcome(): Promise<void> {
   if (asked || isDesktop) return
-  if (!supabase || typeof supabase.functions?.invoke !== 'function') return
+  if (!cloudClient || typeof cloudClient.functions?.invoke !== 'function') return
   asked = true
 
   try {
-    await supabase.functions.invoke('send-welcome', {
+    await cloudClient.functions.invoke('send-welcome', {
       // The language the interface is in. The function falls back to English
       // for anything it does not have copy for, rather than guessing from an
       // IP address -- which would be a guess about a country, not a language.

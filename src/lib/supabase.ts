@@ -45,7 +45,10 @@ if (!isDesktop) {
 // ESM live binding: `export let` means importers see the latest value
 export let supabase: any = _client
 
-// The cloud's client, whatever the data client is now.
+// The cloud's client, whatever the data client is now. What's the account's
+// rather than an atrium's -- Edge Functions, Pinterest, the account's own
+// calls -- goes here: inside a browser atrium, `supabase` is its engine,
+// which has none of them.
 export const cloudClient: any = _client
 // This atrium's data lives on this device -- the desktop app's vault, or this
 // browser's (lib/browserAtriums) -- not in the cloud: local files and sizes,
