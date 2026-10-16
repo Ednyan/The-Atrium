@@ -634,8 +634,18 @@ media, because it changes the file format.
   downloads nothing. **The risk that remains:** many people behind one
   network (a school, an office) all downloading at once. The room carrying
   saves to those online (step 6) is what keeps downloads to catching up.
+- Members and roles (c2c340d), as designed above, with these details:
+  - people are added by Atrium username;
+  - each person's public key and folder are in their profile
+    (`add_drive_identity.sql`);
+  - the roster is `atrium.roster` (plain JSON, no content);
+  - every sealed file starts with its key generation.
+
+  Tested: inviting, letting in, removing with a new generation, blocking,
+  viewers, and deleting (scratchpad `drivemembers`).
 - Not yet: pictures and other media (they stay in the browser that added
-  them), compaction, removing a member.
+  them), compaction, and joining by a request in the room (only people
+  added get in for now).
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.
