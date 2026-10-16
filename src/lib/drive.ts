@@ -104,6 +104,7 @@ export async function createFolder(name: string, parent?: string): Promise<Drive
 /** A file written whole: made in `parent`, or (`id`) replaced. Up to 5 MB --
  *  bigger needs Drive's resumable upload. */
 export async function writeFile(name: string, content: Blob, place: { parent: string } | { id: string }): Promise<DriveFile> {
+  if (content.size > MULTIPART_MOST) return writeLargeFile(name, content, place)
   const boundary = `atrium${crypto.randomUUID()}`
   const meta = 'parent' in place ? { name, parents: [place.parent] } : { name }
   const body = new Blob([
@@ -120,15 +121,48 @@ export async function writeFile(name: string, content: Blob, place: { parent: st
   return response.json()
 }
 
+// Drive takes a file with its details in one request up to 5 MB; anything
+// bigger (a video) goes as a resumable upload: its details first, then the
+// file, to the address Drive answers with.
+const MULTIPART_MOST = 5 * 1024 * 1024
+async function writeLargeFile(name: string, content: Blob, place: { parent: string } | { id: string }): Promise<DriveFile> {
+  const meta = 'parent' in place ? { name, parents: [place.parent] } : { name }
+  const started = await drive(
+    'parent' in place ? `files?uploadType=resumable&fields=${FIELDS}` : `files/${place.id}?uploadType=resumable&fields=${FIELDS}`,
+    {
+      method: 'parent' in place ? 'POST' : 'PATCH',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': content.type || 'application/octet-stream' },
+      body: JSON.stringify(meta),
+    },
+    true,
+  )
+  const address = started.headers.get('Location')
+  if (!address) throw new Error('Drive gave no upload address')
+  // ponytail: one request for the whole file; sent in pieces, resumed after a failure, if big videos fail on poor connections.
+  const response = await fetch(address, { method: 'PUT', body: content })
+  if (!response.ok) throw new Error(`Drive ${response.status}: ${(await response.text()).slice(0, 300)}`)
+  return response.json()
+}
+
 export const readFile = async (id: string): Promise<Blob> => (await drive(`files/${id}?alt=media`)).blob()
 
 /** What's known of a file without reading it: the cheap call a change check makes. */
 export const fileInfo = async (id: string): Promise<DriveFile> => (await drive(`files/${id}?fields=${FIELDS}`)).json()
 
-export async function listFolder(id: string): Promise<DriveFile[]> {
+// Every page of a folder's listing: Drive gives 1000 files a page at most.
+async function everyPage(id: string, read: (query: string) => Promise<{ files?: DriveFile[]; nextPageToken?: string }>): Promise<DriveFile[]> {
   const q = encodeURIComponent(`'${id}' in parents and trashed = false`)
-  return (await (await drive(`files?q=${q}&fields=files(${FIELDS})&pageSize=1000`)).json()).files ?? []
+  const files: DriveFile[] = []
+  let page = ''
+  do {
+    const answer = await read(`files?q=${q}&fields=nextPageToken,files(${FIELDS})&pageSize=1000${page && `&pageToken=${encodeURIComponent(page)}`}`)
+    files.push(...(answer.files ?? []))
+    page = answer.nextPageToken ?? ''
+  } while (page)
+  return files
 }
+
+export const listFolder = (id: string): Promise<DriveFile[]> => everyPage(id, async query => (await drive(query)).json())
 
 /** Shared with someone by their Google address; Google emails them unless
  *  `quietly`. The permission's id, to take it back (unshare). */
@@ -198,12 +232,11 @@ export async function versionByLink(id: string): Promise<string> {
 }
 
 /** What's in a folder shared by link, listed with the app's key alone. */
-export async function listByLink(id: string): Promise<DriveFile[]> {
-  const q = encodeURIComponent(`'${id}' in parents and trashed = false`)
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(${FIELDS})&pageSize=1000&key=${GOOGLE_API_KEY}`)
+export const listByLink = (id: string): Promise<DriveFile[]> => everyPage(id, async query => {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/${query}&key=${GOOGLE_API_KEY}`)
   if (!response.ok) throw new Error(`Drive ${response.status}: ${(await response.text()).slice(0, 200)}`)
-  return (await response.json()).files ?? []
-}
+  return response.json()
+})
 
 export const whoAmI = async (): Promise<{ displayName: string; emailAddress: string }> =>
   (await (await drive('about?fields=user(displayName,emailAddress)')).json()).user

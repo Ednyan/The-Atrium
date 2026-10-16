@@ -655,8 +655,24 @@ media, because it changes the file format.
   - The trade-off, accepted: until that look, the Atrium's own database
     holds something that opens the atrium.
 - "Keep in Google Drive" turns any browser atrium into a Drive atrium.
-- Not yet: pictures and other media (they stay in the browser that added
-  them), compaction, and asking to join from inside the atrium.
+- **Pictures and other files (step 7).**
+  - Each file goes up sealed, before the save that first needs it, into a
+    `files` folder inside its sender's atrium folder, so the folder of saves
+    that's listed at every look stays small.
+  - The save carries a `media` row (the file's local address → its Drive
+    id), merged like any other row.
+  - A file comes down once, into the browser's vault at its own address,
+    and is never downloaded again. The trace waits for it rather than
+    showing it missing (lib/vaultWrites).
+  - A file that arrives after its trace (it failed to go at first) shows
+    once it's in. One that fails to come is tried again at later looks, each
+    wait longer (up to 10 minutes), since Google's robot check passes.
+  - Files over 5 MB go up as a resumable upload. Folder listings now read
+    every page (Drive gives 1,000 files a page).
+  - Tested: scratchpad `drivemedia`.
+  - Not tested against the real Google Drive yet: the resumable upload's
+    answer (its `Location` header, read across origins).
+- Not yet: compaction, and asking to join from inside the atrium.
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.

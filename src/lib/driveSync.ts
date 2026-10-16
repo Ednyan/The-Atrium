@@ -19,15 +19,22 @@
 //
 // One at a time, so what comes down never lands while a diff is taken; and
 // down before up -- the user's rule, the first save wins.
+//
+// Files (pictures, videos, documents): each sealed into the folder `files` in
+// its sender's atrium folder, before the save that first needs it, which says
+// where it went (a `media` row). Brought in once, into the browser's vault at
+// its own local:// address -- the trace waits for it meanwhile -- and never
+// downloaded again.
 
 import * as drive from './drive'
 import { cloudClient } from './supabase'
 import {
   admit, base64ToBytes, bytesToBase64, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
-  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, sameKey, sealForSecret, sealJson, tick, unsealJson, writersOf,
+  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
   type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Table,
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
+import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { onRoomEvent, sendThroughRoom } from './rooms'
 
 /** What the sync needs of Drive: lib/drive, or a stand-in (the harness). */
@@ -481,6 +488,13 @@ interface Session {
   stopHearing: () => void
   // One's invitation deleted, once let in properly.
   inviteCleared: boolean
+  // Files: where one's own go (found or made on the first sent), those known
+  // to be here, those being brought in, and those that failed to come -- tried
+  // again from when, and how long it waited last.
+  filesFolder: string | null
+  present: Set<string>
+  fetching: Set<string>
+  retry: Map<string, { at: number; wait: number }>
   local: typeof import('./localDb')
 }
 let session: Session | null = null
@@ -503,7 +517,8 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, inviteCleared: false, local,
+    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, inviteCleared: false,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local,
   }
   session = s
   setStatus({ ended: undefined })
@@ -564,10 +579,15 @@ async function up(s: Session): Promise<void> {
   // A viewer's saves aren't taken: none made.
   if (s.roster && placeOf(s.roster.roster, s.me)?.role === 'viewer') return
   const at = tick(s.last, Date.now(), s.me)
-  const changes = changesSince(s.merged, await s.local.atriumRows(s.lobbyId), at)
-  if (!changes.length) return
+  const current = await s.local.atriumRows(s.lobbyId)
+  const changes = changesSince(s.merged, current, at)
+  const unsent = await unsentFiles(s, current.traces)
+  if (!changes.length && !unsent.length) return
   // Kept for later: the next diff still has them.
   if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
+  // Its files first: whoever takes the save finds them there.
+  for (const row of await sendFiles(s, unsent)) changes.push({ table: 'media', id: row.id, at, row })
+  if (!changes.length) return
   const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
   const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
   merge(s.merged, changes)
@@ -582,19 +602,19 @@ async function heard(s: Session, payload: unknown): Promise<void> {
   const { file, sealed } = (payload ?? {}) as { file?: unknown; sealed?: unknown }
   if (typeof file !== 'string' || s.seen.has(file)) return
   if (typeof sealed !== 'string') return down(s)
-  await take(s, [{ id: file, save: await opened(s, base64ToBytes(sealed)) }])
+  await take(s, [{ id: file, save: fromJson<DriveSave>(await opened(s, base64ToBytes(sealed))) }])
 }
 
-/** A sealed save opened -- after reading the roster again, if it was sealed
+/** A sealed file opened -- after reading the roster again, if it was sealed
  *  with a generation of the key made since this browser last looked. */
-async function opened(s: Session, sealed: Uint8Array): Promise<DriveSave> {
+async function opened(s: Session, sealed: Uint8Array): Promise<Uint8Array> {
   try {
-    return await unsealJson<DriveSave>(s.keyring, sealed)
+    return await unseal(s.keyring, sealed)
   } catch (error) {
     if (!(error instanceof KeyMissing)) throw error
     s.roster = null
     await lookAtRoster(s)
-    return unsealJson<DriveSave>(s.keyring, sealed)
+    return unseal(s.keyring, sealed)
   }
 }
 
@@ -682,6 +702,9 @@ async function down(s: Session): Promise<void> {
     for (const row of data ?? []) writers.push({ user: row.id, root: row.drive_root })
   }
   for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
+  // Files that didn't come yet: those of saves taken before (in a visit that
+  // ended first), and those that failed.
+  await bringFiles(s, rowsOf(s.merged, 'traces').flatMap(filesOf))
   for (const writer of writers) {
     let folder = s.folders.get(writer.user)
     if (!folder) {
@@ -697,7 +720,7 @@ async function down(s: Session): Promise<void> {
   try {
     for (let at = 0; at < unread.length; at += AT_ONCE) {
       await take(s, await Promise.all(unread.slice(at, at + AT_ONCE).map(async file =>
-        ({ id: file.id, save: await opened(s, await store.readByLink(file.id)) }))))
+        ({ id: file.id, save: fromJson<DriveSave>(await opened(s, await store.readByLink(file.id))) }))))
     }
   } finally {
     setStatus({ catchingUp: false })
@@ -713,7 +736,16 @@ async function take(s: Session, saves: { id: string; save: DriveSave }[]): Promi
     s.seen.add(id)
   }
   // Each row as it ends up merged, not as each save had it on the way.
-  await bringIn(s, [...took.keys()].map(key => s.merged.get(key)!))
+  const changes = [...took.keys()].map(key => s.merged.get(key)!)
+  // Their files on the way before the atrium reads them: a trace waits for
+  // its file rather than showing it missing. A file sent after its trace
+  // (it failed to go at first) comes for the traces that have it.
+  const sentLate = new Set(changes.filter(change => change.table === 'media').map(change => change.id))
+  await bringFiles(s, [
+    ...changes.filter(change => change.table === 'traces').flatMap(change => filesOf(change.row)),
+    ...(sentLate.size ? rowsOf(s.merged, 'traces').flatMap(filesOf).filter(url => sentLate.has(url)) : []),
+  ])
+  await bringIn(s, changes)
   await persist(s)
 }
 
@@ -721,6 +753,8 @@ const LIVE: Partial<Record<Table, LiveTable>> = { traces: 'traces', layers: 'lay
 
 async function bringIn(s: Session, changes: Change[]): Promise<void> {
   for (const table of new Set(changes.map(change => change.table))) {
+    // Where files are in Drive: the sync's own, no table of the working copy's.
+    if (table === 'media') continue
     const mine = changes.filter(change => change.table === table)
     let rows = mine.filter(change => change.row).map(change => change.row!) as Record<string, any>[]
     const gone = mine.filter(change => !change.row).map(change => change.id)
@@ -734,5 +768,91 @@ async function bringIn(s: Session, changes: Change[]): Promise<void> {
     if (table === 'lobbies') window.dispatchEvent(new CustomEvent(LOBBY_CHANGED_EVENT, { detail: s.lobbyId }))
     const live = LIVE[table]
     if (live) tellHere({ t: live, ...(rows.length ? { ids: rows.map(row => String(row.id)) } : {}), ...(gone.length ? { gone } : {}) })
+  }
+}
+
+// ---------------------------------------------------------------- files
+
+// Where a trace's files are on this device: its picture, video, document.
+const filesOf = (row: Record<string, unknown> | null) =>
+  [row?.media_url, row?.image_url].filter((url): url is string => typeof url === 'string' && url.startsWith('local://'))
+const mediaOf = (s: Session, url: string) => s.merged.get(`media/${url}`)?.row as { file?: unknown } | null | undefined
+
+// Files sent and brought in side by side, AT_ONCE at a time.
+let free = AT_ONCE
+const turns: (() => void)[] = []
+async function inTurn<T>(task: () => Promise<T>): Promise<T> {
+  if (free > 0) free--
+  else await new Promise<void>(go => turns.push(go))
+  try {
+    return await task()
+  } finally {
+    const next = turns.shift()
+    if (next) next()
+    else free++
+  }
+}
+
+/** Files of the atrium's traces that aren't in Drive yet and are in this browser. */
+async function unsentFiles(s: Session, traces: Record<string, unknown>[]): Promise<string[]> {
+  const unsent: string[] = []
+  for (const url of new Set(traces.flatMap(filesOf))) {
+    if (mediaOf(s, url)) continue
+    // One just dropped in, still being written: once it's whole.
+    await vaultWriteDone(url)
+    if (await s.local.hasLocalFile(url)) unsent.push(url)
+  }
+  return unsent
+}
+
+/** Each sealed into one's folder `files`; where each went, as `media` rows.
+ *  One that fails is left out, and sent with a later save. */
+async function sendFiles(s: Session, urls: string[]): Promise<{ id: string; file: string }[]> {
+  if (!urls.length) return []
+  const folder = s.filesFolder ??= (await store.listByLink(s.kept.folder)).find(file => file.name === 'files')?.id
+    ?? (await store.createFolder('files', s.kept.folder)).id
+  const sent = await Promise.all(urls.map(url => inTurn(async () => {
+    try {
+      const bytes = await s.local.readLocalFileBytes(url)
+      if (!bytes) return null
+      const file = await store.write(`${crypto.randomUUID()}.media`, await seal(s.keyring, bytes), { parent: folder })
+      s.present.add(url)
+      return { id: url, file: file.id }
+    } catch (error) {
+      console.warn('[drive] sending a file:', url, error)
+      return null
+    }
+  })))
+  return sent.filter((row): row is { id: string; file: string } => !!row)
+}
+
+const RETRY_FIRST_MS = 30_000
+const RETRY_MOST_MS = 10 * 60_000
+/** Files in Drive and not in this browser, brought in -- started, not
+ *  waited for. Each is a write in progress (lib/vaultWrites) until it's
+ *  whole, so what reads it waits; once in, the atrium is told
+ *  (atrium:vault-write-complete), for a trace that showed it missing. One that
+ *  fails is tried again at a later look, waiting longer each time: Google's
+ *  robot check passes in minutes. */
+async function bringFiles(s: Session, urls: string[]): Promise<void> {
+  for (const url of new Set(urls)) {
+    const file = mediaOf(s, url)?.file
+    if (typeof file !== 'string' || s.present.has(url) || s.fetching.has(url) || (s.retry.get(url)?.at ?? 0) > Date.now()) continue
+    if (await s.local.hasLocalFile(url)) { s.present.add(url); continue }
+    s.fetching.add(url)
+    const fetched = inTurn(async () => {
+      if (session !== s) throw new Error('left the atrium')
+      await s.local.writeLocalFile(url, await opened(s, await store.readByLink(file)))
+    })
+    trackVaultWrite(url, fetched)
+    fetched.then(() => {
+      s.present.add(url)
+      s.retry.delete(url)
+      window.dispatchEvent(new CustomEvent('atrium:vault-write-complete', { detail: { localUrl: url, lobbyId: s.lobbyId } }))
+    }, error => {
+      const wait = Math.min(RETRY_MOST_MS, (s.retry.get(url)?.wait ?? RETRY_FIRST_MS / 2) * 2)
+      s.retry.set(url, { at: Date.now() + wait, wait })
+      console.warn('[drive] bringing a file in:', url, error)
+    }).finally(() => s.fetching.delete(url))
   }
 }

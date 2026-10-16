@@ -188,6 +188,16 @@ test('the working copy against what is merged: new, changed and gone rows, nothi
   assert.deepEqual(changesSince(merged, { traces: [{ id: 't1', x: 1, style: { a: 1, b: 2 } }] }, '4'), [])
 })
 
+test('where its files are in Drive is never taken for deleted', () => {
+  const merged: Merged = new Map()
+  merge(merged, [
+    { table: 'traces', id: 't1', at: '1', row: { id: 't1', media_url: 'local://traces/L/a.png' } },
+    { table: 'media', id: 'local://traces/L/a.png', at: '1', row: { id: 'local://traces/L/a.png', file: 'F1' } },
+  ])
+  // The working copy has no such table: compared, nothing changed.
+  assert.deepEqual(changesSince(merged, { traces: [{ id: 't1', media_url: 'local://traces/L/a.png' }] }, '2'), [])
+})
+
 test("an atrium's own row travels without what's each device's", () => {
   const merged: Merged = new Map()
   const here = { id: 'L', name: 'A', theme_settings: { x: 1 }, owner_user_id: 'me', preview_url: 'local://p', updated_at: 'now' }

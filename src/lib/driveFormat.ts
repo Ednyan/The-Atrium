@@ -156,8 +156,10 @@ export const later = (a: Clock | null, b: Clock | null): Clock | null => (!a ? b
 
 // A change to one row of one of the atrium's tables, at a clock: the row as
 // it now is, or null for deleted (kept, as a tombstone, so an older change
-// arriving later can't bring the row back).
-export type Table = 'lobbies' | 'traces' | 'layers' | 'trace_links' | 'lobby_locations'
+// arriving later can't bring the row back). `media` is no table of the
+// working copy's: each row says where a file of the atrium is in Drive,
+// sealed -- `{ id: its local:// address, file: its Drive id }`.
+export type Table = 'lobbies' | 'traces' | 'layers' | 'trace_links' | 'lobby_locations' | 'media'
 export interface Change { table: Table; id: string; at: Clock; row: Record<string, unknown> | null }
 
 // A save file, and a snapshot: the same thing, changes -- a snapshot is
@@ -206,7 +208,8 @@ const stable = (value: unknown) => JSON.stringify(value, (_, inner) =>
   inner && typeof inner === 'object' && !Array.isArray(inner) ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : inner)
 
 /** What the working copy changed since what's merged, as changes at `at`:
- *  each row that's new or different, and each merged row it no longer has. */
+ *  each row that's new or different, and each merged row it no longer has --
+ *  of the tables it has; any other (media) isn't compared. */
 export function changesSince(merged: Merged, current: Partial<Record<Table, Record<string, unknown>[]>>, at: Clock): Change[] {
   const changes: Change[] = []
   const here = new Set<string>()
@@ -219,7 +222,7 @@ export function changesSince(merged: Merged, current: Partial<Record<Table, Reco
       if (!had || had.row === null || stable(had.row) !== stable(row)) changes.push({ table, id, at, row })
     }
   }
-  for (const [key, had] of merged) if (had.row !== null && !here.has(key)) changes.push({ table: had.table, id: had.id, at, row: null })
+  for (const [key, had] of merged) if (had.row !== null && current[had.table] && !here.has(key)) changes.push({ table: had.table, id: had.id, at, row: null })
   return changes
 }
 

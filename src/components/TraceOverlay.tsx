@@ -1313,18 +1313,24 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // the trace should read from there rather than through the blob URL it was
   // given at import. Re-resolving changes the element's src, which is also
   // what clears a <video> that failed to load while the write had the thread.
+  // A picture too: one brought in from a Drive atrium after its trace had
+  // shown it missing.
   useEffect(() => {
     const onWritten = (event: Event) => {
       const localUrl = (event as CustomEvent).detail?.localUrl as string | undefined
       if (!localUrl) return
       const affected = tracesRef.current.filter(t => t.mediaUrl === localUrl)
-      if (affected.length === 0) return
+      const pictures = tracesRef.current.filter(t => (t.type === 'image' || t.type === 'embed') && (t.mediaUrl || t.imageUrl) === localUrl).map(t => t.id)
+      if (affected.length === 0 && pictures.length === 0) return
       void resolveLocalStreamUrl(localUrl).then(resolved => {
         setLocalMediaUrls(prev => {
           const next = { ...prev }
           for (const t of affected) next[t.id] = resolved
           return next
         })
+        if (!pictures.length || resolved.startsWith('local://')) return
+        setImageProxySources(prev => ({ ...prev, ...Object.fromEntries(pictures.map(id => [id, resolved])) }))
+        setFailedImages(prev => new Set([...prev].filter(id => !pictures.includes(id))))
       }).catch(() => {})
     }
     window.addEventListener('atrium:vault-write-complete', onWritten)

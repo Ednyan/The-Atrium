@@ -3030,6 +3030,20 @@ export async function readLocalFileBytes(url: string): Promise<Uint8Array | null
   }
 }
 
+/** Whether `url`'s file is here (whole or still being written). */
+export async function hasLocalFile(url: string): Promise<boolean> {
+  const filePath = await resolveLocalMediaFilePath(url)
+  return !!filePath && await vaultPathExists(filePath)
+}
+
+/** A file brought from elsewhere (a Drive atrium's), written at its own
+ *  local:// address. */
+export async function writeLocalFile(url: string, bytes: Uint8Array): Promise<void> {
+  const filePath = await resolveLocalMediaFilePath(url)
+  if (!filePath) throw new Error(`no place for ${url}`)
+  await writeBinaryFile(filePath, bytes)
+}
+
 export async function resolveLocalUrl(url: string): Promise<string> {
   if (!url.startsWith('local://')) return url
 
@@ -3042,6 +3056,9 @@ export async function resolveLocalUrl(url: string): Promise<string> {
 
   const promise = (async () => {
     try {
+      // Still being written (a file coming from a Drive atrium): read once
+      // it's whole, never half of it or nothing (lib/vaultWrites).
+      await vaultWriteDone(url)
       const filePath = await resolveLocalMediaFilePath(url)
       if (!filePath) {
         return url
@@ -3110,6 +3127,7 @@ export async function resolveLocalStreamUrl(url: string): Promise<string> {
   if (cached) return cached
 
   try {
+    await vaultWriteDone(url)
     const filePath = await resolveLocalMediaFilePath(url)
     if (!filePath) return url
 
