@@ -574,6 +574,12 @@ someone polling. Drive is the record for whoever wasn't there.
 - Steps 1–4: `lib/driveFormat` (sealing, the clock, the merge, the diff),
   `lib/driveSync` (create, the sync, invites, joining), the third place in
   Create, Share on the card, the Join prompt.
+- Step 6: a Drive atrium has its room (`isSharedLocal`), so presence,
+  cursors and the laser work as in the cloud. Each save goes through the room
+  sealed, and those in it take it at once (157 ms in the harness). One too
+  big for a room message names its file, which is read at once. The 20 s
+  look stays, for whoever wasn't there. Joining shows its steps, and the
+  atrium says when it's bringing saves in from Drive.
 - The sync brings others' saves down before sending its own: the first save
   wins, and a fresh copy is filled before it's compared.
 - Google's sign-in lasts an hour and needs a click to renew. Until it's
@@ -589,7 +595,7 @@ someone polling. Drive is the record for whoever wasn't there.
   network (a school, an office) all downloading at once. The room carrying
   saves to those online (step 6) is what keeps downloads to catching up.
 - Not yet: pictures and other media (they stay in the browser that added
-  them), live through the room, compaction, removing a member.
+  them), compaction, removing a member.
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.
