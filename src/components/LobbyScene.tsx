@@ -641,13 +641,17 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const [newPathTraceId, setNewPathTraceId] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1.0)
   const [worldOffset, setWorldOffset] = useState({ x: 0, y: 0 })
-  const [onlinePlayerCount, setOnlinePlayerCount] = useState(1) // Start with 1 (self)
   const [showOnlineUsersList, setShowOnlineUsersList] = useState(false)
   // Forces the online-users list to re-render its "time in atrium" values
   // periodically while open, rather than only on other state changes.
   const [, setOnlineUsersListTick] = useState(0)
   
   const { username, otherUsers, traces, userId, isSavingChanges, saveFailed } = useGamePick('username', 'otherUsers', 'traces', 'userId', 'isSavingChanges', 'saveFailed')
+  // Who's here: oneself and whoever's present -- the list the count opens.
+  // It used to count profiles whose active_lobby_id was this atrium, every 30
+  // s: a query of its own that disagreed with the list, and read 0 in an
+  // atrium kept in the browser, whose engine has no one's profile.
+  const onlinePlayerCount = 1 + Object.keys(otherUsers).length
   useEffect(() => { if (userId) void loadCustomThemes(userId) }, [userId])
   // The usage figure reads the store as it draws; this is what redraws it
   // when the atrium has been measured again (useTraces).
@@ -2237,32 +2241,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-  
-  // Refresh online player count every 10 minutes
-  useEffect(() => {
-    if (!supabase || !lobbyId) return
-    
-    const fetchPlayerCount = async () => {
-      const { count } = await (supabase!
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('active_lobby_id', lobbyId) as any)
-      
-      const newCount = (count || 0)
-      // Only update if count changed
-      if (newCount !== onlinePlayerCount) {
-        setOnlinePlayerCount(newCount)
-      }
-    }
-    
-    // Initial fetch
-    fetchPlayerCount()
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchPlayerCount, 30 * 1000)
-    
-    return () => clearInterval(interval)
-  }, [lobbyId, onlinePlayerCount])
   
   // One of Layers and Locations at a time. They both dock on the right, so two
   // open at once stack over each other and over the canvas.
