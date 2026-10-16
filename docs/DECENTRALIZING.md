@@ -625,6 +625,15 @@ media, because it changes the file format.
 - Google's sign-in lasts an hour and needs a click to renew. Until it's
   renewed, saves wait in the browser and a button asks to reconnect;
   reading carries on without it.
+- **Staying signed in (2026-10-16, the user's choice).** A browser asks
+  Google once, in the code flow. The rooms worker holds the app's client
+  secret, turns the code into a renewal grant, and hands it back sealed
+  (bound to the account; only the worker can open it). The browser keeps
+  the grant, and the worker renews the pass with it each hour: no window, no
+  button. That's one plain request an hour per person saving, on the
+  worker's free 100,000 a day. Without the secret, or when renewing fails,
+  the button asks as before. While the consent screen is in Testing, Google
+  ends grants after 7 days.
 - **Google's robot check (seen 2026-10-16):** after an open atrium had
   downloaded its head every 20 s for a while, Google answered every
   anonymous download from this network with "automated queries" for about

@@ -34,6 +34,13 @@ const MOST_HELD = 100
 
 export function roomUrl(): string {
   if ((isLocalData && !isSharedLocal) || typeof WebSocket === 'undefined') return ''
+  return roomServer()
+}
+
+/** The room service's address, wherever one is (localStorage atrium.rooms
+ *  chooses another, or 'off'); '' if none. It also keeps Drive atriums
+ *  signed in to Google (lib/drive). */
+export function roomServer(): string {
   let chosen: string | null = null
   try { chosen = localStorage.getItem('atrium.rooms') } catch { /* none */ }
   if (chosen === 'off') return ''

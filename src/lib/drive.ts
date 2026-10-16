@@ -7,8 +7,11 @@
 // Supabase's and Pinterest's do: kept out of the repository, and changed
 // without a commit. What guards them is Google's list of sites the client may
 // sign in from, and the key's restriction to this site and these APIs. (The
-// client *secret* is never here, and isn't needed: a browser signs in
-// without one.)
+// client *secret* is never here: the rooms worker holds it, to keep a browser
+// signed in -- see driveToken.)
+import { roomServer } from './rooms'
+import { cloudClient } from './supabase'
+
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
 // The Picker's key (APIs & Services > Credentials).
 export const GOOGLE_API_KEY = (import.meta.env.VITE_GOOGLE_API_KEY as string | undefined) ?? ''
@@ -39,35 +42,118 @@ function script(src: string): Promise<void> {
 /** Google's sign-in library, fetched ahead: a popup must open while the click that asked for it still counts. */
 export const loadGoogleSignIn = () => script('https://accounts.google.com/gsi/client')
 
+// Google's pass lasts an hour, and in a browser only a click can open
+// Google's window to ask for another. So a browser asks once, in Google's
+// code flow; the rooms worker (workers/rooms, google), which holds the app's
+// secret, turns the code into a pass and a renewal grant -- sealed so only
+// the worker can use it, and only for this account -- and renews the pass
+// with it from then on, no window, no click. Without the worker (not set up,
+// or failing), the window asks for an hour's pass, as before.
 let token: { value: string; until: number } | null = null
+let renewing: Promise<string> | null = null
+const fresh = () => !!token && Date.now() < token.until - 60_000
+const GRANT = 'atrium.driveGrant'
+interface Grant { user: string; grant: string }
+function grantKept(): Grant | null {
+  try { return JSON.parse(localStorage.getItem(GRANT) ?? 'null') } catch { return null }
+}
+function keepGrant(grant: Grant | null) {
+  try { if (grant) localStorage.setItem(GRANT, JSON.stringify(grant)); else localStorage.removeItem(GRANT) } catch { /* this visit only */ }
+}
+// For this page: the worker failed at renewing (the button asks instead), or
+// at taking a code (the window asks for an hour's pass instead).
+let renewFailed = false
+let codeFailed = false
+const grantServer = () => roomServer().replace(/^ws/, 'http')
 
-/** A Drive access token: Google's popup the first time in a session (consent
- *  the first time ever), then silent until it's about to run out. Tokens
- *  live an hour, and nothing outlives the page. */
-export async function driveToken(): Promise<string> {
-  if (token && Date.now() < token.until - 60_000) return token.value
+/** A Drive access token: renewed by the worker when this browser has a
+ *  grant, else Google's window (a click's), once. */
+export function driveToken(): Promise<string> {
+  if (fresh()) return Promise.resolve(token!.value)
+  return renewing ??= newToken().finally(() => { renewing = null })
+}
+
+/** Signed in to Drive now, or able to be without asking: Google's window
+ *  can't open without a click, so whoever needs it otherwise asks for one
+ *  (lib/driveSync). */
+export const hasDriveToken = () => fresh() || (!renewFailed && !!grantServer() && !!grantKept())
+
+const took = (answer: { access_token: string; expires_in: number }) => {
+  token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000 }
+  return token.value
+}
+
+async function newToken(): Promise<string> {
+  const session = (await cloudClient?.auth.getSession())?.data.session
+  const me = session ? { user: session.user.id as string, token: session.access_token as string } : null
+  const kept = grantKept()
+  if (me && kept?.user === me.user && !renewFailed && grantServer()) {
+    try {
+      return took(await askWorker('renew', { token: me.token, grant: kept.grant }))
+    } catch (error) {
+      // Taken back on Google's side, or not this worker's: asked again.
+      // Anything else (offline, the worker's day spent): the button, this visit.
+      if ((error as { refused?: boolean }).refused) keepGrant(null)
+      else renewFailed = true
+      console.warn('[drive] renewing:', error)
+    }
+  }
+  return askGoogle(me)
+}
+
+// A plain request (a string body, no headers of its own): no preflight.
+async function askWorker(what: 'grant' | 'renew', body: object): Promise<{ access_token: string; expires_in: number; grant?: string }> {
+  const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
+  const answer = await response.json().catch(() => ({}))
+  if (!response.ok || !answer.access_token) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant' })
+  return answer
+}
+
+async function askGoogle(me: { user: string; token: string } | null): Promise<string> {
   if (!GOOGLE_CLIENT_ID) throw new Error("Google sign-in isn't set up in this build (VITE_GOOGLE_CLIENT_ID)")
   await loadGoogleSignIn()
   const { oauth2 } = (window as any).google.accounts
+  // Each permission can be unticked on Google's screen.
+  const allowed = (scope: unknown) => typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
+  const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
+  if (me && grantServer() && !codeFailed) {
+    const code = await new Promise<string>((resolve, reject) => {
+      oauth2.initCodeClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES,
+        ux_mode: 'popup',
+        callback: (answer: any) => {
+          if (answer.error) return reject(new Error(answer.error_description || answer.error))
+          if (!allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
+          resolve(answer.code)
+        },
+        error_callback: closed(reject),
+      }).requestCode()
+    })
+    try {
+      const answer = await askWorker('grant', { token: me.token, code })
+      if (answer.grant) keepGrant({ user: me.user, grant: answer.grant })
+      renewFailed = false
+      return took(answer)
+    } catch (error) {
+      // The worker can't yet (no secret set): the next click asks Google for an hour's pass.
+      codeFailed = true
+      throw error
+    }
+  }
   return new Promise((resolve, reject) => {
     oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
       callback: (answer: any) => {
         if (answer.error) return reject(new Error(answer.error_description || answer.error))
-        // Each permission can be unticked on Google's screen.
         if (!oauth2.hasGrantedAllScopes(answer, DRIVE_FILE)) return reject(new Error('Drive access was not allowed'))
-        token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000 }
-        resolve(token.value)
+        resolve(took(answer))
       },
-      error_callback: (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed')),
+      error_callback: closed(reject),
     }).requestAccessToken({ prompt: '' })
   })
 }
-
-/** Signed in to Drive now, without asking: Google's window can't open
- *  without a click, so whoever needs it otherwise asks for one (lib/driveSync). */
-export const hasDriveToken = () => !!token && Date.now() < token.until - 60_000
 
 /** Calls tried again on a rate limit or Google's own failure, further apart
  *  each time (Drive's guidance), since the last sign-in. */

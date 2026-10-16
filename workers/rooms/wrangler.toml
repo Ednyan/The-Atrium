@@ -20,4 +20,7 @@ pattern = "rooms.digitalatrium.org"
 custom_domain = true
 
 # SUPABASE_URL and SUPABASE_ANON_KEY are secrets (wrangler secret put), or
-# .dev.vars locally.
+# .dev.vars locally. So is GOOGLE_CLIENT_SECRET: Drive atriums staying signed
+# in to Google (src/index.ts, google). The client id is public.
+[vars]
+GOOGLE_CLIENT_ID = "770548685806-6akubmjpt973rrtf1pjsncdrvj76dlh7.apps.googleusercontent.com"

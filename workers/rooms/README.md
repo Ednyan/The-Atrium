@@ -16,8 +16,15 @@ npm install
 npx wrangler login                       # opens the browser: allow
 npx wrangler secret put SUPABASE_URL     # https://<project>.supabase.co
 npx wrangler secret put SUPABASE_ANON_KEY
+npx wrangler secret put GOOGLE_CLIENT_SECRET   # Google Cloud > Clients > the web client
 npx wrangler deploy
 ```
+
+`GOOGLE_CLIENT_SECRET` keeps Drive atriums signed in to Google (`google` in
+src/index.ts): a browser asks Google once, and the worker renews its hourly
+pass from then on. Without it, the app asks Google's window for a pass each
+hour, as before. Google ends these grants after 7 days while the consent
+screen is in Testing: publish it (Audience > Publish app).
 
 `wrangler.toml` puts it on `rooms.digitalatrium.org`, which needs the
 digitalatrium.org zone to be in the same Cloudflare account. Wrangler creates
