@@ -579,6 +579,15 @@ someone polling. Drive is the record for whoever wasn't there.
 - Google's sign-in lasts an hour and needs a click to renew. Until it's
   renewed, saves wait in the browser and a button asks to reconnect;
   reading carries on without it.
+- **Google's robot check (seen 2026-10-16):** after an open atrium had
+  downloaded its head every 20 s for a while, Google answered every
+  anonymous download from this network with "automated queries" for about
+  ten minutes. Reading details and listing folders stayed allowed. In a
+  browser this shows as "Failed to fetch". Now the head is downloaded only
+  when its version moves, and saves only when new, so an idle atrium
+  downloads nothing. **The risk that remains:** many people behind one
+  network (a school, an office) all downloading at once. The room carrying
+  saves to those online (step 6) is what keeps downloads to catching up.
 - Not yet: pictures and other media (they stay in the browser that added
   them), live through the room, compaction, removing a member.
 
