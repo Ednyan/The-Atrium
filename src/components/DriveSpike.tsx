@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  createFolder, driveRetries, fileInfo, listFolder, loadGoogleSignIn, pickFolder, readByLink, readFile, shareByLink, shareWith, whoAmI, writeFile,
+  createFolder, driveRetries, fileInfo, listByLink, listFolder, loadGoogleSignIn, pickFolder, readByLink, readFile, shareByLink, shareWith, whoAmI, writeFile,
 } from '../lib/drive'
 
 // Phase 4's spike (docs/DECENTRALIZING.md): what Drive does for atriums, step
@@ -96,6 +96,13 @@ export default function DriveSpike() {
       await shareByLink(file.id)
       return `link-test.json is ${file.id} -- paste that id on the other account`
     }],
+    ['Make a folder shared by link, with a file in it', async () => {
+      const shared = await createFolder('by-link folder', needFolder())
+      await shareByLink(shared.id)
+      // Written after the folder was shared, and not shared itself.
+      const inside = await writeFile('inside.json', json({ hello: 'inherited', at: Date.now() }), { parent: shared.id })
+      return `folder ${shared.id}; inside.json ${inside.id} -- paste both on the other account`
+    }],
     ['Open a folder shared with me (Picker)', async () => {
       const picked = await pickFolder()
       if (!picked) return 'nothing picked'
@@ -136,6 +143,12 @@ export default function DriveSpike() {
           return `as me: ${as}; by link with the key: ${byLink}`
         })} className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs hover:border-nier-border/60 disabled:opacity-40">
           Read it by its id
+        </button>
+        <button disabled={busy || fileId.length < 10} onClick={step(`List ${fileId.slice(0, 10)}… by link`, async () => {
+          const files = await listByLink(fileId)
+          return `${files.length} listed: ${files.map(f => f.name).join(', ') || 'none'}`
+        })} className="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs hover:border-nier-border/60 disabled:opacity-40">
+          List it as a folder by link
         </button>
       </div>
       <pre className="bg-nier-black border border-nier-border/20 p-3 text-[11px] text-nier-bg/80 whitespace-pre-wrap max-h-72 overflow-y-auto">{log.join('\n') || 'Nothing yet.'}</pre>

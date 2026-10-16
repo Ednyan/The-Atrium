@@ -152,6 +152,14 @@ export async function readByLink(id: string): Promise<Blob> {
   return response.blob()
 }
 
+/** What's in a folder shared by link, listed with the app's key alone. */
+export async function listByLink(id: string): Promise<DriveFile[]> {
+  const q = encodeURIComponent(`'${id}' in parents and trashed = false`)
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(${FIELDS})&pageSize=1000&key=${GOOGLE_API_KEY}`)
+  if (!response.ok) throw new Error(`Drive ${response.status}: ${(await response.text()).slice(0, 200)}`)
+  return (await response.json()).files ?? []
+}
+
 export const whoAmI = async (): Promise<{ displayName: string; emailAddress: string }> =>
   (await (await drive('about?fields=user(displayName,emailAddress)')).json()).user
 
