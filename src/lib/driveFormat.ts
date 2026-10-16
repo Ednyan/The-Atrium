@@ -300,9 +300,11 @@ export async function admit(roster: Roster, keyring: Keyring, person: Omit<Membe
     const key = keyring.get(generation.n)
     return key ? { ...generation, for: { ...generation.for, [person.user]: await wrapFor(person.pub, key) } } : generation
   }))
+  // Let in again (a new key pair): an admin keeps the grant that's theirs to lose.
+  const grant = memberOf(roster, person.user)?.grant
   return {
     ...roster,
-    members: [...roster.members.filter(member => member.user !== person.user), { ...person, role }],
+    members: [...roster.members.filter(member => member.user !== person.user), { ...person, role, ...(grant && role === 'admin' ? { grant } : {}) }],
     invited: roster.invited.filter(invite => invite.user !== person.user),
     keys,
   }

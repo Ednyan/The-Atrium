@@ -866,6 +866,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (error) throw error
       forgetBrowserAtrium(lobbyId)
       forgetDriveAtrium(lobbyId)
+      // Left, it's under "Shared with you" again.
+      lookForInvitations()
 
       loadLobbies()
       checkCanCreateLobby()

@@ -93,6 +93,7 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
                       <option value="editor">{t('browser.drive.role.editor')}</option>
                       <option value="viewer">{t('browser.drive.role.viewer')}</option>
                     </select>
+                    <button disabled={busy} onClick={() => void act(async () => t((await resendInvitation(lobbyId, me, member.user)) === 'in' ? 'browser.drive.added' : 'browser.drive.invited', { name: member.name }))} className={buttonClass}>{t('browser.drive.resend')}</button>
                     <button disabled={busy} onClick={() => void act(() => removePerson(lobbyId, me, member.user, false))} className={buttonClass}>{t('browser.drive.remove')}</button>
                     <button disabled={busy} onClick={() => void act(() => removePerson(lobbyId, me, member.user, true))} className={buttonClass}>{t('browser.drive.block')}</button>
                   </>

@@ -242,6 +242,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     onStep('folder')
     const folder = await folderFor(own.root, lobbyId)
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' })
+    await clearInvitation(me.id, rosterId)
     return { lobbyId, state: 'in' }
   }
   // Added before one had a key pair: in at once, by the invitation's secret
@@ -280,6 +281,13 @@ export async function myInvitations(me: string): Promise<Invitation[]> {
     .filter((row: any) => !isDriveAtrium(row.lobby_id))
     .map((row: any) => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: names.get(row.from_user) ?? '', at: row.created_at ?? '' }))
     .sort((a: Invitation, b: Invitation) => (a.at < b.at ? 1 : -1))
+}
+/** One's invitation's secret gone, the invitation kept -- or, where the
+ *  database's rules don't let one change it yet, the whole invitation. */
+async function clearInvitation(me: string, roster: string): Promise<void> {
+  const table = () => cloudClient.from('drive_invites') as any
+  const { data } = await table().update({ secret: null }).eq('to_user', me).eq('roster', roster).select('id')
+  if (!data?.length) await table().delete().eq('to_user', me).eq('roster', roster).not('secret', 'is', null)
 }
 export async function declineInvitation(id: string): Promise<void> {
   await (cloudClient.from('drive_invites') as any).delete().eq('id', id)
@@ -349,8 +357,11 @@ export async function addPerson(lobbyId: string, me: string, username: string, r
 export async function resendInvitation(lobbyId: string, me: string, user: string): Promise<'in' | 'invited'> {
   const kept = allKept()[lobbyId]
   if (!kept) throw new Error('not a Drive atrium')
-  const invited = (await readRoster(kept.roster)).invited.find(invite => invite.user === user)
-  return add(lobbyId, me, await profileBy('id', user), invited?.role === 'viewer' ? 'viewer' : 'editor')
+  // A member too -- one on another Google account since -- in the role they have.
+  const roster = await readRoster(kept.roster)
+  const role = memberOf(roster, user)?.role ?? roster.invited.find(invite => invite.user === user)?.role ?? 'editor'
+  if (role === 'owner') throw new Error('the owner needs no invitation')
+  return add(lobbyId, me, await profileBy('id', user), role)
 }
 
 const profileBy = async (column: 'id' | 'username', value: string) => {
@@ -597,10 +608,11 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     const roster = await readRosterAt(s.kept.roster, version)
     s.roster = { version, roster }
     if (!placeOf(roster, s.me) && !roster.invited.some(invite => invite.user === s.me)) { setStatus({ ended: 'removed' }); return null }
-    // Let in properly: the invitation, and any secret it held, deleted.
+    // Let in properly: the invitation's secret cleared -- and the invitation
+    // kept, so it's under "Shared with you" again should one leave it here.
     if (memberOf(roster, s.me) && !s.inviteCleared) {
       s.inviteCleared = true
-      await (cloudClient.from('drive_invites') as any).delete().eq('to_user', s.me).eq('roster', s.kept.roster)
+      await clearInvitation(s.me, s.kept.roster)
     }
     // Generations made since: opened with one's private key.
     if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {

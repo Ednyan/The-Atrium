@@ -4,7 +4,7 @@
 -- atrium browser -- no link needed -- and they can enter at once, even with
 -- the owner away. For someone who has never used a Drive atrium (no key pair
 -- yet to encrypt the atrium's key to), `secret` is a one-off key that opens
--- it: readable only by them and whoever invited them, and deleted by their
+-- it: readable only by them and whoever invited them, and cleared by their
 -- app once an owner's or admin's app has let them in properly. Someone with a
 -- key pair already is let in at once, and their invitation carries no secret.
 --
@@ -49,3 +49,12 @@ drop policy if exists "Drive invites are removed by whom they're to and from" on
 create policy "Drive invites are removed by whom they're to and from"
   on public.drive_invites for delete
   using (auth.uid() = to_user or auth.uid() = from_user);
+
+-- Whom it's to may change it too -- their app clears the secret once they're
+-- let in properly, and keeps the invitation, so an atrium they've left in one
+-- browser is under "Shared with you" to open again. It's theirs alone.
+drop policy if exists "Drive invites are cleared by whom they're to" on public.drive_invites;
+create policy "Drive invites are cleared by whom they're to"
+  on public.drive_invites for update
+  using (auth.uid() = to_user)
+  with check (auth.uid() = to_user);
