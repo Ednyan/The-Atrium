@@ -312,9 +312,26 @@ async function changeRoster(lobbyId: string, me: string, change: (roster: Roster
  *  else invited -- let in by the next owner's or admin's app to look once
  *  they've opened the invite. */
 export async function addPerson(lobbyId: string, me: string, username: string, role: Exclude<Role, 'owner'>): Promise<'in' | 'invited'> {
-  const { data, error } = await (cloudClient.from('profiles') as any).select('id, username, display_name, drive_key, drive_root').eq('username', username.trim().replace(/^@/, '')).maybeSingle()
+  return add(lobbyId, me, await profileBy('username', username.trim().replace(/^@/, '')), role)
+}
+
+/** Their invitation sent again: let in now if they've a key pair since, else a
+ *  fresh secret -- for someone invited before invitations carried one. */
+export async function resendInvitation(lobbyId: string, me: string, user: string): Promise<'in' | 'invited'> {
+  const kept = allKept()[lobbyId]
+  if (!kept) throw new Error('not a Drive atrium')
+  const invited = (await readRoster(kept.roster)).invited.find(invite => invite.user === user)
+  return add(lobbyId, me, await profileBy('id', user), invited?.role === 'viewer' ? 'viewer' : 'editor')
+}
+
+const profileBy = async (column: 'id' | 'username', value: string) => {
+  const { data, error } = await (cloudClient.from('profiles') as any).select('id, username, display_name, drive_key, drive_root').eq(column, value).maybeSingle()
   if (error) throw error
   if (!data) throw new Error('NO_SUCH_USER')
+  return data as { id: string; username: string; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null }
+}
+
+async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof profileBy>>, role: Exclude<Role, 'owner'>): Promise<'in' | 'invited'> {
   let result: 'in' | 'invited' = 'invited'
   let secret: Uint8Array | null = null
   let after: Roster | null = null
@@ -325,10 +342,8 @@ export async function addPerson(lobbyId: string, me: string, username: string, r
       result = 'in'
       return { roster: (after = await admit(roster, keyring, { user: data.id, name, root: data.drive_root, pub: data.drive_key }, role)) }
     }
-    // No key pair yet: the key sealed with a secret their invitation carries,
-    // so they can enter at once -- one already invited keeps theirs.
-    const already = roster.invited.find(invite => invite.user === data.id)
-    if (already?.keys) return { roster: (after = { ...roster, invited: roster.invited.map(invite => (invite.user === data.id ? { ...invite, role } : invite)) }) }
+    // No key pair yet: the key sealed with a fresh secret their invitation
+    // carries, so they can enter at once.
     secret = newSecret()
     const sealed = await sealForSecret(secret, keyring)
     return { roster: (after = { ...roster, invited: [...roster.invited.filter(invite => invite.user !== data.id), { user: data.id, name, role, keys: sealed }] }) }
@@ -594,6 +609,9 @@ async function letIn(s: Session, roster: Roster): Promise<void> {
     }
   }
   if (next === roster) return
+  // Not signed in to Google on this page (it doesn't outlast a reload): the
+  // button asks, and the click lets them in.
+  if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
   try {
     await writeRoster(s.kept, next)
     s.roster = null

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { addPerson, driveMembers, ensureSignedIn, inviteLink, removePerson, setRole } from '../lib/driveSync'
+import { addPerson, driveMembers, ensureSignedIn, inviteLink, removePerson, resendInvitation, setRole } from '../lib/driveSync'
 import type { Role, Roster } from '../lib/driveFormat'
 
 // A Drive atrium's sharing, on its card in the atrium browser: its invite link
@@ -116,7 +116,12 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
               <li key={invite.user} className="flex flex-wrap items-center gap-2 text-xs text-nier-bg/70">
                 <span className="flex-1 min-w-[6rem] truncate">{invite.name}</span>
                 <span className="uppercase tracking-wider text-[10px]">{t('browser.drive.invitedTag')} · {t(`browser.drive.role.${invite.role}`)}</span>
-                {managing && <button disabled={busy} onClick={() => void act(() => removePerson(lobbyId, me, invite.user, false))} className={buttonClass}>{t('browser.drive.remove')}</button>}
+                {managing && (
+                  <>
+                    <button disabled={busy} onClick={() => void act(async () => t((await resendInvitation(lobbyId, me, invite.user)) === 'in' ? 'browser.drive.added' : 'browser.drive.invited', { name: invite.name }))} className={buttonClass}>{t('browser.drive.resend')}</button>
+                    <button disabled={busy} onClick={() => void act(() => removePerson(lobbyId, me, invite.user, false))} className={buttonClass}>{t('browser.drive.remove')}</button>
+                  </>
+                )}
               </li>
             ))}
           </ul>

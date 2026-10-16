@@ -196,6 +196,7 @@ const ru: Catalogue = {
   'browser.drive.role.editor': 'Редактор',
   'browser.drive.role.viewer': 'Зритель',
   'browser.drive.remove': 'Убрать',
+  'browser.drive.resend': 'Отправить приглашение снова',
   'browser.drive.block': 'Заблокировать',
   'browser.drive.adminEmail': 'Его адрес Google',
   'browser.drive.makeAdmin': 'Сделать админом',

@@ -236,6 +236,7 @@ const zh: Catalogue = {
   'browser.drive.role.editor': '编辑者',
   'browser.drive.role.viewer': '查看者',
   'browser.drive.remove': '移除',
+  'browser.drive.resend': '重新发送邀请',
   'browser.drive.block': '屏蔽',
   'browser.drive.adminEmail': '对方的 Google 地址',
   'browser.drive.makeAdmin': '设为管理员',

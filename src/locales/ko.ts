@@ -237,6 +237,7 @@ const ko: Catalogue = {
   'browser.drive.role.editor': '편집자',
   'browser.drive.role.viewer': '보기 전용',
   'browser.drive.remove': '내보내기',
+  'browser.drive.resend': '초대 다시 보내기',
   'browser.drive.block': '차단',
   'browser.drive.adminEmail': '상대의 Google 주소',
   'browser.drive.makeAdmin': '관리자로 지정',

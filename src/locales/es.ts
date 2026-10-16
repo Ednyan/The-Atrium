@@ -190,6 +190,7 @@ const es: Catalogue = {
   'browser.drive.role.editor': 'Editor',
   'browser.drive.role.viewer': 'Lector',
   'browser.drive.remove': 'Quitar',
+  'browser.drive.resend': 'Reenviar invitación',
   'browser.drive.block': 'Bloquear',
   'browser.drive.adminEmail': 'Su dirección de Google',
   'browser.drive.makeAdmin': 'Hacer admin',

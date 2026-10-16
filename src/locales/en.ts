@@ -227,6 +227,7 @@ export const en = {
   'browser.drive.role.editor': 'Editor',
   'browser.drive.role.viewer': 'Viewer',
   'browser.drive.remove': 'Remove',
+  'browser.drive.resend': 'Resend invitation',
   'browser.drive.block': 'Block',
   'browser.drive.adminEmail': 'Their Google address',
   'browser.drive.makeAdmin': 'Make admin',

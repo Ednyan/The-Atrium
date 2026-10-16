@@ -193,6 +193,7 @@ const de: Catalogue = {
   'browser.drive.role.editor': 'Bearbeiter',
   'browser.drive.role.viewer': 'Betrachter',
   'browser.drive.remove': 'Entfernen',
+  'browser.drive.resend': 'Einladung erneut senden',
   'browser.drive.block': 'Sperren',
   'browser.drive.adminEmail': 'Seine Google-Adresse',
   'browser.drive.makeAdmin': 'Zum Admin machen',

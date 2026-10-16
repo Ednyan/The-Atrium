@@ -192,6 +192,7 @@ const fr: Catalogue = {
   'browser.drive.role.editor': 'Éditeur',
   'browser.drive.role.viewer': 'Lecteur',
   'browser.drive.remove': 'Retirer',
+  'browser.drive.resend': 'Renvoyer l’invitation',
   'browser.drive.block': 'Bloquer',
   'browser.drive.adminEmail': 'Son adresse Google',
   'browser.drive.makeAdmin': 'Faire admin',

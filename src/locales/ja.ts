@@ -233,6 +233,7 @@ const ja: Catalogue = {
   'browser.drive.role.editor': '編集者',
   'browser.drive.role.viewer': '閲覧者',
   'browser.drive.remove': '外す',
+  'browser.drive.resend': '招待を再送',
   'browser.drive.block': 'ブロック',
   'browser.drive.adminEmail': '相手の Google アドレス',
   'browser.drive.makeAdmin': '管理者にする',

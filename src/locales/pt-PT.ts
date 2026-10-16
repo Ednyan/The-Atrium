@@ -197,6 +197,7 @@ const ptPT: Catalogue = {
   'browser.drive.role.editor': 'Editor',
   'browser.drive.role.viewer': 'Leitor',
   'browser.drive.remove': 'Remover',
+  'browser.drive.resend': 'Reenviar convite',
   'browser.drive.block': 'Bloquear',
   'browser.drive.adminEmail': 'O endereço Google da pessoa',
   'browser.drive.makeAdmin': 'Tornar admin',
