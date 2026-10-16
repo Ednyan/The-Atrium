@@ -27,22 +27,28 @@ export interface DriveStore {
   canWrite(): boolean
   /** Google's window, on a click. */
   signIn(): Promise<void>
+  /** The Google account signed in, by its address. */
+  account(): Promise<string>
   /** One file picked in the Picker, so the app may open it; null if not. */
   pick(id: string): Promise<string | null>
   createFolder(name: string, parent?: string): Promise<{ id: string }>
   shareByLink(id: string): Promise<void>
   write(name: string, bytes: Uint8Array, place: { parent: string } | { id: string }): Promise<{ id: string }>
   readByLink(id: string): Promise<Uint8Array>
+  /** A file's version, without downloading it. */
+  version(id: string): Promise<string>
   listByLink(folder: string): Promise<{ id: string; name: string }[]>
 }
 const googleDrive: DriveStore = {
   canWrite: drive.hasDriveToken,
   signIn: async () => { await drive.driveToken() },
+  account: async () => (await drive.whoAmI()).emailAddress,
   pick: drive.pickFile,
   createFolder: drive.createFolder,
   shareByLink: drive.shareByLink,
   write: (name, bytes, place) => drive.writeFile(name, new Blob([bytes as BlobPart]), place),
   readByLink: async id => new Uint8Array(await (await drive.readByLink(id)).arrayBuffer()),
+  version: drive.versionByLink,
   listByLink: drive.listByLink,
 }
 let store: DriveStore = googleDrive
@@ -116,13 +122,32 @@ export async function letEdit(lobbyId: string, email: string): Promise<void> {
  *  (drive.file opens nothing else), one's own folder, shared by link, and
  *  one's name among the members. Then this browser keeps it; the caller makes
  *  the working copy, which the first sync fills. */
+/** Why Google wouldn't let `account` join: it may not edit the atrium, or
+ *  what was picked wasn't the atrium's head. */
+export class JoinRefused extends Error {
+  constructor(readonly reason: 'notEditor' | 'wrongFile', readonly account: string) { super(reason) }
+}
+
 export async function joinDriveAtrium(invite: Invite, me: { id: string; name: string }): Promise<string> {
   const key = await keyFromText(invite.key)
   await store.signIn()
-  if (!(await store.pick(invite.head))) throw new Error('JOIN_CANCELLED')
-  const head = await unsealJson<Head>(key, await store.readByLink(invite.head))
+  const account = await store.account()
+  const picked = await store.pick(invite.head)
+  if (!picked) throw new Error('JOIN_CANCELLED')
+  if (picked !== invite.head) throw new JoinRefused('wrongFile', account)
+  const sealedHead = await store.readByLink(invite.head)
+  const head = await unsealJson<Head>(key, sealedHead)
   let mine = head.members.find(member => member.user === me.id)
   if (!mine) {
+    // May this account edit it? Asked by writing the head back as it is,
+    // before anything is made in its Drive.
+    try {
+      await store.write('atrium.head', sealedHead, { id: invite.head })
+    } catch (error) {
+      console.warn('[drive] join refused:', error)
+      if (/Drive 40[34]/.test(String(error))) throw new JoinRefused('notEditor', account)
+      throw error
+    }
     const folder = await store.createFolder(`${head.name} (Digital Atrium)`)
     await store.shareByLink(folder.id)
     mine = { user: me.id, name: me.name, folder: folder.id }
@@ -130,13 +155,7 @@ export async function joinDriveAtrium(invite: Invite, me: { id: string; name: st
     for (let attempt = 0; attempt < 3; attempt++) {
       const now = await unsealJson<Head>(key, await store.readByLink(invite.head))
       if (!now.members.some(member => member.user === me.id)) {
-        try {
-          await store.write('atrium.head', await sealJson(key, { ...now, members: [...now.members, mine] }), { id: invite.head })
-        } catch (error) {
-          // Google's no: the owner hasn't let this account edit.
-          if (/Drive 40[34]/.test(String(error))) throw new Error('NOT_AN_EDITOR')
-          throw error
-        }
+        await store.write('atrium.head', await sealJson(key, { ...now, members: [...now.members, mine] }), { id: invite.head })
       }
       if ((await unsealJson<Head>(key, await store.readByLink(invite.head))).members.some(member => member.user === me.id)) break
     }
@@ -163,6 +182,8 @@ interface Session {
   seen: Set<string>
   last: Clock | null
   queue: Promise<void>
+  // The head as last read, and its version: read again only once that moves.
+  head: { version: string; members: Member[] } | null
   quiet: number
   looking: number
   local: typeof import('./localDb')
@@ -187,7 +208,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, key: await keyFromText(kept.key), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), quiet: 0, looking: 0, local,
+    queue: Promise.resolve(), head: null, quiet: 0, looking: 0, local,
   }
   session = s
   local.listenToLocalWrites(() => {
@@ -251,9 +272,12 @@ async function up(s: Session): Promise<void> {
 }
 
 async function down(s: Session): Promise<void> {
-  const head = await unsealJson<Head>(s.key, await store.readByLink(s.kept.head))
+  // Downloads only for what's new: the head when its version moves, saves not
+  // read yet. A look at an atrium nobody has changed downloads nothing.
+  const version = await store.version(s.kept.head)
+  if (s.head?.version !== version) s.head = { version, members: (await unsealJson<Head>(s.key, await store.readByLink(s.kept.head))).members }
   const unread: { id: string }[] = []
-  for (const member of head.members) {
+  for (const member of s.head.members) {
     for (const file of await store.listByLink(member.folder)) if (file.name.endsWith('.save') && !s.seen.has(file.id)) unread.push(file)
   }
   if (!unread.length) return

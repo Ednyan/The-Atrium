@@ -156,6 +156,17 @@ export async function readByLink(id: string): Promise<Blob> {
   return response.blob()
 }
 
+/** A file shared by link's version, read with the key alone -- its details,
+ *  not its contents. Google lets details be read freely, but counts
+ *  anonymous downloads, and answers too many of them from one network with a
+ *  robot check (seen 2026-10-16): so content is downloaded only once it has
+ *  changed. */
+export async function versionByLink(id: string): Promise<string> {
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=version&key=${GOOGLE_API_KEY}`)
+  if (!response.ok) throw new Error(`Drive ${response.status}: ${(await response.text()).slice(0, 200)}`)
+  return (await response.json()).version
+}
+
 /** What's in a folder shared by link, listed with the app's key alone. */
 export async function listByLink(id: string): Promise<DriveFile[]> {
   const q = encodeURIComponent(`'${id}' in parents and trashed = false`)

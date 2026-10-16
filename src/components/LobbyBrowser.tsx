@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, letEdit, readInvite, type Invite } from '../lib/driveSync'
+import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, JoinRefused, letEdit, readInvite, type Invite } from '../lib/driveSync'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -246,13 +246,20 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // read by link, then offered -- or, already joined here, simply opened.
   const [invite, setInvite] = useState<(Invite & { lobbyId: string; name: string }) | null>(null)
   const [joining, setJoining] = useState(false)
+  // Looked for as the browser opens, and again whenever the # changes: a link
+  // pasted here, on this very page, changes only that and reloads nothing.
   useEffect(() => {
-    const found = inviteIn(location.hash)
-    if (!found || !canDrive) return
-    history.replaceState(null, '', location.pathname)
-    readInvite(found)
-      .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : setInvite({ ...found, ...about })))
-      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+    const look = () => {
+      const found = inviteIn(location.hash)
+      if (!found || !canDrive) return
+      history.replaceState(null, '', location.pathname)
+      readInvite(found)
+        .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : setInvite({ ...found, ...about })))
+        .catch(err => setError(err instanceof Error ? err.message : String(err)))
+    }
+    look()
+    window.addEventListener('hashchange', look)
+    return () => window.removeEventListener('hashchange', look)
   }, [])
   const joinInvite = async () => {
     if (!invite) return
@@ -270,7 +277,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       onJoinLobby(lobbyId)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (message !== 'JOIN_CANCELLED') setError(message === 'NOT_AN_EDITOR' ? t('browser.drive.notEditor') : message)
+      if (err instanceof JoinRefused) setError(t(err.reason === 'notEditor' ? 'browser.drive.notEditor' : 'browser.drive.wrongFile', { account: err.account }))
+      else if (message !== 'JOIN_CANCELLED') setError(message)
     } finally {
       setJoining(false)
     }
