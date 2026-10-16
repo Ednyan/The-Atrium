@@ -52,12 +52,16 @@ export const cloudClient: any = _client
 // no cloud limits, and the local engine's gaps (CLAUDE.md). Always so on
 // desktop; on the web, while inside an atrium kept in the browser.
 export let isLocalData = isDesktop
+// Local, but shared: a Drive atrium (lib/driveSync), which has a room (lib/rooms)
+// for who's there and their saves as they're made.
+export let isSharedLocal = false
 /** The data client from here on: a browser atrium's engine, or (null) the
  *  cloud's again. lib/browserAtriums decides when -- never under a write. */
-export function switchDataClient(client: unknown | null) {
+export function switchDataClient(client: unknown | null, shared = false) {
   if (isDesktop) return
   supabase = client ?? cloudClient
   isLocalData = client !== null
+  isSharedLocal = client !== null && shared
 }
 
 // Initialize local DB when running in Tauri  

@@ -96,18 +96,19 @@ export async function clientFor(lobbyId: string) {
 export async function enterBrowserAtrium(lobbyId: string, guest: Maker | null) {
   const maker = guest ?? currentMaker()
   const local = await browserEngine(maker)
+  // Kept in Drive too: shared, so it has a room; in step with Drive while open (lib/driveSync).
+  const sync = await import('./driveSync')
+  const shared = sync.isDriveAtrium(lobbyId)
   // Whoever uses this browser owns its atriums -- one made as a guest, opened
   // signed in, is still theirs to set up.
   await local.localClient.from('lobbies').update({ owner_user_id: maker.id }).eq('id', lobbyId).neq('owner_user_id', maker.id)
-  // Kept in Drive too: in step with it while it's open (lib/driveSync).
-  const sync = await import('./driveSync')
-  if (sync.isDriveAtrium(lobbyId)) await sync.startDriveSync(lobbyId, maker.id)
+  if (shared) await sync.startDriveSync(lobbyId, maker.id)
   switchDataClient({
     ...local.localClient,
     // Who's signed in stays the account's; a guest is the engine's own.
     auth: !guest && cloudClient ? cloudClient.auth : local.localClient.auth,
     functions: cloudClient?.functions,
-  })
+  }, shared)
   inside = lobbyId
 }
 

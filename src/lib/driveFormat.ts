@@ -15,6 +15,14 @@ export const newAtriumKey = (): Promise<CryptoKey> => crypto.subtle.generateKey(
 const toBase64Url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const fromBase64Url = (text: string) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0))
 
+/** Bytes as base64 and back, any length: a sealed save in a room message. */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let text = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  return btoa(text)
+}
+export const base64ToBytes = (text: string) => Uint8Array.from(atob(text), ch => ch.charCodeAt(0))
+
 /** The key as text, for an invite link's `#` and for keeping. */
 export const keyToText = async (key: CryptoKey) => toBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
 

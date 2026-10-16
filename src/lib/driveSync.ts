@@ -16,10 +16,11 @@
 
 import * as drive from './drive'
 import {
-  changesSince, keyFromText, keyToText, later, merge, newAtriumKey, sealJson, tick, unsealJson,
+  base64ToBytes, bytesToBase64, changesSince, keyFromText, keyToText, later, merge, newAtriumKey, sealJson, tick, unsealJson,
   type Change, type Clock, type DriveSave, type Merged, type Table,
 } from './driveFormat'
 import { tellHere, type LiveTable } from './liveChanges'
+import { onRoomEvent, sendThroughRoom } from './rooms'
 
 /** What the sync needs of Drive: lib/drive, or a stand-in (the harness). */
 export interface DriveStore {
@@ -128,10 +129,15 @@ export class JoinRefused extends Error {
   constructor(readonly reason: 'notEditor' | 'wrongFile', readonly account: string) { super(reason) }
 }
 
-export async function joinDriveAtrium(invite: Invite, me: { id: string; name: string }): Promise<string> {
+/** How far a join has got, to say while it's under way. */
+export type JoinStep = 'signIn' | 'pick' | 'folder' | 'members'
+
+export async function joinDriveAtrium(invite: Invite, me: { id: string; name: string }, onStep: (step: JoinStep) => void = () => {}): Promise<string> {
   const key = await keyFromText(invite.key)
+  onStep('signIn')
   await store.signIn()
   const account = await store.account()
+  onStep('pick')
   const picked = await store.pick(invite.head)
   if (!picked) throw new Error('JOIN_CANCELLED')
   if (picked !== invite.head) throw new JoinRefused('wrongFile', account)
@@ -148,9 +154,11 @@ export async function joinDriveAtrium(invite: Invite, me: { id: string; name: st
       if (/Drive 40[34]/.test(String(error))) throw new JoinRefused('notEditor', account)
       throw error
     }
+    onStep('folder')
     const folder = await store.createFolder(`${head.name} (Digital Atrium)`)
     await store.shareByLink(folder.id)
     mine = { user: me.id, name: me.name, folder: folder.id }
+    onStep('members')
     // Read, added to, written, read again: two joining at once don't lose one.
     for (let attempt = 0; attempt < 3; attempt++) {
       const now = await unsealJson<Head>(key, await store.readByLink(invite.head))
@@ -171,6 +179,10 @@ const QUIET_MS = 1500
 const LOOK_MS = 20_000
 // Saves read side by side.
 const AT_ONCE = 6
+// A save goes through the room as itself up to this many bytes, sealed (the
+// room carries ciphertext); bigger, it says only which file to read.
+const ROOM_EVENT = 'drive-save'
+const ROOM_MOST = 40_000
 
 interface State { merged: Change[]; seen: string[]; last: Clock | null }
 interface Session {
@@ -186,6 +198,7 @@ interface Session {
   head: { version: string; members: Member[] } | null
   quiet: number
   looking: number
+  stopHearing: () => void
   local: typeof import('./localDb')
 }
 let session: Session | null = null
@@ -208,13 +221,15 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, key: await keyFromText(kept.key), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), head: null, quiet: 0, looking: 0, local,
+    queue: Promise.resolve(), head: null, quiet: 0, looking: 0, stopHearing: () => {}, local,
   }
   session = s
   local.listenToLocalWrites(() => {
     window.clearTimeout(s.quiet)
     s.quiet = window.setTimeout(() => { if (session === s) void run(s, up) }, QUIET_MS)
   })
+  // Saves as they're made, from whoever's in the room.
+  s.stopHearing = onRoomEvent(ROOM_EVENT, payload => { if (session === s) void run(s, x => heard(x, payload)) })
   const both = async (x: Session) => { await down(x); await up(x) }
   void run(s, both)
   s.looking = window.setInterval(() => { if (session === s) void run(s, both) }, LOOK_MS)
@@ -227,30 +242,34 @@ export async function stopDriveSync(): Promise<void> {
   session = null
   window.clearTimeout(s.quiet)
   window.clearInterval(s.looking)
+  s.stopHearing()
   s.local.listenToLocalWrites(null)
   await run(s, up)
-  needSignIn(false)
+  setStatus({ signInNeeded: false, catchingUp: false })
 }
 
-// Writing needs Google's sign-in, which needs a click: while it's missing,
-// saves wait here and a button asks (components/DriveReconnect). Reading
-// doesn't need it -- everything is read by link.
-let signInNeeded = false
-const signInWatchers = new Set<(needed: boolean) => void>()
-function needSignIn(needed: boolean) {
-  if (signInNeeded === needed) return
-  signInNeeded = needed
-  signInWatchers.forEach(watcher => watcher(needed))
+// What the open Drive atrium is doing that someone should see
+// (components/DriveStatus): bringing saves in from Drive, or waiting for a
+// sign-in -- which needs a click, so saves wait here meanwhile. Reading
+// doesn't need it: everything is read by link.
+export interface DriveStatus { catchingUp: boolean; signInNeeded: boolean }
+let status: DriveStatus = { catchingUp: false, signInNeeded: false }
+const statusWatchers = new Set<(status: DriveStatus) => void>()
+function setStatus(change: Partial<DriveStatus>) {
+  const next = { ...status, ...change }
+  if (next.catchingUp === status.catchingUp && next.signInNeeded === status.signInNeeded) return
+  status = next
+  statusWatchers.forEach(watcher => watcher(status))
 }
-export function watchDriveSignIn(watcher: (needed: boolean) => void): () => void {
-  signInWatchers.add(watcher)
-  watcher(signInNeeded)
-  return () => { signInWatchers.delete(watcher) }
+export function watchDriveStatus(watcher: (status: DriveStatus) => void): () => void {
+  statusWatchers.add(watcher)
+  watcher(status)
+  return () => { statusWatchers.delete(watcher) }
 }
 /** On a click: Google's window, then what waited goes up. */
 export async function reconnectDrive(): Promise<void> {
   await store.signIn()
-  needSignIn(false)
+  setStatus({ signInNeeded: false })
   await syncNow()
 }
 
@@ -262,13 +281,22 @@ async function up(s: Session): Promise<void> {
   const changes = changesSince(s.merged, await s.local.atriumRows(s.lobbyId), at)
   if (!changes.length) return
   // Kept for later: the next diff still has them.
-  if (!store.canWrite()) { needSignIn(true); return }
-  const save: DriveSave = { v: 1, changes }
-  const file = await store.write(`${at}.save`, await sealJson(s.key, save), { parent: s.kept.folder })
+  if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
+  const sealed = await sealJson(s.key, { v: 1, changes } satisfies DriveSave)
+  const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
   merge(s.merged, changes)
   s.last = at
   s.seen.add(file.id)
   await persist(s)
+  sendThroughRoom(ROOM_EVENT, { file: file.id, ...(sealed.length <= ROOM_MOST ? { sealed: bytesToBase64(sealed) } : {}) })
+}
+
+/** A save heard in the room: taken as it came, or -- too big to come -- read from Drive now. */
+async function heard(s: Session, payload: unknown): Promise<void> {
+  const { file, sealed } = (payload ?? {}) as { file?: unknown; sealed?: unknown }
+  if (typeof file !== 'string' || s.seen.has(file)) return
+  if (typeof sealed !== 'string') return down(s)
+  await take(s, [{ id: file, save: await unsealJson<DriveSave>(s.key, base64ToBytes(sealed)) }])
 }
 
 async function down(s: Session): Promise<void> {
@@ -281,15 +309,24 @@ async function down(s: Session): Promise<void> {
     for (const file of await store.listByLink(member.folder)) if (file.name.endsWith('.save') && !s.seen.has(file.id)) unread.push(file)
   }
   if (!unread.length) return
-  const took = new Map<string, Change>()
-  for (let at = 0; at < unread.length; at += AT_ONCE) {
-    const saves = await Promise.all(unread.slice(at, at + AT_ONCE).map(async file =>
-      ({ id: file.id, save: await unsealJson<DriveSave>(s.key, await store.readByLink(file.id)) })))
-    for (const { id, save } of saves) {
-      for (const change of merge(s.merged, save.changes)) took.set(`${change.table}/${change.id}`, change)
-      for (const change of save.changes) s.last = later(s.last, change.at)
-      s.seen.add(id)
+  setStatus({ catchingUp: true })
+  try {
+    for (let at = 0; at < unread.length; at += AT_ONCE) {
+      await take(s, await Promise.all(unread.slice(at, at + AT_ONCE).map(async file =>
+        ({ id: file.id, save: await unsealJson<DriveSave>(s.key, await store.readByLink(file.id)) }))))
     }
+  } finally {
+    setStatus({ catchingUp: false })
+  }
+}
+
+/** Saves read -- from Drive, or the room -- merged, and what took brought into the working copy. */
+async function take(s: Session, saves: { id: string; save: DriveSave }[]): Promise<void> {
+  const took = new Map<string, Change>()
+  for (const { id, save } of saves) {
+    for (const change of merge(s.merged, save.changes)) took.set(`${change.table}/${change.id}`, change)
+    for (const change of save.changes) s.last = later(s.last, change.at)
+    s.seen.add(id)
   }
   // Each row as it ends up merged, not as each save had it on the way.
   await bringIn(s, [...took.keys()].map(key => s.merged.get(key)!))

@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, JoinRefused, letEdit, readInvite, type Invite } from '../lib/driveSync'
+import { createDriveAtrium, forgetDriveAtrium, inviteIn, inviteLink, isDriveAtrium, joinDriveAtrium, JoinRefused, letEdit, readInvite, type Invite, type JoinStep } from '../lib/driveSync'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -245,7 +245,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // An invite to a Drive atrium, arrived in the address's # (lib/driveSync):
   // read by link, then offered -- or, already joined here, simply opened.
   const [invite, setInvite] = useState<(Invite & { lobbyId: string; name: string }) | null>(null)
-  const [joining, setJoining] = useState(false)
+  const [joining, setJoining] = useState<JoinStep | 'opening' | null>(null)
   // Looked for as the browser opens, and again whenever the # changes: a link
   // pasted here, on this very page, changes only that and reloads nothing.
   useEffect(() => {
@@ -263,11 +263,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }, [])
   const joinInvite = async () => {
     if (!invite) return
-    setJoining(true)
+    setJoining('signIn')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      const lobbyId = await joinDriveAtrium(invite, { id: user.id, name: username || 'You' })
+      const lobbyId = await joinDriveAtrium(invite, { id: user.id, name: username || 'You' }, setJoining)
+      setJoining('opening')
       // Its working copy, filled by the first sync (lib/driveSync, down first).
       const { localClient } = await browserEngine()
       const { data: had } = await localClient.from('lobbies').select('id').eq('id', lobbyId)
@@ -280,7 +281,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (err instanceof JoinRefused) setError(t(err.reason === 'notEditor' ? 'browser.drive.notEditor' : 'browser.drive.wrongFile', { account: err.account }))
       else if (message !== 'JOIN_CANCELLED') setError(message)
     } finally {
-      setJoining(false)
+      setJoining(null)
     }
   }
 
@@ -1051,10 +1052,20 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             <section className="border border-nier-border/40 p-5 space-y-3">
               <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.joinTitle', { name: invite.name })}</h3>
               <p className="text-nier-bg/75 text-xs leading-relaxed">{t('browser.drive.joinHint')}</p>
-              <div className="flex gap-2">
-                <button onClick={() => void joinInvite()} disabled={joining} className={ROW_ENTER}>{t('browser.drive.join')}</button>
-                <button onClick={() => setInvite(null)} className={ROW_BUTTON}>{t('common.cancel')}</button>
-              </div>
+              {joining ? (
+                // Some seconds, most of them Google's: said as they pass.
+                <div role="status">
+                  <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {t(`browser.drive.step.${joining}`)}</p>
+                  <div className="w-48 h-[3px] bg-nier-bg/15 overflow-hidden">
+                    <div className="h-full bg-nier-bg/80 animate-nier-slide" />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => void joinInvite()} className={ROW_ENTER}>{t('browser.drive.join')}</button>
+                  <button onClick={() => setInvite(null)} className={ROW_BUTTON}>{t('common.cancel')}</button>
+                </div>
+              )}
             </section>
           )}
           {/* Create Lobby */}
