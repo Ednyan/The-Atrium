@@ -20,6 +20,11 @@
 // One at a time, so what comes down never lands while a diff is taken; and
 // down before up -- the user's rule, the first save wins.
 //
+// Kept small: now and then the owner's app folds every save it has read into
+// one snapshot (`atrium.snapshot`, in the owner's folder), which says which
+// saves it holds; whoever joins reads it and only the saves after it, and
+// each writer's app removes its own saves once a snapshot holds them.
+//
 // Files (pictures, videos, documents): each sealed into the folder `files` in
 // its sender's atrium folder, before the save that first needs it, which says
 // where it went (a `media` row). Brought in once, into the browser's vault at
@@ -31,7 +36,7 @@ import { cloudClient } from './supabase'
 import {
   admit, base64ToBytes, bytesToBase64, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
   memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
-  type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Table,
+  snapshotOf, type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Snapshot, type Table,
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
@@ -52,7 +57,7 @@ export interface DriveStore {
   readByLink(id: string): Promise<Uint8Array>
   /** A file's version, without downloading it. */
   version(id: string): Promise<string>
-  listByLink(folder: string): Promise<{ id: string; name: string }[]>
+  listByLink(folder: string): Promise<Listed[]>
   readAppData(name: string): Promise<Uint8Array | null>
   writeAppData(name: string, bytes: Uint8Array): Promise<void>
   /** Shared with someone to edit, quietly; the permission's id. */
@@ -61,6 +66,8 @@ export interface DriveStore {
   noResharing(id: string): Promise<void>
   trash(id: string): Promise<void>
 }
+// A file as a folder's listing has it: its version, to tell it's changed.
+interface Listed { id: string; name: string; version?: string }
 const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 const googleDrive: DriveStore = {
   canWrite: drive.hasDriveToken,
@@ -469,7 +476,7 @@ const AT_ONCE = 6
 const ROOM_EVENT = 'drive-save'
 const ROOM_MOST = 40_000
 
-interface State { merged: Change[]; seen: string[]; last: Clock | null }
+interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] } }
 interface Session {
   lobbyId: string
   me: string
@@ -492,6 +499,10 @@ interface Session {
   // to be here, those being brought in, and those that failed to come -- tried
   // again from when, and how long it waited last.
   filesFolder: string | null
+  // The owner's snapshot as last read (or written) here, and when this
+  // session last wrote one.
+  snapshot: { version: string; folded: Set<string> } | null
+  compactedAt: number
   present: Set<string>
   fetching: Set<string>
   retry: Map<string, { at: number; wait: number }>
@@ -500,7 +511,10 @@ interface Session {
 let session: Session | null = null
 
 const statePath = (lobbyId: string) => ['drive', `${lobbyId}.json`]
-const persist = (s: Session) => s.local.writeVaultJson(statePath(s.lobbyId), { merged: [...s.merged.values()], seen: [...s.seen], last: s.last } satisfies State)
+const persist = (s: Session) => s.local.writeVaultJson(statePath(s.lobbyId), {
+  merged: [...s.merged.values()], seen: [...s.seen], last: s.last,
+  ...(s.snapshot ? { snapshot: { version: s.snapshot.version, folded: [...s.snapshot.folded] } } : {}),
+} satisfies State)
 const run = (s: Session, task: (s: Session) => Promise<void>) => {
   s.queue = s.queue.then(() => task(s)).catch(error => console.warn('[drive] sync:', error))
   return s.queue
@@ -518,7 +532,8 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0,
+    snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
   setStatus({ ended: undefined })
@@ -692,7 +707,6 @@ async function down(s: Session): Promise<void> {
   if (!roster) return
   // Downloads only for what's new: the roster when its version moves, saves
   // not read yet. A look at an atrium nobody has changed downloads nothing.
-  const unread: { id: string }[] = []
   const writers: { user: string; root: string | null }[] = writersOf(roster)
   // Those in by their invitation aren't in the roster with their folder yet:
   // it's in their profile.
@@ -705,6 +719,7 @@ async function down(s: Session): Promise<void> {
   // Files that didn't come yet: those of saves taken before (in a visit that
   // ended first), and those that failed.
   await bringFiles(s, rowsOf(s.merged, 'traces').flatMap(filesOf))
+  const listed: { user: string; files: Listed[] }[] = []
   for (const writer of writers) {
     let folder = s.folders.get(writer.user)
     if (!folder) {
@@ -713,18 +728,84 @@ async function down(s: Session): Promise<void> {
       if (!folder) continue
       s.folders.set(writer.user, folder)
     }
-    for (const file of await store.listByLink(folder)) if (file.name.endsWith('.save') && !s.seen.has(file.id)) unread.push(file)
+    listed.push({ user: writer.user, files: await store.listByLink(folder) })
   }
-  if (!unread.length) return
-  setStatus({ catchingUp: true })
-  try {
-    for (let at = 0; at < unread.length; at += AT_ONCE) {
-      await take(s, await Promise.all(unread.slice(at, at + AT_ONCE).map(async file =>
-        ({ id: file.id, save: fromJson<DriveSave>(await opened(s, await store.readByLink(file.id))) }))))
+  // The owner's folder holds the snapshot, once one's been made: read when
+  // it's changed, and before the saves -- those it holds aren't read.
+  const owner = roster.members.find(member => member.role === 'owner')?.user
+  const snapshot = listed.find(writer => writer.user === owner)?.files.find(file => file.name === SNAPSHOT)
+  const unread = () => listed.flatMap(writer => writer.files).filter(file => file.name.endsWith('.save') && !s.seen.has(file.id))
+  if ((snapshot && snapshot.version !== s.snapshot?.version) || unread().length) {
+    setStatus({ catchingUp: true })
+    try {
+      if (snapshot && snapshot.version !== s.snapshot?.version) await takeSnapshot(s, snapshot, listed)
+      const saves = unread()
+      for (let at = 0; at < saves.length; at += AT_ONCE) {
+        const read = await Promise.all(saves.slice(at, at + AT_ONCE).map(file => readSave(s, file.id)))
+        await take(s, read.filter(save => save !== null))
+      }
+    } finally {
+      setStatus({ catchingUp: false })
     }
-  } finally {
-    setStatus({ catchingUp: false })
   }
+  await tidy(s, roster, listed)
+}
+
+/** A save read from Drive -- or null, gone: removed by its writer once a
+ *  snapshot held it, which this browser reads at its next look. */
+async function readSave(s: Session, id: string): Promise<{ id: string; save: DriveSave } | null> {
+  try {
+    return { id, save: fromJson<DriveSave>(await opened(s, await store.readByLink(id))) }
+  } catch (error) {
+    if (!/Drive 404/.test(String(error))) throw error
+    s.seen.add(id)
+    return null
+  }
+}
+
+// ---------------------------------------------------------------- kept small
+
+const SNAPSHOT = 'atrium.snapshot'
+// A new snapshot once this many saves aren't in one, and not more often than
+// this: everyone in the atrium downloads each new one.
+const COMPACT_AFTER = 100
+const COMPACT_EVERY_MS = 30 * 60_000
+// Deletions are carried this long; an edit to the row saved before then, and
+// never folded, is all that could bring the row back after.
+const FORGET_MS = 30 * 24 * 60 * 60_000
+// One's own saves removed at each look, at most.
+const TRASH_AT_ONCE = 50
+
+/** The owner's snapshot taken in, and what it holds counted as read. What's
+ *  counted as read is kept to what's still in Drive. */
+async function takeSnapshot(s: Session, file: Listed, listed: { files: Listed[] }[]): Promise<void> {
+  const snapshot = fromJson<Snapshot>(await opened(s, await store.readByLink(file.id)))
+  await take(s, [{ id: file.id, save: snapshot }])
+  const inDrive = new Set(listed.flatMap(writer => writer.files.map(listedFile => listedFile.id)))
+  s.seen = new Set([...[...s.seen].filter(id => inDrive.has(id)), ...snapshot.folded])
+  s.snapshot = { version: file.version ?? '', folded: new Set(snapshot.folded) }
+  await persist(s)
+}
+
+/** One's own saves a snapshot holds, removed: nobody needs them now. And the
+ *  owner's app, once enough saves have gathered, folds all it has read into
+ *  a new snapshot. */
+async function tidy(s: Session, roster: Roster, listed: { user: string; files: Listed[] }[]): Promise<void> {
+  if (!store.canWrite()) return
+  const mine = listed.find(writer => writer.user === s.me)?.files ?? []
+  const done = mine.filter(file => file.name.endsWith('.save') && s.snapshot?.folded.has(file.id)).slice(0, TRASH_AT_ONCE)
+  for (const file of done) await store.trash(file.id).catch(error => console.warn('[drive] removing a folded save:', error))
+  if (memberOf(roster, s.me)?.role !== 'owner' || Date.now() - s.compactedAt < COMPACT_EVERY_MS) return
+  const saves = listed.flatMap(writer => writer.files).filter(file => file.name.endsWith('.save'))
+  if (saves.filter(file => !s.snapshot?.folded.has(file.id)).length < COMPACT_AFTER) return
+  s.compactedAt = Date.now()
+  // Only saves read here: one listed and not read yet stays, for whoever reads it.
+  const folded = saves.filter(file => s.seen.has(file.id)).map(file => file.id)
+  const sealed = await sealJson(s.keyring, snapshotOf(s.merged, folded, Date.now() - FORGET_MS))
+  const had = mine.find(file => file.name === SNAPSHOT)
+  const file = await store.write(SNAPSHOT, sealed, had ? { id: had.id } : { parent: s.kept.folder })
+  s.snapshot = { version: file.version ?? '', folded: new Set(folded) }
+  await persist(s)
 }
 
 /** Saves read -- from Drive, or the room -- merged, and what took brought into the working copy. */

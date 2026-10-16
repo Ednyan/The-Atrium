@@ -226,8 +226,19 @@ export function changesSince(merged: Merged, current: Partial<Record<Table, Reco
   return changes
 }
 
-/** Everything merged, as one snapshot (tombstones kept, so a late old save still can't revive a row). */
-export const snapshotOf = (merged: Merged): DriveSave => ({ v: 1, changes: [...merged.values()] })
+// A snapshot: everything merged, and which save files that holds -- so a
+// reader reads those no more, and whoever wrote them can remove them.
+export interface Snapshot extends DriveSave { folded: string[] }
+
+/** Everything merged, as one snapshot. Deletions are kept, so a late old save
+ *  still can't bring a row back -- but not those older than `forgetBefore`
+ *  (ms): only an edit saved before then and never folded could, and the
+ *  atrium would carry every deletion ever made. */
+export const snapshotOf = (merged: Merged, folded: string[] = [], forgetBefore = 0): Snapshot => ({
+  v: 1,
+  changes: [...merged.values()].filter(change => change.row !== null || timeOf(change.at) >= forgetBefore),
+  folded,
+})
 
 // ---------------------------------------------------------------- an invitation's secret
 

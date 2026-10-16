@@ -681,7 +681,25 @@ media, because it changes the file format.
   - Tested: scratchpad `drivemedia`.
   - Not tested against the real Google Drive yet: the resumable upload's
     answer (its `Location` header, read across origins).
-- Not yet: compaction, and asking to join from inside the atrium.
+- **Compaction (step 8).**
+  - The owner's app folds every save it has read into one sealed snapshot,
+    `atrium.snapshot` in the owner's folder. The snapshot lists the save
+    files it holds.
+  - It does so once 100 saves aren't in a snapshot, and at most every 30
+    minutes, since everyone in the atrium downloads each new one.
+  - Readers notice a new snapshot by its version in the owner's folder
+    listing, which they already make, so that costs no extra call. They read
+    it before the saves, and skip the saves it holds. A joiner reads the
+    snapshot and only the saves after it.
+  - Each writer's app removes its own saves once a snapshot holds them, 50
+    at each look. A save found gone (404) was folded, and comes with the
+    snapshot.
+  - Deletions are carried for 30 days, then dropped from snapshots.
+  - Only the owner compacts: an atrium whose owner never returns keeps
+    growing.
+  - Tested: scratchpad `drivecompact` (105 saves → a snapshot of 100, the
+    folded saves removed, and a fresh copy from the snapshot plus 8 saves).
+- Not yet: asking to join from inside the atrium.
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.

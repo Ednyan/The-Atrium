@@ -188,6 +188,19 @@ test('the working copy against what is merged: new, changed and gone rows, nothi
   assert.deepEqual(changesSince(merged, { traces: [{ id: 't1', x: 1, style: { a: 1, b: 2 } }] }, '4'), [])
 })
 
+test('a snapshot keeps every row, and only recent deletions', () => {
+  const merged: Merged = new Map()
+  const day = 24 * 3600 * 1000, now = 100 * day
+  merge(merged, [
+    { table: 'traces', id: 'old', at: tick(null, now - 60 * day, 'a'), row: { id: 'old' } },
+    { table: 'traces', id: 'gone-long-ago', at: tick(null, now - 40 * day, 'a'), row: null },
+    { table: 'traces', id: 'gone-lately', at: tick(null, now - day, 'a'), row: null },
+  ])
+  const snapshot = snapshotOf(merged, ['S1', 'S2'], now - 30 * day)
+  assert.deepEqual(snapshot.changes.map(c => c.id).sort(), ['gone-lately', 'old'])
+  assert.deepEqual(snapshot.folded, ['S1', 'S2'])
+})
+
 test('where its files are in Drive is never taken for deleted', () => {
   const merged: Merged = new Map()
   merge(merged, [
