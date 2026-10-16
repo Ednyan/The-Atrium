@@ -27,7 +27,7 @@ import {
   memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, sameKey, sealForSecret, sealJson, tick, unsealJson, writersOf,
   type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Table,
 } from './driveFormat'
-import { tellHere, type LiveTable } from './liveChanges'
+import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { onRoomEvent, sendThroughRoom } from './rooms'
 
 /** What the sync needs of Drive: lib/drive, or a stand-in (the harness). */
@@ -154,6 +154,11 @@ function keep(lobbyId: string, kept: Kept | null) {
 export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 /** Its owner's, here: Delete takes it out of Drive; anyone else's leaves. */
 export const isDriveOwner = (lobbyId: string) => !!allKept()[lobbyId]?.owner
+/** Its owner, as its roster last read here says (null if it hasn't been). */
+export function ownerOf(lobbyId: string): string | null {
+  const kept = allKept()[lobbyId]
+  return (kept && rostersKept()[kept.roster]?.roster.members.find(member => member.role === 'owner')?.user) ?? null
+}
 /** Google's window, if need be, first thing on a click (it can't open later). */
 export const ensureSignedIn = () => store.signIn()
 
@@ -725,6 +730,8 @@ async function bringIn(s: Session, changes: Change[]): Promise<void> {
       rows = rows.map(row => ({ ...here, ...row }))
     }
     await s.local.takeAtriumRows(s.lobbyId, table, rows, gone)
+    // Its name, its theme: the open atrium reads its row again.
+    if (table === 'lobbies') window.dispatchEvent(new CustomEvent(LOBBY_CHANGED_EVENT, { detail: s.lobbyId }))
     const live = LIVE[table]
     if (live) tellHere({ t: live, ...(rows.length ? { ids: rows.map(row => String(row.id)) } : {}), ...(gone.length ? { gone } : {}) })
   }

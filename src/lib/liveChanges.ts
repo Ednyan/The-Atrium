@@ -25,6 +25,10 @@ export type LiveTable = 'traces' | 'layers' | 'trace_links' | 'lobby_locations'
 /** Fired on window with the ids of traces just taken from someone else's
  *  save (useTraces): what's drawn here for them gives way (TraceOverlay). */
 export const TRACES_RECEIVED_EVENT = 'atrium:traces-received'
+/** Fired on window with an atrium's id once its own row -- its name, its
+ *  theme -- has changed in the database from elsewhere (a Drive atrium's
+ *  sync): the open atrium reads it again (LobbyScene). */
+export const LOBBY_CHANGED_EVENT = 'atrium:lobby-changed'
 /** Rows changed (`ids`), rows gone (`gone`), or anything at all (`all`). */
 export interface Change { t: LiveTable; ids?: string[]; gone?: string[]; all?: boolean }
 

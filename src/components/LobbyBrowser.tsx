@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, type Invitation, type JoinStep } from '../lib/driveSync'
+import { createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, ownerOf, readInvite, rosterVersion, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -299,7 +299,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         // Its working copy, filled by the first sync (lib/driveSync, down first).
         const { localClient } = await browserEngine()
         const { data: had } = await localClient.from('lobbies').select('id').eq('id', result.lobbyId)
-        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, owner_user_id: user.id, is_public: false, max_players: 50 })
+        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, owner_user_id: ownerOf(result.lobbyId) ?? user.id, is_public: false, max_players: 50 })
         rememberBrowserAtrium(result.lobbyId)
         setInvite(null)
         onJoinLobby(result.lobbyId)

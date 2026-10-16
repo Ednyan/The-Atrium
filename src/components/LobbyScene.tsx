@@ -32,7 +32,7 @@ import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
-import { liveTable } from '../lib/liveChanges'
+import { LOBBY_CHANGED_EVENT, liveTable } from '../lib/liveChanges'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -1841,38 +1841,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }, [])
 
-  // Load lobby info
-  useEffect(() => {
+  // The atrium's own row -- its name, theme, who may edit -- read: on entering,
+  // after it's changed here (theme, settings), and when it changes from
+  // elsewhere (a Drive atrium's sync, LOBBY_CHANGED_EVENT).
+  const reloadLobby = useCallback(async () => {
     if (!supabase || !lobbyId) return
-
-    const loadLobby = async () => {
-      const { data, error } = await (supabase!
-        .from('lobbies')
-        .select('*')
-        .eq('id', lobbyId)
-        .single() as any)
-
-      if (!error && data) {
-        const lobby: Lobby = {
-          id: data.id,
-          name: data.name,
-          ownerUserId: data.owner_user_id,
-          passwordHash: data.password_hash,
-          maxPlayers: data.max_players,
-          isPublic: data.is_public,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-          themeSettings: data.theme_settings,
-          adminUserIds: data.admin_user_ids ?? [],
-          editPermissionMode: data.edit_permission_mode ?? 'all',
-        }
-        setCurrentLobby(lobby)
-        setIsLobbyOwner(data.owner_user_id === userId)
-      }
+    try {
+      const { data, error } = await (supabase.from('lobbies').select('*').eq('id', lobbyId).single() as any)
+      if (error || !data) return
+      setCurrentLobby({
+        id: data.id,
+        name: data.name,
+        ownerUserId: data.owner_user_id,
+        passwordHash: data.password_hash,
+        maxPlayers: data.max_players,
+        isPublic: data.is_public,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        themeSettings: data.theme_settings,
+        adminUserIds: data.admin_user_ids ?? [],
+        editPermissionMode: data.edit_permission_mode ?? 'all',
+      })
+      setIsLobbyOwner(data.owner_user_id === userId)
+    } catch (err) {
+      console.error('Failed to load the atrium:', err)
     }
-
-    loadLobby()
   }, [lobbyId, userId])
+  useEffect(() => { void reloadLobby() }, [reloadLobby])
+  useEffect(() => {
+    const changed = (e: Event) => { if ((e as CustomEvent<string>).detail === lobbyId) void reloadLobby() }
+    window.addEventListener(LOBBY_CHANGED_EVENT, changed)
+    return () => window.removeEventListener(LOBBY_CHANGED_EVENT, changed)
+  }, [lobbyId, reloadLobby])
 
   // Derived from currentLobby (already loaded/refreshed above) rather than a
   // separate query -- admin status now lives on the lobby row itself
@@ -6050,35 +6050,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onPick={pickTheme}
           canSaveForAtrium={isLobbyOwner || isLobbyAdmin}
           onClose={() => setShowThemeCustomization(false)}
-          onUpdate={async () => {
-            // Reload lobby info to get updated theme
-            if (!supabase) return
-            try {
-              const { data, error } = await (supabase
-                .from('lobbies')
-                .select('*')
-                .eq('id', lobbyId)
-                .single() as any)
-              if (!error && data) {
-                const lobby: Lobby = {
-                  id: data.id,
-                  name: data.name,
-                  ownerUserId: data.owner_user_id,
-                  passwordHash: data.password_hash,
-                  maxPlayers: data.max_players,
-                  isPublic: data.is_public,
-                  createdAt: data.created_at,
-                  updatedAt: data.updated_at,
-                  themeSettings: data.theme_settings,
-                  adminUserIds: data.admin_user_ids ?? [],
-                  editPermissionMode: data.edit_permission_mode ?? 'all',
-                }
-                setCurrentLobby(lobby)
-              }
-            } catch (err) {
-              console.error('Failed to reload lobby after theme save:', err)
-            }
-          }}
+          onUpdate={() => void reloadLobby()}
         />
       )}
 
@@ -6088,33 +6060,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           lobby={currentLobby}
           isOwner={isLobbyOwner}
           onClose={() => setShowLobbyManagement(false)}
-          onUpdate={() => {
-            // Reload lobby info
-            if (supabase) {
-              (supabase!
-                .from('lobbies')
-                .select('*')
-                .eq('id', lobbyId)
-                .single() as any).then(({ data }: any) => {
-                  if (data) {
-                    setCurrentLobby({
-                      id: data.id,
-                      name: data.name,
-                      ownerUserId: data.owner_user_id,
-                      passwordHash: data.password_hash,
-                      maxPlayers: data.max_players,
-                      isPublic: data.is_public,
-                      createdAt: data.created_at,
-                      updatedAt: data.updated_at,
-                      themeSettings: data.theme_settings,
-                      adminUserIds: data.admin_user_ids ?? [],
-                      editPermissionMode: data.edit_permission_mode ?? 'all',
-                    })
-                    setIsLobbyOwner(data.owner_user_id === userId)
-                  }
-                })
-            }
-          }}
+          onUpdate={() => void reloadLobby()}
         />
       )}
 

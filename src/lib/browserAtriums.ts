@@ -99,9 +99,11 @@ export async function enterBrowserAtrium(lobbyId: string, guest: Maker | null) {
   // Kept in Drive too: shared, so it has a room; in step with Drive while open (lib/driveSync).
   const sync = await import('./driveSync')
   const shared = sync.isDriveAtrium(lobbyId)
-  // Whoever uses this browser owns its atriums -- one made as a guest, opened
-  // signed in, is still theirs to set up.
-  await local.localClient.from('lobbies').update({ owner_user_id: maker.id }).eq('id', lobbyId).neq('owner_user_id', maker.id)
+  // Whoever uses this browser owns its own atriums -- one made as a guest,
+  // opened signed in, is still theirs to set up. A Drive atrium's owner is
+  // whom its roster says: someone else's isn't one's to set up.
+  const owner = shared ? sync.ownerOf(lobbyId) : maker.id
+  if (owner) await local.localClient.from('lobbies').update({ owner_user_id: owner }).eq('id', lobbyId).neq('owner_user_id', owner)
   if (shared) await sync.startDriveSync(lobbyId, maker.id)
   switchDataClient({
     ...local.localClient,
