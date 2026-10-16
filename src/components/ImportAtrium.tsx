@@ -551,7 +551,7 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
 
             {!isDesktop && canCloud && (
               <div className="mb-4">
-                <KeptWhere inBrowser={inBrowser} canCloud={canCloud} onChange={setInBrowser} />
+                <KeptWhere where={inBrowser ? 'browser' : 'cloud'} canCloud={canCloud} onChange={where => setInBrowser(where === 'browser')} />
               </div>
             )}
 

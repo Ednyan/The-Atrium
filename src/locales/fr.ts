@@ -162,6 +162,8 @@ const fr: Catalogue = {
   'browser.onlineHint': 'Avec qui vous invitez, depuis n’importe quel appareil. Jusqu’à 3.',
   'browser.inBrowser': 'Dans ce navigateur',
   'browser.inBrowserHint': 'Gratuit, sans limite. Sur cet appareil seulement, pour vous seul.',
+  'browser.inDrive': 'Dans Google Drive',
+  'browser.inDriveHint': 'Chiffré, dans votre propre Google Drive. Gratuit, sans limite.',
   'browser.guestNote': 'Sans compte, vos atriums sont conservés dans ce navigateur, pour vous seul. Connectez-vous pour créer des atriums à partager et voir ceux des autres.',
 
   // ---------------------------------------------------------- in an atrium
@@ -564,6 +566,7 @@ const fr: Catalogue = {
   'atrium.overlay.exited': 'Mode superposition désactivé',
   'atrium.browser.inUse': 'Les Atriums de ce navigateur sont ouverts dans un autre onglet. Fermez-le ou continuez-y.',
   'atrium.browser.unsupported': 'Ce navigateur ne peut pas conserver d’atriums : il bloque ce dont ils ont besoin (WebAssembly ou le stockage du site). Une fenêtre privée, le mode Isolement ou un réglage de sécurité peut en être la cause.',
+  'atrium.drive.reconnect': 'Reconnectez Google Drive pour enregistrer',
   'atrium.hud.manage': "Réglages de l’Atrium",
   'atrium.hud.saveAtrium': 'Exporter l’atrium vers…',
   'atrium.menu.exportImage': 'Exporter en image',

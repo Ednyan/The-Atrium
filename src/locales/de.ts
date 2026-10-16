@@ -163,6 +163,8 @@ const de: Catalogue = {
   'browser.onlineHint': 'Mit allen, die du einlädst, von jedem Gerät. Bis zu 3.',
   'browser.inBrowser': 'In diesem Browser',
   'browser.inBrowserHint': 'Kostenlos, ohne Limit. Nur auf diesem Gerät, nur für dich.',
+  'browser.inDrive': 'In Google Drive',
+  'browser.inDriveHint': 'Verschlüsselt, in deinem eigenen Google Drive. Kostenlos, ohne Limit.',
   'browser.guestNote': 'Ohne Konto bleiben deine Atrien in diesem Browser, nur für dich. Melde dich an, um Atrien zu erstellen, die du teilen kannst, und die der anderen zu sehen.',
 
   // ---------------------------------------------------------- in an atrium
@@ -565,6 +567,7 @@ const de: Catalogue = {
   'atrium.overlay.exited': 'Overlay-Modus aus',
   'atrium.browser.inUse': 'Die Atriums dieses Browsers sind in einem anderen Tab geöffnet. Schließe ihn oder arbeite dort weiter.',
   'atrium.browser.unsupported': 'Dieser Browser kann keine Atrien speichern: Er blockiert, was sie brauchen (WebAssembly oder Website-Speicher). Das kann an einem privaten Fenster, dem Blockierungsmodus oder einer Sicherheitseinstellung liegen.',
+  'atrium.drive.reconnect': 'Mit Google Drive verbinden, um zu speichern',
   'atrium.hud.manage': "Atrium-Einstellungen",
   'atrium.hud.saveAtrium': 'Atrium exportieren nach…',
   'atrium.menu.exportImage': 'Als Bild exportieren',

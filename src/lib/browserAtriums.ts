@@ -99,6 +99,9 @@ export async function enterBrowserAtrium(lobbyId: string, guest: Maker | null) {
   // Whoever uses this browser owns its atriums -- one made as a guest, opened
   // signed in, is still theirs to set up.
   await local.localClient.from('lobbies').update({ owner_user_id: maker.id }).eq('id', lobbyId).neq('owner_user_id', maker.id)
+  // Kept in Drive too: in step with it while it's open (lib/driveSync).
+  const sync = await import('./driveSync')
+  if (sync.isDriveAtrium(lobbyId)) await sync.startDriveSync(lobbyId, maker.id)
   switchDataClient({
     ...local.localClient,
     // Who's signed in stays the account's; a guest is the engine's own.
@@ -120,6 +123,8 @@ export function leaveBrowserAtrium(): Promise<void> {
     await whenTracesWritten()
     await whenLayerChangesDone()
     await whenSaveDone()
+    // What a Drive atrium had left to send, sent.
+    await (await import('./driveSync')).stopDriveSync()
     switchDataClient(null)
     inside = null
   })().finally(() => { leaving = null })

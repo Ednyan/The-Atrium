@@ -203,6 +203,8 @@ const ja: Catalogue = {
   'browser.onlineHint': '招待した人と、どの端末からでも。最大 3 つ。',
   'browser.inBrowser': 'このブラウザ',
   'browser.inBrowserHint': '無料・無制限。この端末だけ、あなただけ。',
+  'browser.inDrive': 'Google ドライブ',
+  'browser.inDriveHint': '暗号化して、あなた自身の Google ドライブに。無料・無制限。',
   'browser.guestNote': 'アカウントなしでは、Atrium はこのブラウザにあなただけのために保存されます。ログインすると、共有できる Atrium を作ったり、ほかの人の Atrium を見たりできます。',
 
   // ---------------------------------------------------------- in an atrium
@@ -532,6 +534,7 @@ const ja: Catalogue = {
   'atrium.overlay.exited': 'オーバーレイを終了しました',
   'atrium.browser.inUse': 'このブラウザの Atrium は別のタブで開かれています。そのタブを閉じるか、そちらで続けてください。',
   'atrium.browser.unsupported': 'このブラウザでは Atrium を保存できません。必要な機能（WebAssembly またはサイトのストレージ）がブロックされています。プライベートウィンドウ、ロックダウンモード、セキュリティ設定が原因のことがあります。',
+  'atrium.drive.reconnect': '保存するには Google ドライブに再接続してください',
   'atrium.hud.manage': "Atrium の設定",
   'atrium.hud.saveAtrium': 'アトリウムを書き出す…',
   'atrium.menu.exportImage': '画像として書き出し',

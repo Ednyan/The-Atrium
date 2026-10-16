@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  keyFromText, keyToText, later, merge, newAtriumKey, rowsOf, seal, sealJson, snapshotOf, tick, unseal, unsealJson,
+  changesSince, keyFromText, keyToText, later, merge, newAtriumKey, rowsOf, seal, sealJson, snapshotOf, tick, unseal, unsealJson,
   type Change, type Merged,
 } from '../src/lib/driveFormat.ts'
 
@@ -89,4 +89,31 @@ test('merging says what took, and tables are apart', () => {
   assert.equal(merge(merged, [change('a', '1', { n: 1 }), change('a', '1', { n: 1 }, 'layers')]).length, 2)
   assert.equal(merge(merged, [change('a', '1', { n: 1 })]).length, 0)
   assert.deepEqual(rowsOf(merged, 'layers'), [{ n: 1 }])
+})
+
+test('the working copy against what is merged: new, changed and gone rows, nothing for the same', () => {
+  const merged: Merged = new Map()
+  merge(merged, [change('t1', '1', { id: 't1', x: 1, style: { a: 1, b: 2 } }), change('t2', '1', { id: 't2', x: 2 }), change('t3', '1', null)])
+  const changes = changesSince(merged, {
+    // Same row, keys in another order: no change.
+    traces: [{ style: { b: 2, a: 1 }, x: 1, id: 't1' }, { id: 't2', x: 20 }, { id: 't4', x: 4 }],
+  }, '2')
+  assert.deepEqual(changes.map(c => [c.id, c.row === null ? 'gone' : 'row']).sort(), [['t2', 'row'], ['t4', 'row']])
+  // A row the working copy no longer has: deleted, at the new clock.
+  const gone = changesSince(merged, { traces: [{ id: 't1', x: 1, style: { a: 1, b: 2 } }] }, '3')
+  assert.deepEqual(gone.map(c => [c.id, c.row, c.at]), [['t2', null, '3']])
+  // Taken in, the next look finds nothing.
+  merge(merged, gone)
+  assert.deepEqual(changesSince(merged, { traces: [{ id: 't1', x: 1, style: { a: 1, b: 2 } }] }, '4'), [])
+})
+
+test("an atrium's own row travels without what's each device's", () => {
+  const merged: Merged = new Map()
+  const here = { id: 'L', name: 'A', theme_settings: { x: 1 }, owner_user_id: 'me', preview_url: 'local://p', updated_at: 'now' }
+  const [first] = changesSince(merged, { lobbies: [here] }, '1')
+  assert.deepEqual(first.row, { id: 'L', name: 'A', theme_settings: { x: 1 } })
+  merge(merged, [first])
+  // Someone else owns it on their device, with their own picture: not a change.
+  assert.deepEqual(changesSince(merged, { lobbies: [{ ...here, owner_user_id: 'them', preview_url: 'local://q' }] }, '2'), [])
+  assert.equal(changesSince(merged, { lobbies: [{ ...here, name: 'B' }] }, '3').length, 1)
 })

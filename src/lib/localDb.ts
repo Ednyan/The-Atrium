@@ -99,15 +99,18 @@ export async function setVaultBasePath(path: string): Promise<string> {
 // so they sit at the top of the vault in one file, each tip inline as a small
 // PNG, and go wherever the vault goes. Returned unchecked: the caller keeps
 // only what it recognises.
-export async function readVaultBrushes(): Promise<unknown> {
-  const path = await joinPathSegments(await getVaultBasePath(), ['brushes.json'])
-  if (!(await vaultPathExists(path))) return []
+export const readVaultBrushes = (): Promise<unknown> => readVaultJson(['brushes.json'], [])
+export const writeVaultBrushes = (brushes: unknown): Promise<void> => writeVaultJson(['brushes.json'], brushes)
+
+/** A JSON file in the vault, by its place in it (`fallback` where there's none). */
+export async function readVaultJson<T>(segments: string[], fallback: T): Promise<T> {
+  const path = await joinPathSegments(await getVaultBasePath(), segments)
+  if (!(await vaultPathExists(path))) return fallback
   return JSON.parse(new TextDecoder().decode(await readBinaryFile(path)))
 }
 
-export async function writeVaultBrushes(brushes: unknown): Promise<void> {
-  const path = await joinPathSegments(await getVaultBasePath(), ['brushes.json'])
-  await writeVaultTextFile(path, JSON.stringify(brushes))
+export async function writeVaultJson(segments: string[], value: unknown): Promise<void> {
+  await writeVaultTextFile(await joinPathSegments(await getVaultBasePath(), segments), JSON.stringify(value))
 }
 
 async function vaultPathExists(path: string): Promise<boolean> {
@@ -930,6 +933,7 @@ async function readRowsForMutation(table: string, filters: QueryFilter[]): Promi
 
 async function handleVaultSyncAfterMutation(opts: QueryOptions, previousRows: any[], insertedRow?: any): Promise<void> {
   if (!db) return
+  onLocalWrite?.()
 
   switch (opts.table) {
     // A thread's rows carry their atrium like a trace's, and its mirror holds them.
@@ -2473,6 +2477,36 @@ class MockChannel {
   }
 
   unsubscribe(): void {}
+}
+
+// ---- A Drive atrium's sync (lib/driveSync) ----
+
+let onLocalWrite: (() => void) | null = null
+/** Told after every write through the client -- not the sync's own, below. */
+export const listenToLocalWrites = (listener: (() => void) | null) => { onLocalWrite = listener }
+
+/** Every row of an atrium, by table, as the client reads them. Its groups too
+ *  where they're from before groups carried their atrium: by its traces. */
+export async function atriumRows(lobbyId: string): Promise<Record<string, any[]>> {
+  if (!db) throw new Error('no database')
+  const read = async (table: string, where: string, params: string[]) =>
+    ((await db!.select<any[]>(`SELECT * FROM ${table} WHERE ${where}`, params)) as any[]).map(row => convertRowFromSql(table, row))
+  return {
+    lobbies: await read('lobbies', 'id = ?', [lobbyId]),
+    traces: await read('traces', 'lobby_id = ?', [lobbyId]),
+    layers: await read('layers', 'lobby_id = ? OR id IN (SELECT layer_id FROM traces WHERE lobby_id = ?)', [lobbyId, lobbyId]),
+    trace_links: await read('trace_links', 'lobby_id = ?', [lobbyId]),
+    lobby_locations: await read('lobby_locations', 'lobby_id = ?', [lobbyId]),
+  }
+}
+
+/** Rows brought in by the sync: each replacing any with its id, or (null)
+ *  removed. Not told to listenToLocalWrites -- they're the sync's own. */
+export async function takeAtriumRows(lobbyId: string, table: string, rows: Record<string, any>[], gone: string[]): Promise<void> {
+  if (!db) throw new Error('no database')
+  for (const row of rows) await putRow(table, row)
+  if (gone.length) await db.execute(`DELETE FROM ${table} WHERE id IN (${gone.map(() => '?').join(', ')})`, gone)
+  scheduleLobbyVaultSync(lobbyId)
 }
 
 // ---- In a browser (lib/browserAtriums) ----

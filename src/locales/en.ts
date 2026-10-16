@@ -197,6 +197,8 @@ export const en = {
   'browser.onlineHint': 'Shared with whoever you invite, from any device. Up to 3.',
   'browser.inBrowser': 'In this browser',
   'browser.inBrowserHint': 'Free, no limit. Only on this device, only for you.',
+  'browser.inDrive': 'In Google Drive',
+  'browser.inDriveHint': 'Encrypted, in your own Google Drive. Free, no limit.',
   'browser.guestNote': "Without an account, your atriums are kept in this browser, for you alone. Sign in to make atriums you can share, and to see everyone else's.",
 
   // ---------------------------------------------------------- in an atrium
@@ -516,6 +518,7 @@ export const en = {
   'atrium.overlay.exited': 'Overlay mode off',
   'atrium.browser.inUse': "This browser's atriums are open in another tab. Close that tab, or carry on there.",
   'atrium.browser.unsupported': "This browser can't keep atriums: it blocks what they need to run (WebAssembly or site storage). A private window, Lockdown Mode or a security setting can do this.",
+  'atrium.drive.reconnect': 'Reconnect to Google Drive to save',
   'atrium.hud.manage': "Atrium Settings",
   'atrium.hud.saveAtrium': 'Export Atrium to…',
   'atrium.menu.exportImage': 'Export as image',

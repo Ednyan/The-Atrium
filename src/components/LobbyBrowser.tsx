@@ -4,7 +4,9 @@ import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
-import KeptWhere from './KeptWhere'
+import KeptWhere, { type Where } from './KeptWhere'
+import { driveToken, GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
+import { createDriveAtrium, forgetDriveAtrium, isDriveAtrium } from '../lib/driveSync'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -78,8 +80,10 @@ function AtriumPreview({ url }: { url?: string | null }) {
 interface LobbyWithOwner extends Lobby {
   ownerUsername?: string
   playerCount?: number
-  // Kept in this browser (lib/browserAtriums), not the cloud.
+  // Kept in this browser (lib/browserAtriums), not the cloud -- and maybe in
+  // Google Drive too (lib/driveSync).
   inBrowser?: boolean
+  inDrive?: boolean
 }
 
 // A lobbies row as the lists show it.
@@ -135,9 +139,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [newLobbyName, setNewLobbyName] = useState('')
   const [newLobbyPassword, setNewLobbyPassword] = useState('')
   const [newLobbyIsPublic, setNewLobbyIsPublic] = useState(true)
-  // The new atrium kept in this browser rather than the cloud.
-  const [newInBrowser, setNewInBrowser] = useState(false)
-  const browserChoice = !isDesktop && newInBrowser
+  // Where the new atrium is kept: the cloud, or this browser -- and Drive too.
+  const [newWhere, setNewWhere] = useState<Where>('cloud')
+  const browserChoice = !isDesktop && newWhere !== 'cloud'
+  // Drive atriums: testers, signed in, where Google sign-in is set up.
+  const canDrive = driveSpikeOn && !guest && !!GOOGLE_CLIENT_ID
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null)
   const [passwordInput, setPasswordInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -315,7 +321,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       const { localClient } = await browserEngine()
       const { data, error } = await localClient.from('lobbies').select('*').in('id', ids)
       if (error) throw error
-      setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true })))
+      setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true, inDrive: isDriveAtrium(lobby.id) })))
     } catch (err) {
       const problem = vaultProblem(err)
       setError(problem ? t(problem) : t('browser.errLoadLobbies', { message: String(err) }))
@@ -523,6 +529,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }
 
     try {
+      // Google's window first, while the click that asked still counts.
+      if (canDrive && newWhere === 'drive') await driveToken()
       // Kept in this browser (lib/browserAtriums), or the cloud's.
       const client = browserChoice ? (await browserEngine()).localClient : supabase
       const { data: { user } } = await client.auth.getUser()
@@ -564,6 +572,16 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
       if (error) throw error
       if (browserChoice) rememberBrowserAtrium(data.id)
+      // In Drive too (lib/driveSync) -- or, if Drive won't have it, not at all.
+      if (canDrive && newWhere === 'drive') {
+        try {
+          await createDriveAtrium(data.id, newLobbyName, { id: user.id, name: username || 'You' })
+        } catch (driveError) {
+          await (client.from('lobbies') as any).delete().eq('id', data.id)
+          forgetBrowserAtrium(data.id)
+          throw driveError
+        }
+      }
 
       // Join the newly created lobby
       onJoinLobby(data.id)
@@ -736,6 +754,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
       if (error) throw error
       forgetBrowserAtrium(lobbyId)
+      // Out of this browser; still in Drive, where it's its owner's to remove.
+      forgetDriveAtrium(lobbyId)
 
       loadLobbies()
       checkCanCreateLobby()
@@ -995,7 +1015,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   />
                 </div>
                 {/* A guest's only go in the browser. */}
-                {!isDesktop && !guest && <KeptWhere inBrowser={newInBrowser} canCloud={canCreateMore} onChange={setNewInBrowser} />}
+                {!isDesktop && !guest && (
+                  <KeptWhere
+                    where={newWhere}
+                    canCloud={canCreateMore}
+                    canDrive={canDrive}
+                    onChange={where => {
+                      setNewWhere(where)
+                      if (where === 'drive') void loadGoogleSignIn().catch(() => {})
+                    }}
+                  />
+                )}
                 {!browserChoice && (
                 <div>
                   <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.passwordOptional')}</label>
@@ -1035,7 +1065,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               // Never out of room: past the cloud's three, it's kept in the browser.
               <button
                 onClick={() => {
-                  setNewInBrowser(guest || !canCreateMore)
+                  setNewWhere(guest || !canCreateMore ? 'browser' : 'cloud')
                   setShowCreateLobby(true)
                 }}
                 className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
@@ -1120,7 +1150,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         )}
                         <div className={ROW_META}>
                           {lobby.inBrowser ? (
-                            <span>◇ {t('browser.inBrowser')}</span>
+                            <span>◇ {t(lobby.inDrive ? 'browser.inDrive' : 'browser.inBrowser')}</span>
                           ) : (
                             <>
                               <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>

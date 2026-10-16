@@ -25,6 +25,8 @@ const loadLobbyScene = () => import('./components/LobbyScene')
 const LobbyScene = lazy(loadLobbyScene)
 // The pages past the landing page, the same way: none is the landing page's.
 const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'))
+// Only ever shown inside a Drive atrium (lib/driveSync).
+const DriveReconnect = lazy(() => import('./components/DriveReconnect'))
 const LobbyBrowser = lazy(() => import('./components/LobbyBrowser').then(m => ({ default: m.LobbyBrowser })))
 const ContributorsAtrium = lazy(() => import('./components/ContributorsAtrium'))
 const loadPagesAhead = () => Promise.all([loadLobbyScene(), import('./components/WelcomeScreen'), import('./components/LobbyBrowser')])
@@ -2293,6 +2295,7 @@ function AppInner() {
         <>
           <Suspense fallback={null}>
             <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted) => setKickedNotice({ blacklisted })} />
+            <DriveReconnect />
           </Suspense>
           {transitionLobbyId === route.lobbyId && <AtriumRevealOverlay />}
         </>

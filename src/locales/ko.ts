@@ -207,6 +207,8 @@ const ko: Catalogue = {
   'browser.onlineHint': '초대한 사람과, 어느 기기에서든. 최대 3개.',
   'browser.inBrowser': '이 브라우저에',
   'browser.inBrowserHint': '무료, 제한 없음. 이 기기에서만, 나만.',
+  'browser.inDrive': 'Google 드라이브에',
+  'browser.inDriveHint': '암호화되어 내 Google 드라이브에. 무료, 제한 없음.',
   'browser.guestNote': '계정 없이는 Atrium이 이 브라우저에 나만을 위해 보관돼요. 로그인하면 공유할 수 있는 Atrium을 만들고 다른 사람들의 Atrium도 볼 수 있어요.',
 
   // ---------------------------------------------------------- in an atrium
@@ -536,6 +538,7 @@ const ko: Catalogue = {
   'atrium.overlay.exited': '오버레이 모드 꺼짐',
   'atrium.browser.inUse': '이 브라우저의 Atrium이 다른 탭에서 열려 있어요. 그 탭을 닫거나 거기서 계속하세요.',
   'atrium.browser.unsupported': '이 브라우저는 Atrium을 보관할 수 없어요. 필요한 기능(WebAssembly 또는 사이트 저장소)이 차단되어 있어요. 시크릿 창, 차단 모드, 보안 설정 때문일 수 있어요.',
+  'atrium.drive.reconnect': '저장하려면 Google 드라이브에 다시 연결하세요',
   'atrium.hud.manage': "Atrium 설정",
   'atrium.hud.saveAtrium': '아트리움 내보내기…',
   'atrium.menu.exportImage': '이미지로 내보내기',

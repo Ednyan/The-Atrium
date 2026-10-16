@@ -113,5 +113,41 @@ export function merge(merged: Merged, changes: Change[]): Change[] {
 export const rowsOf = (merged: Merged, table: Table) =>
   [...merged.values()].filter(change => change.table === table && change.row !== null).map(change => change.row!)
 
+export const TABLES: Table[] = ['lobbies', 'traces', 'layers', 'trace_links', 'lobby_locations']
+
+// Columns that are each device's own and never carried: who an atrium shows
+// as its owner here (lib/browserAtriums), its own picture of it, when its row
+// was last written here.
+const OWN: Partial<Record<Table, string[]>> = { lobbies: ['owner_user_id', 'preview_url', 'preview_at', 'updated_at'] }
+/** A row as it's carried: without its device's own columns. */
+export function carried(table: Table, row: Record<string, unknown>): Record<string, unknown> {
+  const own = OWN[table]
+  if (!own) return row
+  const out = { ...row }
+  for (const column of own) delete out[column]
+  return out
+}
+// The same row, however its keys were ordered.
+const stable = (value: unknown) => JSON.stringify(value, (_, inner) =>
+  inner && typeof inner === 'object' && !Array.isArray(inner) ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : inner)
+
+/** What the working copy changed since what's merged, as changes at `at`:
+ *  each row that's new or different, and each merged row it no longer has. */
+export function changesSince(merged: Merged, current: Partial<Record<Table, Record<string, unknown>[]>>, at: Clock): Change[] {
+  const changes: Change[] = []
+  const here = new Set<string>()
+  for (const table of TABLES) {
+    for (const full of current[table] ?? []) {
+      const id = String(full.id)
+      const row = carried(table, full)
+      here.add(keyOf({ table, id }))
+      const had = merged.get(keyOf({ table, id }))
+      if (!had || had.row === null || stable(had.row) !== stable(row)) changes.push({ table, id, at, row })
+    }
+  }
+  for (const [key, had] of merged) if (had.row !== null && !here.has(key)) changes.push({ table: had.table, id: had.id, at, row: null })
+  return changes
+}
+
 /** Everything merged, as one snapshot (tombstones kept, so a late old save still can't revive a row). */
 export const snapshotOf = (merged: Merged): DriveSave => ({ v: 1, changes: [...merged.values()] })

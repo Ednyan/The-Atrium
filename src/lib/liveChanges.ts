@@ -123,6 +123,11 @@ listenToWrites((url, method, body) => {
   if (change) gather(change)
 })
 
+// Changes this page brought in itself -- a Drive atrium's sync (lib/driveSync),
+// already in the database -- handed to the tables' own code as the room's are.
+const broughtIn = new Set<(change: Change) => void>()
+export const tellHere = (change: Change) => broughtIn.forEach(hear => hear(change))
+
 /** Keep an atrium's table live: `feed` subscribes to Supabase's change feed
  *  (returning how to stop), used whenever the atrium has no room; `apply`
  *  takes what the room says changed. Returns how to stop altogether. */
@@ -137,6 +142,10 @@ export function liveTable(lobbyId: string, table: LiveTable, feed: () => () => v
     if (!change || change.t !== table || stopFeed || roomStatus(lobbyId) === null) return
     queue = queue.then(() => apply(change)).catch(() => {})
   })
+  const hearHere = (change: Change) => {
+    if (change.t === table) queue = queue.then(() => apply(change)).catch(() => {})
+  }
+  broughtIn.add(hearHere)
   const choose = () => {
     const status = roomStatus(lobbyId)
     // The room, or a room on its way: no feed. None at all once the wait is
@@ -152,6 +161,7 @@ export function liveTable(lobbyId: string, table: LiveTable, feed: () => () => v
     window.clearTimeout(timer)
     stopWatching()
     stopHearing()
+    broughtIn.delete(hearHere)
     stopFeed?.()
   }
 }

@@ -65,6 +65,10 @@ export async function driveToken(): Promise<string> {
   })
 }
 
+/** Signed in to Drive now, without asking: Google's window can't open
+ *  without a click, so whoever needs it otherwise asks for one (lib/driveSync). */
+export const hasDriveToken = () => !!token && Date.now() < token.until - 60_000
+
 /** Calls tried again on a rate limit or Google's own failure, further apart
  *  each time (Drive's guidance), since the last sign-in. */
 export let driveRetries = 0
