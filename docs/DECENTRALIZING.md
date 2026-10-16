@@ -481,7 +481,7 @@ the build (`VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_API_KEY`).
 | 4 MB file | up 3.8 s, down 1.9 s |
 | Hidden app folder | works |
 | Sharing by address | works |
-| Picker | "The API developer key is invalid": the key's restrictions, being fixed |
+| Picker | works once the key also allows `https://docs.google.com/*` and the Picker API |
 
 What it means: **a save takes about 1.4 s to land in Drive**, and someone
 polling sees it a check (0.3 s) and a read (0.9 s) later. So Drive is the
@@ -490,9 +490,16 @@ carry its content (phase 2's idea), so people online see it at once, with
 Drive behind it for whoever comes later. Third-party cookies: Firefox blocks
 them by default, and sign-in worked.
 
-Still to run: the Picker with a second account (does picking the shared
-folder give access to the files in it under `drive.file`?), Chrome, Safari,
-and the desktop apps, which need their own sign-in.
+**The Picker with a second account (Chrome 155): picking a folder gives
+the folder, not what's in it.** Under `drive.file`, the second account saw
+none of the 30 files in `saves/`, and only the folder it had just picked in
+the atrium's folder. Each person reaches only the files they made or picked
+one by one. So phase 5's shared folder of everyone's saves doesn't work as
+written: nobody could read anyone else's files. Being checked next (in the
+panel): reading a file by its id, and reading a file shared "anyone with the
+link" with the app's key alone. Chrome's sign-in works.
+
+Still to run: Safari, and the desktop apps, which need their own sign-in.
 
 ## Phase 5: Drive atriums (opt-in, new atriums only)
 
