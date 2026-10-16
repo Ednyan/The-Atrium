@@ -643,9 +643,20 @@ media, because it changes the file format.
 
   Tested: inviting, letting in, removing with a new generation, blocking,
   viewers, and deleting (scratchpad `drivemembers`).
+- **Invitations (9ce8942).** The user asked that joining not wait on the
+  owner, and not need a link, and chose to let invited people in at once.
+  - Adding someone puts an invitation in their atrium browser
+    (`add_drive_invites.sql`).
+  - Someone without a key pair is let in at once by a one-off secret that
+    only their invitation carries. The roster holds the key sealed with it.
+    The next owner's or admin's look lets them in by their key pair, and the
+    secret is then deleted.
+  - Removing anyone cancels the secrets still standing.
+  - The trade-off, accepted: until that look, the Atrium's own database
+    holds something that opens the atrium.
+- "Keep in Google Drive" turns any browser atrium into a Drive atrium.
 - Not yet: pictures and other media (they stay in the browser that added
-  them), compaction, and joining by a request in the room (only people
-  added get in for now).
+  them), compaction, and asking to join from inside the atrium.
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.
