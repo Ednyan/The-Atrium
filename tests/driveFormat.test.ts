@@ -4,8 +4,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  admit, changesSince, keyFromText, KeyMissing, keyringOf, keyToText, later, merge, newAtriumKey, newIdentity, newRoster,
-  removeMember, rowsOf, seal, sealJson, snapshotOf, tick, unseal, unsealJson, unwrapWith, wrapFor, writersOf,
+  admit, changesSince, invitedWritersOf, keyFromText, KeyMissing, keyringOf, keyToText, later, merge, newAtriumKey, newIdentity, newRoster,
+  newSecret, openWithSecret, placeOf, removeMember, rowsOf, seal, sealForSecret, sealJson, snapshotOf, tick, unseal, unsealJson, unwrapWith, wrapFor, writersOf,
   type Change, type Keyring, type Merged,
 } from '../src/lib/driveFormat.ts'
 
@@ -82,6 +82,26 @@ test('members: admitted, they read every generation; removed, they read nothing 
   assert.deepEqual(await unseal(await keyringOf(roster, 'dan', dan.privateJwk), before), new Uint8Array([1]))
   // The owner can't be removed.
   await assert.rejects(removeMember(roster, keyring, 'ana', false))
+})
+
+test("an invitation's secret opens every generation of the key, until someone is removed", async () => {
+  const ana = await newIdentity()
+  let keyring = ring(await newAtriumKey())
+  let roster = await newRoster('L', 'Atrium', { user: 'ana', name: 'ana', root: 'R', pub: ana.publicJwk }, keyring.get(0)!)
+  const secret = newSecret()
+  roster = { ...roster, invited: [{ user: 'dan', name: 'Dan', role: 'editor', keys: await sealForSecret(secret, keyring) }, { user: 'eve', name: 'Eve', role: 'viewer', keys: await sealForSecret(newSecret(), keyring) }] }
+  const sealed = await seal(keyring, new Uint8Array([5]))
+  const dans = await openWithSecret(secret, roster.invited[0].keys!)
+  assert.deepEqual(await unseal(dans, sealed), new Uint8Array([5]))
+  await assert.rejects(openWithSecret(newSecret(), roster.invited[0].keys!))
+  // In by their invitation: a place, and Dan's saves count (Eve's, a viewer's, don't).
+  assert.equal(placeOf(roster, 'dan')?.role, 'editor')
+  assert.deepEqual(invitedWritersOf(roster).map(i => i.user), ['dan'])
+  // Someone removed: every invitation's secret cancelled -- they get in by their key pair.
+  ;({ roster, keyring } = await removeMember(roster, keyring, 'eve', false))
+  assert.equal(roster.invited.length, 1)
+  assert.equal(roster.invited[0].keys, undefined)
+  assert.equal(placeOf(roster, 'dan'), null)
 })
 
 test('the clock sorts as it orders, and never goes back', () => {

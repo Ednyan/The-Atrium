@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, readInvite, rosterVersion, type JoinStep } from '../lib/driveSync'
+import { createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -265,8 +265,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     window.addEventListener('hashchange', look)
     return () => window.removeEventListener('hashchange', look)
   }, [])
-  const joinInvite = async () => {
-    const asked = invite
+  const joinInvite = async (asked = invite) => {
     if (!asked) return
     setJoinNote('')
     setJoining('signIn')
@@ -339,6 +338,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [myId, setMyId] = useState('')
   useEffect(() => { void supabase?.auth.getUser().then(({ data }: any) => setMyId(data?.user?.id ?? '')) }, [])
+
+  // Invitations to Drive atriums: shown here, no link needed (lib/driveSync).
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const lookForInvitations = () => { if (myId && canDrive) void myInvitations(myId).then(setInvitations).catch(() => {}) }
+  useEffect(lookForInvitations, [myId])
 
   useEffect(() => {
     if (!isDesktop) return
@@ -1092,6 +1096,33 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {invitations.length > 0 && !invite && (
+            <section className="border border-nier-border/40 p-5 space-y-3">
+              <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.invitations')}</h3>
+              <ul className="space-y-2">
+                {invitations.map(invitation => (
+                  <li key={invitation.id} className="flex flex-wrap items-center gap-3">
+                    <span className="flex-1 min-w-[10rem] text-nier-bg text-sm">
+                      {invitation.name}
+                      <span className="block text-nier-bg/60 text-xs">{t('browser.drive.from', { name: invitation.from })}</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        const asked = { rosterId: invitation.roster, lobbyId: invitation.lobbyId, name: invitation.name, owner: invitation.from }
+                        setJoinNote('')
+                        setInvite(asked)
+                        void joinInvite(asked).finally(lookForInvitations)
+                      }}
+                      className={ROW_ENTER}
+                    >
+                      {t('browser.drive.join')}
+                    </button>
+                    <button onClick={() => void declineInvitation(invitation.id).then(lookForInvitations)} className={ROW_BUTTON}>{t('browser.drive.decline')}</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {invite && (
             <section className="border border-nier-border/40 p-5 space-y-3">
               <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.joinTitle', { name: invite.name })}</h3>

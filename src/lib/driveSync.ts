@@ -23,8 +23,8 @@
 import * as drive from './drive'
 import { cloudClient } from './supabase'
 import {
-  admit, base64ToBytes, bytesToBase64, changesSince, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
-  memberOf, merge, newAtriumKey, newIdentity, newRoster, removeMember, sealJson, tick, unsealJson, writersOf,
+  admit, base64ToBytes, bytesToBase64, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
+  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, sealForSecret, sealJson, tick, unsealJson, writersOf,
   type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Table,
 } from './driveFormat'
 import { tellHere, type LiveTable } from './liveChanges'
@@ -225,7 +225,47 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' })
     return { lobbyId, state: 'in' }
   }
-  return { lobbyId, state: member || roster.invited.some(invite => invite.user === me.id) ? 'waiting' : 'notAdded' }
+  // Added before one had a key pair: in at once, by the invitation's secret
+  // (the Atrium's invitations, one's own alone).
+  const invited = roster.invited.find(invite => invite.user === me.id)
+  if (invited?.keys) {
+    const { data } = await (cloudClient.from('drive_invites') as any).select('secret').eq('to_user', me.id).eq('roster', rosterId).maybeSingle()
+    if (data?.secret) {
+      const keyring = await openWithSecret(base64ToBytes(data.secret), invited.keys)
+      onStep('folder')
+      const folder = await folderFor(own.root, lobbyId)
+      keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false })
+      return { lobbyId, state: 'in' }
+    }
+  }
+  return { lobbyId, state: member || invited ? 'waiting' : 'notAdded' }
+}
+
+// ---------------------------------------------------------------- invitations
+
+// One's invitations to Drive atriums, in the Atrium's own small table: which
+// atrium (its roster in Drive), its name, and who added one -- shown in the
+// atrium browser, so nobody needs a link (add_drive_invites.sql).
+export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string }
+export async function myInvitations(me: string): Promise<Invitation[]> {
+  const { data, error } = await (cloudClient.from('drive_invites') as any).select('id, roster, lobby_id, name, from_user').eq('to_user', me)
+  if (error || !data?.length) return []
+  const { data: senders } = await (cloudClient.from('profiles') as any).select('id, username, display_name').in('id', [...new Set(data.map((row: any) => row.from_user))])
+  const names = new Map<string, string>((senders ?? []).map((row: any) => [row.id, row.display_name || row.username]))
+  return data
+    .filter((row: any) => !isDriveAtrium(row.lobby_id))
+    .map((row: any) => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: names.get(row.from_user) ?? '' }))
+}
+export async function declineInvitation(id: string): Promise<void> {
+  await (cloudClient.from('drive_invites') as any).delete().eq('id', id)
+}
+// Told to someone added, in their atrium browser: with the secret that opens
+// it if they have no key pair yet. Never a second secret for an invitation
+// still standing -- the roster's sealed keys answer to the first.
+async function invite(to: string, from: string, roster: Roster, rosterId: string, secret: Uint8Array | null): Promise<void> {
+  const table = cloudClient.from('drive_invites') as any
+  const { error } = await table.upsert({ to_user: to, from_user: from, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret) }, { onConflict: 'to_user,roster' })
+  if (error) throw new Error(/drive_invites/.test(error.message ?? '') ? 'DB_UPDATE_NEEDED' : error.message)
 }
 
 // ---------------------------------------------------------------- members: adding, roles, removing
@@ -276,15 +316,24 @@ export async function addPerson(lobbyId: string, me: string, username: string, r
   if (error) throw error
   if (!data) throw new Error('NO_SUCH_USER')
   let result: 'in' | 'invited' = 'invited'
+  let secret: Uint8Array | null = null
+  let after: Roster | null = null
   await changeRoster(lobbyId, me, async (roster, keyring) => {
     if (roster.blocked.includes(data.id)) throw new Error('BLOCKED')
     const name = data.display_name || data.username
     if (data.drive_key && data.drive_root) {
       result = 'in'
-      return { roster: await admit(roster, keyring, { user: data.id, name, root: data.drive_root, pub: data.drive_key }, role) }
+      return { roster: (after = await admit(roster, keyring, { user: data.id, name, root: data.drive_root, pub: data.drive_key }, role)) }
     }
-    return { roster: { ...roster, invited: [...roster.invited.filter(invite => invite.user !== data.id), { user: data.id, name, role }] } }
+    // No key pair yet: the key sealed with a secret their invitation carries,
+    // so they can enter at once -- one already invited keeps theirs.
+    const already = roster.invited.find(invite => invite.user === data.id)
+    if (already?.keys) return { roster: (after = { ...roster, invited: roster.invited.map(invite => (invite.user === data.id ? { ...invite, role } : invite)) }) }
+    secret = newSecret()
+    const sealed = await sealForSecret(secret, keyring)
+    return { roster: (after = { ...roster, invited: [...roster.invited.filter(invite => invite.user !== data.id), { user: data.id, name, role, keys: sealed }] }) }
   })
+  await invite(data.id, me, after!, allKept()[lobbyId].roster, secret)
   return result
 }
 
@@ -321,10 +370,14 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
     const member = memberOf(roster, user)
     if (member?.role === 'admin' && memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
     if (member?.grant) await store.unshare(kept.roster, member.grant)
-    if (!member) {
-      // Only invited: off the list (and blocked, if so).
+    // Their invitation, if one stands: gone.
+    await (cloudClient.from('drive_invites') as any).delete().eq('to_user', user).eq('roster', kept.roster)
+    const invited = roster.invited.find(invite => invite.user === user)
+    if (!member && !invited?.keys) {
+      // Only invited, and never able to read it: off the list (and blocked, if so).
       return { roster: { ...roster, invited: roster.invited.filter(invite => invite.user !== user), blocked: block ? [...new Set([...roster.blocked, user])] : roster.blocked } }
     }
+    // A member, or in by their invitation: a new generation, made without them.
     return removeMember(roster, keyring, user, block)
   })
 }
@@ -366,6 +419,8 @@ interface Session {
   quiet: number
   looking: number
   stopHearing: () => void
+  // One's invitation deleted, once let in properly.
+  inviteCleared: boolean
   local: typeof import('./localDb')
 }
 let session: Session | null = null
@@ -388,7 +443,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, local,
+    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, inviteCleared: false, local,
   }
   session = s
   setStatus({ ended: undefined })
@@ -447,7 +502,7 @@ export const syncNow = () => (session ? run(session, async s => { await down(s);
 async function up(s: Session): Promise<void> {
   if (status.ended) return
   // A viewer's saves aren't taken: none made.
-  if (s.roster && memberOf(s.roster.roster, s.me)?.role === 'viewer') return
+  if (s.roster && placeOf(s.roster.roster, s.me)?.role === 'viewer') return
   const at = tick(s.last, Date.now(), s.me)
   const changes = changesSince(s.merged, await s.local.atriumRows(s.lobbyId), at)
   if (!changes.length) return
@@ -497,8 +552,12 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   if (s.roster?.version !== version) {
     const roster = await readRoster(s.kept.roster)
     s.roster = { version, roster }
-    const member = memberOf(roster, s.me)
-    if (!member) { setStatus({ ended: 'removed' }); return null }
+    if (!placeOf(roster, s.me) && !roster.invited.some(invite => invite.user === s.me)) { setStatus({ ended: 'removed' }); return null }
+    // Let in properly: the invitation, and any secret it held, deleted.
+    if (memberOf(roster, s.me) && !s.inviteCleared) {
+      s.inviteCleared = true
+      await (cloudClient.from('drive_invites') as any).delete().eq('to_user', s.me).eq('roster', s.kept.roster)
+    }
     // Generations made since: opened with one's private key.
     if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {
       const own = mine?.user === s.me ? mine : await myIdentity({ id: s.me })
@@ -511,7 +570,9 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   // roster doesn't show.
   const roster = s.roster.roster
   if (manages(memberOf(roster, s.me)?.role) && roster.invited.length) await letIn(s, roster)
-  return s.roster?.roster ?? null
+  // As it was read: those just let in are read this look too (by their
+  // invitation's folder), and the next look reads the roster written.
+  return roster
 }
 
 /** An owner's or admin's app, as it looks: those it added who now have a key
@@ -548,9 +609,19 @@ async function down(s: Session): Promise<void> {
   // Downloads only for what's new: the roster when its version moves, saves
   // not read yet. A look at an atrium nobody has changed downloads nothing.
   const unread: { id: string }[] = []
-  for (const writer of writersOf(roster)) {
+  const writers: { user: string; root: string | null }[] = writersOf(roster)
+  // Those in by their invitation aren't in the roster with their folder yet:
+  // it's in their profile.
+  const invitedHere = invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
+  if (invitedHere.length) {
+    const { data } = await (cloudClient.from('profiles') as any).select('id, drive_root').in('id', invitedHere.map(invite => invite.user))
+    for (const row of data ?? []) writers.push({ user: row.id, root: row.drive_root })
+  }
+  for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
+  for (const writer of writers) {
     let folder = s.folders.get(writer.user)
     if (!folder) {
+      if (!writer.root) continue
       folder = (await store.listByLink(writer.root)).find(file => file.name === s.lobbyId)?.id
       if (!folder) continue
       s.folders.set(writer.user, folder)

@@ -221,6 +221,32 @@ export function changesSince(merged: Merged, current: Partial<Record<Table, Reco
 /** Everything merged, as one snapshot (tombstones kept, so a late old save still can't revive a row). */
 export const snapshotOf = (merged: Merged): DriveSave => ({ v: 1, changes: [...merged.values()] })
 
+// ---------------------------------------------------------------- an invitation's secret
+
+// For someone added before they had a key pair: every generation of the key,
+// sealed with a one-off secret only they are given -- through the Atrium's
+// invitations, readable by them alone -- so they can enter at once. The next
+// owner's or admin's app to look lets them in properly (admit, by their key
+// pair), and the secret is deleted.
+export interface SecretSealed { iv: string; ct: string }
+export const newSecret = () => crypto.getRandomValues(new Uint8Array(32))
+const secretKey = (secret: Uint8Array, use: KeyUsage) => crypto.subtle.importKey('raw', secret as BufferSource, ALGORITHM, false, [use])
+
+export async function sealForSecret(secret: Uint8Array, keyring: Keyring): Promise<SecretSealed> {
+  const raw: Record<string, string> = {}
+  for (const [n, key] of keyring) raw[n] = bytesToBase64(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
+  const iv = crypto.getRandomValues(new Uint8Array(NONCE))
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await secretKey(secret, 'encrypt'), new TextEncoder().encode(JSON.stringify(raw)))
+  return { iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(ct)) }
+}
+
+export async function openWithSecret(secret: Uint8Array, sealed: SecretSealed): Promise<Keyring> {
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(sealed.iv) as BufferSource }, await secretKey(secret, 'decrypt'), base64ToBytes(sealed.ct) as BufferSource)
+  const raw = JSON.parse(new TextDecoder().decode(plain)) as Record<string, string>
+  return new Map(await Promise.all(Object.entries(raw).map(async ([n, text]) =>
+    [Number(n), await crypto.subtle.importKey('raw', base64ToBytes(text) as BufferSource, ALGORITHM, true, ['encrypt', 'decrypt'])] as [number, CryptoKey])))
+}
+
 // ---------------------------------------------------------------- members
 
 // Who an atrium's members are and what each may do. The roster is a file only
@@ -236,7 +262,9 @@ export type Role = 'owner' | 'admin' | 'editor' | 'viewer'
 // saves of theirs are, in a folder named by its id. `grant`: for an admin,
 // their permission to write the roster, so it can be taken back.
 export interface Member { user: string; name: string; root: string; role: Role; pub: JsonWebKey; grant?: string }
-export interface Invited { user: string; name: string; role: Role }
+// `keys`: the key's generations sealed with their invitation's secret, so they
+// can enter before they're let in properly.
+export interface Invited { user: string; name: string; role: Role; keys?: SecretSealed }
 export interface Roster {
   v: 2
   lobbyId: string
@@ -254,6 +282,11 @@ export const memberOf = (roster: Roster, user: string) => roster.members.find(me
 export const manages = (role: Role | undefined) => role === 'owner' || role === 'admin'
 /** Those whose saves are taken: every member but the viewers. */
 export const writersOf = (roster: Roster) => roster.members.filter(member => member.role !== 'viewer')
+/** And among the invited, those in by their invitation's secret (but viewers). */
+export const invitedWritersOf = (roster: Roster) => roster.invited.filter(invite => invite.keys && invite.role !== 'viewer')
+/** One's place in it: a member, or someone in by their invitation. */
+export const placeOf = (roster: Roster, user: string): Member | Invited | null =>
+  memberOf(roster, user) ?? roster.invited.find(invite => invite.user === user && invite.keys) ?? null
 
 /** A new roster, its owner its only member, with the key's first generation. */
 export async function newRoster(lobbyId: string, name: string, owner: Omit<Member, 'role'>, key: CryptoKey): Promise<Roster> {
@@ -288,7 +321,10 @@ export async function removeMember(roster: Roster, keyring: Keyring, user: strin
     roster: {
       ...roster,
       members,
-      invited: roster.invited.filter(invite => invite.user !== user),
+      // Invitations' secrets cancelled too: someone removed may have seen one,
+      // and it would open the new generation. Those invited get in by their
+      // key pair instead, at the next owner's or admin's look.
+      invited: roster.invited.filter(invite => invite.user !== user).map(({ keys: _cancelled, ...invite }) => invite),
       blocked: block && !roster.blocked.includes(user) ? [...roster.blocked, user] : roster.blocked,
       // His copies of every generation out too: no device of his can open
       // more than he already has.
