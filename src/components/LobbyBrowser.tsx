@@ -22,6 +22,9 @@ import { useTranslation } from '../lib/i18n'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
+// Phase 4's Drive test (components/DriveSpike), for whoever turned it on.
+const DriveSpike = lazy(() => import('./DriveSpike'))
+const driveSpikeOn = !isDesktop && (() => { try { return localStorage.getItem('atrium.drivespike') === 'on' } catch { return false } })()
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium, vaultProblem } from '../lib/browserAtriums'
@@ -1358,6 +1361,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             </div>
           </section>
           )}
+
+          {driveSpikeOn && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
       </div>
 

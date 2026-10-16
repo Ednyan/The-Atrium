@@ -56,6 +56,9 @@
   #                             'wasm-unsafe-eval' lets WebAssembly compile
   #                             (and nothing else run): the database atriums
   #                             kept in the browser run on (lib/browserPlatform).
+  #                             accounts.google.com and apis.google.com: Google
+  #                             sign-in for Drive and its Picker (lib/drive).
+  #                             Web only; the desktop will sign in otherwise.
   #   style-src 'unsafe-inline' React writes inline style attributes on nearly
   #                             every trace; there is no way around this short
   #                             of rewriting the rendering layer.
@@ -70,7 +73,7 @@
   #                             fetches its own data: URLs to turn embedded
   #                             files back into blobs. wss://rooms is the
   #                             atrium's room (workers/rooms, lib/rooms).
-  Content-Security-Policy: default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co wss://rooms.digitalatrium.org; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval' https://accounts.google.com https://apis.google.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https:; connect-src 'self' data: blob: https: wss://rmowxvqkyxypgcbqcspy.supabase.co wss://rooms.digitalatrium.org; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
 # The video relay (public/embed/; see throughRelay in src/lib/embedUrl.ts): the
 # one page anything is meant to frame -- the desktop app on macOS and Linux,
