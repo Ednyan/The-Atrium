@@ -41,9 +41,17 @@ export function roomUrl(): string {
  *  chooses another, or 'off'); '' if none. It also keeps Drive atriums
  *  signed in to Google (lib/drive). */
 export function roomServer(): string {
-  let chosen: string | null = null
-  try { chosen = localStorage.getItem('atrium.rooms') } catch { /* none */ }
-  if (chosen === 'off') return ''
+  return roomsChosen() === 'off' ? '' : workerAt()
+}
+
+/** The worker's address for what isn't a room -- Google sign-in, the
+ *  directory -- as http(s): another if atrium.rooms names one, and this one
+ *  even with the rooms turned off. */
+export const workerUrl = () => workerAt().replace(/^ws/, 'http')
+
+const roomsChosen = () => { try { return localStorage.getItem('atrium.rooms') } catch { return null } }
+function workerAt(): string {
+  const chosen = roomsChosen()
   return chosen && /^wss?:\/\//.test(chosen) ? chosen : ROOM_URL
 }
 

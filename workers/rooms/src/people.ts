@@ -60,8 +60,10 @@ export async function people(request: Request, env: Env, what: string): Promise<
       if ('username' in set) {
         const username = typeof set.username === 'string' ? set.username.trim() : ''
         if (!USERNAME.test(username)) return answer(400, { error: 'username' })
+        // An existing account's is the one its Supabase profile has, no other.
+        if (who.kind === 'supabase' && (await supabaseUsername(env, who, asked.token as string))?.toLowerCase() !== username.toLowerCase()) return answer(403, { error: 'not yours' })
         const here = await db.prepare('select id from accounts where username = ? collate nocase and id <> ?').bind(username, who.id).first()
-        if (here || await takenInSupabase(env, username, who)) return answer(409, { error: 'taken' })
+        if (here || (who.kind === 'google' && await takenInSupabase(env, username))) return answer(409, { error: 'taken' })
         await db.prepare('update accounts set username = ? where id = ?').bind(username, who.id).run()
       }
       if ('display_name' in set) {
@@ -140,17 +142,31 @@ function shown(row: Record<string, unknown> | null) {
 }
 
 /** Whether an existing account has that username (Supabase says yes or no,
- *  add_username_taken.sql) -- one's own aside. Unknown counts as taken: a
- *  username can't be given twice. */
-async function takenInSupabase(env: Env, username: string, who: Who): Promise<boolean> {
+ *  add_username_taken.sql). Unknown counts as taken: a username can't be
+ *  given twice. */
+async function takenInSupabase(env: Env, username: string): Promise<boolean> {
   try {
     const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/username_taken`, {
       method: 'POST',
       headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_username: username, p_except: who.kind === 'supabase' ? who.id : null }),
+      body: JSON.stringify({ p_username: username }),
     })
     return !response.ok || (await response.json()) !== false
   } catch {
     return true
+  }
+}
+
+/** An existing account's username, as its own profile has it -- read with
+ *  its own sign-in. */
+async function supabaseUsername(env: Env, who: Who, token: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(who.id)}&select=username`, {
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+    const rows = response.ok ? await response.json() as { username?: unknown }[] : []
+    return typeof rows[0]?.username === 'string' ? rows[0].username : null
+  } catch {
+    return null
   }
 }

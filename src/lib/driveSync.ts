@@ -32,7 +32,7 @@
 // downloaded again.
 
 import * as drive from './drive'
-import { cloudClient } from './supabase'
+import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, sendInvitation, withdrawInvitation, type Person } from './people'
 import {
   admit, base64ToBytes, bytesToBase64, carried, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
   memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
@@ -122,11 +122,24 @@ const IDENTITY_FILE = 'atrium-identity.json'
 const IDENTITY_HERE = 'atrium.driveIdentity'
 let mine: Mine | null = null
 
+// One's public key and folder, in the directory (lib/people) -- where whoever
+// adds one finds them. Once a visit.
+let identityPublished = ''
+async function publishIdentity(own: Mine): Promise<void> {
+  if (identityPublished === own.user) return
+  await myEntry({ drive_key: own.identity.publicJwk, drive_root: own.root })
+  identityPublished = own.user
+}
+
 export async function myIdentity(me: { id: string }): Promise<Mine> {
   if (mine?.user === me.id) return mine
   try {
     const here = JSON.parse(localStorage.getItem(IDENTITY_HERE) || 'null') as Mine | null
-    if (here?.user === me.id) return (mine = here)
+    if (here?.user === me.id) {
+      mine = here
+      await publishIdentity(here)
+      return here
+    }
   } catch { /* none kept */ }
   const kept = await store.readAppData(IDENTITY_FILE)
   let found = kept ? fromJson<{ identity: Identity; root: string }>(kept) : null
@@ -136,9 +149,8 @@ export async function myIdentity(me: { id: string }): Promise<Mine> {
     found = { identity: await newIdentity(), root: root.id }
     await store.writeAppData(IDENTITY_FILE, asJson(found))
   }
-  const { error } = await (cloudClient.from('profiles') as any).update({ drive_key: found.identity.publicJwk, drive_root: found.root }).eq('id', me.id)
-  if (error) throw new Error(/drive_key|drive_root/.test(error.message ?? '') ? 'DB_UPDATE_NEEDED' : error.message)
   mine = { user: me.id, ...found }
+  await publishIdentity(mine)
   try { localStorage.setItem(IDENTITY_HERE, JSON.stringify(mine)) } catch { /* fetched again next time */ }
   return mine
 }
@@ -274,16 +286,16 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     onStep('folder')
     const folder = await folderFor(own.root, lobbyId)
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' })
-    await clearInvitation(me.id, rosterId)
+    await clearSecret(rosterId)
     return { lobbyId, state: 'in' }
   }
   // Added before one had a key pair: in at once, by the invitation's secret
   // (the Atrium's invitations, one's own alone).
   const invited = roster.invited.find(invite => invite.user === me.id)
   if (invited?.keys) {
-    const { data } = await (cloudClient.from('drive_invites') as any).select('secret').eq('to_user', me.id).eq('roster', rosterId).maybeSingle()
+    const secret = (await invitationsToMe()).find(row => row.roster === rosterId)?.secret
     // A secret that doesn't open it (an older invitation than the roster's): as none.
-    const keyring = data?.secret ? await openWithSecret(base64ToBytes(data.secret), invited.keys).catch(() => null) : null
+    const keyring = secret ? await openWithSecret(base64ToBytes(secret), invited.keys).catch(() => null) : null
     if (keyring) {
       onStep('folder')
       const folder = await folderFor(own.root, lobbyId)
@@ -300,38 +312,22 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
 
 // ---------------------------------------------------------------- invitations
 
-// One's invitations to Drive atriums, in the Atrium's own small table: which
-// atrium (its roster in Drive), its name, and who added one -- shown in the
-// atrium browser, so nobody needs a link (add_drive_invites.sql).
-export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: string }
-export async function myInvitations(me: string): Promise<Invitation[]> {
-  const { data, error } = await (cloudClient.from('drive_invites') as any).select('id, roster, lobby_id, name, from_user, created_at').eq('to_user', me)
-  if (error || !data?.length) return []
-  const { data: senders } = await (cloudClient.from('profiles') as any).select('id, username, display_name').in('id', [...new Set(data.map((row: any) => row.from_user))])
-  const names = new Map<string, string>((senders ?? []).map((row: any) => [row.id, row.display_name || row.username]))
-  return data
-    .filter((row: any) => !isDriveAtrium(row.lobby_id))
-    .map((row: any) => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: names.get(row.from_user) ?? '', at: row.created_at ?? '' }))
-    .sort((a: Invitation, b: Invitation) => (a.at < b.at ? 1 : -1))
+// One's invitations to Drive atriums, in the Atrium's directory (lib/people):
+// which atrium (its roster in Drive), its name, and who added one -- shown in
+// the atrium browser, so nobody needs a link. Newest first.
+export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number }
+export async function myInvitations(): Promise<Invitation[]> {
+  return (await invitationsToMe())
+    .filter(row => !isDriveAtrium(row.lobby_id))
+    .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at }))
 }
-/** One's invitation's secret gone, the invitation kept -- or, where the
- *  database's rules don't let one change it yet, the whole invitation. */
-async function clearInvitation(me: string, roster: string): Promise<void> {
-  const table = () => cloudClient.from('drive_invites') as any
-  const { data } = await table().update({ secret: null }).eq('to_user', me).eq('roster', roster).select('id')
-  if (!data?.length) await table().delete().eq('to_user', me).eq('roster', roster).not('secret', 'is', null)
-}
-export async function declineInvitation(id: string): Promise<void> {
-  await (cloudClient.from('drive_invites') as any).delete().eq('id', id)
-}
+export const declineInvitation = (id: string) => withdrawInvitation({ id }).then(() => {})
 // Told to someone added, in their atrium browser: with the secret that opens
 // it if they have no key pair yet. Never a second secret for an invitation
-// still standing -- the roster's sealed keys answer to the first.
-async function invite(to: string, from: string, roster: Roster, rosterId: string, secret: Uint8Array | null): Promise<void> {
-  const table = cloudClient.from('drive_invites') as any
-  // One per person per atrium: sent again, it replaces the last -- and is new again.
-  const { error } = await table.upsert({ to_user: to, from_user: from, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret), created_at: new Date().toISOString() }, { onConflict: 'to_user,roster' })
-  if (error) throw new Error(/drive_invites/.test(error.message ?? '') ? 'DB_UPDATE_NEEDED' : error.message)
+// still standing -- the roster's sealed keys answer to the first. One per
+// person per atrium: sent again, it replaces the last, and is new again.
+async function invite(to: string, roster: Roster, rosterId: string, secret: Uint8Array | null): Promise<void> {
+  await sendInvitation({ to, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret) })
 }
 
 // ---------------------------------------------------------------- members: adding, roles, removing
@@ -396,11 +392,10 @@ export async function resendInvitation(lobbyId: string, me: string, user: string
   return add(lobbyId, me, await profileBy('id', user), role)
 }
 
-const profileBy = async (column: 'id' | 'username', value: string) => {
-  const { data, error } = await (cloudClient.from('profiles') as any).select('id, username, display_name, drive_key, drive_root').eq(column, value).maybeSingle()
-  if (error) throw error
-  if (!data) throw new Error('NO_SUCH_USER')
-  return data as { id: string; username: string; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null }
+const profileBy = async (column: 'id' | 'username', value: string): Promise<Person> => {
+  const person = column === 'id' ? (await peopleByIds([value]))[0] : await personNamed(value)
+  if (!person) throw new Error('NO_SUCH_USER')
+  return person
 }
 
 async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof profileBy>>, role: Exclude<Role, 'owner'>): Promise<'in' | 'invited'> {
@@ -409,7 +404,7 @@ async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof 
   let after: Roster | null = null
   await changeRoster(lobbyId, me, async (roster, keyring) => {
     if (roster.blocked.includes(data.id)) throw new Error('BLOCKED')
-    const name = data.display_name || data.username
+    const name = data.display_name || data.username || ''
     if (data.drive_key && data.drive_root) {
       result = 'in'
       return { roster: (after = await admit(roster, keyring, { user: data.id, name, root: data.drive_root, pub: data.drive_key }, role)) }
@@ -420,7 +415,7 @@ async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof 
     const sealed = await sealForSecret(secret, keyring)
     return { roster: (after = { ...roster, invited: [...roster.invited.filter(invite => invite.user !== data.id), { user: data.id, name, role, keys: sealed }] }) }
   })
-  await invite(data.id, me, after!, allKept()[lobbyId].roster, secret)
+  await invite(data.id, after!, allKept()[lobbyId].roster, secret)
   return result
 }
 
@@ -458,7 +453,7 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
     if (member?.role === 'admin' && memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
     if (member?.grant) await store.unshare(kept.roster, member.grant)
     // Their invitation, if one stands: gone.
-    await (cloudClient.from('drive_invites') as any).delete().eq('to_user', user).eq('roster', kept.roster)
+    await withdrawInvitation({ to: user, roster: kept.roster })
     const invited = roster.invited.find(invite => invite.user === user)
     if (!member && !invited?.keys) {
       // Only invited, and never able to read it: off the list (and blocked, if so).
@@ -693,7 +688,7 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     // kept, so it's under "Shared with you" again should one leave it here.
     if (memberOf(roster, s.me) && !s.inviteCleared) {
       s.inviteCleared = true
-      await clearInvitation(s.me, s.kept.roster)
+      await clearSecret(s.kept.roster)
     }
     // Generations made since: opened with one's private key.
     if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {
@@ -717,8 +712,7 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
  *  in again with the new one. */
 async function letIn(s: Session, roster: Roster): Promise<void> {
   const users = [...roster.invited.map(invite => invite.user), ...roster.members.map(member => member.user)]
-  const { data } = await (cloudClient.from('profiles') as any).select('id, drive_key, drive_root').in('id', users)
-  const profiles = new Map<string, { drive_key: JsonWebKey | null; drive_root: string | null }>((data ?? []).map((row: any) => [row.id, row]))
+  const profiles = new Map((await peopleByIds(users)).map(person => [person.id, person]))
   let next = roster
   for (const invite of roster.invited) {
     const profile = profiles.get(invite.user)
@@ -753,8 +747,7 @@ async function down(s: Session): Promise<void> {
   // it's in their profile.
   const invitedHere = invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
   if (invitedHere.length) {
-    const { data } = await (cloudClient.from('profiles') as any).select('id, drive_root').in('id', invitedHere.map(invite => invite.user))
-    for (const row of data ?? []) writers.push({ user: row.id, root: row.drive_root })
+    for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: person.drive_root })
   }
   for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
   // Files that didn't come yet: those of saves taken before (in a visit that
@@ -1005,9 +998,9 @@ async function asked(s: Session, sender: string): Promise<void> {
   if (!roster || !manages(memberOf(roster, s.me)?.role)) return
   if (memberOf(roster, sender) || roster.invited.some(invite => invite.user === sender) || roster.blocked.includes(sender)) return
   if (s.putOff.has(sender) || status.asking.some(asker => asker.user === sender)) return
-  const { data } = await (cloudClient.from('profiles') as any).select('username, display_name').eq('id', sender).maybeSingle()
-  if (!data?.username || session !== s) return
-  setStatus({ asking: [...status.asking, { user: sender, username: data.username, name: data.display_name || data.username }] })
+  const [person] = await peopleByIds([sender])
+  if (!person?.username || session !== s) return
+  setStatus({ asking: [...status.asking, { user: sender, username: person.username, name: person.display_name || person.username }] })
 }
 
 /** Let in, as an editor: added, as from the members panel. */

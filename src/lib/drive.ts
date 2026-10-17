@@ -9,7 +9,7 @@
 // sign in from, and the key's restriction to this site and these APIs. (The
 // client *secret* is never here: the rooms worker holds it, to keep a browser
 // signed in -- see driveToken.)
-import { roomServer } from './rooms'
+import { workerUrl } from './rooms'
 import { cloudClient } from './supabase'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
@@ -64,7 +64,7 @@ function keepGrant(grant: Grant | null) {
 // at taking a code (the window asks for an hour's pass instead).
 let renewFailed = false
 let codeFailed = false
-const grantServer = () => roomServer().replace(/^ws/, 'http')
+const grantServer = workerUrl
 
 /** A Drive access token: renewed by the worker when this browser has a
  *  grant, else Google's window (a click's), once. */

@@ -357,7 +357,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // Invitations to Drive atriums: shown here, no link needed (lib/driveSync).
   const [invitations, setInvitations] = useState<Invitation[]>([])
-  const lookForInvitations = () => { if (myId && canDrive) void myInvitations(myId).then(setInvitations).catch(() => {}) }
+  const lookForInvitations = () => { if (myId && canDrive) void myInvitations().then(setInvitations).catch(() => {}) }
   useEffect(lookForInvitations, [myId])
 
   useEffect(() => {

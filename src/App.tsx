@@ -13,6 +13,7 @@ import LandingPage from './components/LandingPage'
 import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
+import { publishAccount } from './lib/people'
 import { readRecentThanksName } from './lib/pendingContribution'
 
 // The developer's tools: few will ever open them, so they load when opened.
@@ -1547,6 +1548,7 @@ function AppInner() {
               setUsername(data.display_name || data.username)
               setPlayerColor(data.player_color || '#ffffff')
               setIsAuthenticated(true)
+              publishAccount(session.user.id, data.username, data.display_name)
               // Greets somebody the first time they arrive with a confirmed
               // account. Guarded server-side, so calling it here and from
               // onAuthStateChange cannot produce two.
@@ -1732,6 +1734,7 @@ function AppInner() {
           setUsername(data.display_name || data.username)
           setPlayerColor(data.player_color || '#ffffff')
           setIsAuthenticated(true)
+          publishAccount(session.user.id, data.username, data.display_name)
 
           // Only on a real login. This used to run for any authenticated
           // session, and since INITIAL_SESSION fires on every page load, it
