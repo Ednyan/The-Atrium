@@ -10,7 +10,7 @@
 // for the person -- and who gets the worker's own session with each pass
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
-import { meet } from './people'
+import { link, linkedTo, meet } from './people'
 import { accountIdFor, fromBase64, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
 interface Grant { r: string; a: string; k: Who['kind'] }
@@ -41,8 +41,11 @@ export async function google(request: Request, env: Env, what: string): Promise<
     let account: Who
     if (who?.kind === 'supabase') {
       account = who
+      if (person) await link(env, person.sub, who.id)
     } else {
       if (!person) return answer(400, { error: 'identity' })
+      // Already someone's existing account: theirs to sign in to, not a second one.
+      if (!who && await linkedTo(env, person.sub)) return answer(409, { error: 'existing account', email: person.email })
       account = { id: await accountIdFor(person.sub), kind: 'google' }
       // A Google account is that Google account's alone.
       if (who && who.id !== account.id) return answer(409, { error: 'another google account' })
@@ -63,6 +66,8 @@ export async function google(request: Request, env: Env, what: string): Promise<
     if (!grant) return answer(401, { error: 'grant' })
     const got = await fromGoogle(env, { grant_type: 'refresh_token', refresh_token: grant.r })
     if (got instanceof Response) return withCors(got, answer)
+    const person = personOf(got.id_token)
+    if (person && grant.k === 'supabase') await link(env, person.sub, grant.a)
     return answer(200, {
       ...passOf(got),
       account: { id: grant.a, kind: grant.k },

@@ -17,6 +17,9 @@ const TABLES = [
   `create table if not exists invites (
     id text primary key, to_user text not null, from_user text not null, roster text not null, lobby_id text not null,
     name text not null, secret text, created_at integer not null, unique (to_user, roster))`,
+  // Which existing account a Google account is the same person as: seen
+  // when the existing account connected its Google Drive.
+  'create table if not exists links (google_id text primary key, account text not null, created_at integer not null)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
 ]
@@ -26,6 +29,21 @@ const tablesIn = (db: D1Database) => (made ??= db.batch(TABLES.map(sql => db.pre
 
 const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
 const MOST_IDS = 200
+
+/** An existing account's own Google account, as it connected Drive with it. */
+export async function link(env: Env, googleId: string, account: string): Promise<void> {
+  if (!env.PEOPLE) return
+  await tablesIn(env.PEOPLE)
+  await env.PEOPLE.prepare('insert into links (google_id, account, created_at) values (?, ?, ?) on conflict (google_id) do update set account = excluded.account')
+    .bind(googleId, account, Date.now()).run()
+}
+
+/** The existing account a Google account belongs to, if it's been seen. */
+export async function linkedTo(env: Env, googleId: string): Promise<string | null> {
+  if (!env.PEOPLE) return null
+  await tablesIn(env.PEOPLE)
+  return (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account ?? null
+}
 
 /** A Google account that has just signed in, known here from then on. */
 export async function meet(env: Env, id: string, person: { email?: string; name?: string }): Promise<void> {
