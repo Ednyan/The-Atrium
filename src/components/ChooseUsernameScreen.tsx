@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
 import { supabase } from '../lib/supabase'
+import { myEntry, personNamed, publishAccount } from '../lib/people'
 
 interface ChooseUsernameScreenProps {
   userId: string
   email: string
+  // A Google account's: its username is the directory's alone (lib/people).
+  google?: boolean
   onComplete: (username: string) => void
 }
 
@@ -20,7 +23,7 @@ interface ChooseUsernameScreenProps {
 // needs a profile, they silently bounced back to the homepage with no error.
 // Creating the row here means sign-in no longer depends on that trigger having
 // worked.
-export default function ChooseUsernameScreen({ userId, email, onComplete }: ChooseUsernameScreenProps) {
+export default function ChooseUsernameScreen({ userId, email, google = false, onComplete }: ChooseUsernameScreenProps) {
   const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
@@ -48,7 +51,25 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
 
     setError('')
     setLoading(true)
+    if (google) {
+      try {
+        // Unique across every account: the directory asks Supabase too.
+        await myEntry({ username: trimmed, display_name: trimmed })
+        onComplete(trimmed)
+      } catch (err: any) {
+        setError(err?.message === 'USERNAME_TAKEN' ? t('auth.errUsernameTaken') : err?.message || t('chooseName.errSave'))
+        setLoading(false)
+      }
+      return
+    }
     try {
+      // A Google account's, in the directory, is taken too.
+      const elsewhere = await personNamed(trimmed).catch(() => null)
+      if (elsewhere && elsewhere.id !== userId) {
+        setError(t('auth.errUsernameTaken'))
+        setLoading(false)
+        return
+      }
       const { data: taken } = await (supabase
         .from('profiles') as any)
         .select('id')
@@ -79,6 +100,7 @@ export default function ChooseUsernameScreen({ userId, email, onComplete }: Choo
 
       if (upsertError) throw upsertError
 
+      publishAccount(userId, trimmed, trimmed)
       onComplete(trimmed)
     } catch (err: any) {
       console.error('Failed to set username:', err)

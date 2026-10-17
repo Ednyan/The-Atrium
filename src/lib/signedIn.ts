@@ -1,10 +1,53 @@
-// Who's signed in, as the Atrium's worker knows them (docs/DECENTRALIZING.md,
-// phase 6): for now an account of Supabase's, by its sign-in.
+// Who's signed in (docs/DECENTRALIZING.md, phase 6): an existing account, by
+// its Supabase sign-in, or a Google account -- one with no Supabase account
+// at all, signed in through the Atrium's worker (lib/drive), its grant the
+// lasting sign-in and the worker's session what it's known by.
 
 import { cloudClient } from './supabase'
 
-/** The token the worker knows one by -- the directory, the rooms. */
-export async function accountToken(): Promise<string | null> {
+export interface GoogleAccount { id: string; email: string | null; name: string | null }
+const ACCOUNT = 'atrium.account'
+/** Fired on window as a Google account signs in or out. */
+export const ACCOUNT_EVENT = 'atrium:account'
+
+export function googleAccount(): GoogleAccount | null {
+  try {
+    const kept = JSON.parse(localStorage.getItem(ACCOUNT) ?? 'null') as GoogleAccount | null
+    return kept && typeof kept.id === 'string' ? kept : null
+  } catch {
+    return null
+  }
+}
+export function keepGoogleAccount(account: GoogleAccount | null): void {
+  try {
+    if (account) localStorage.setItem(ACCOUNT, JSON.stringify(account))
+    else localStorage.removeItem(ACCOUNT)
+  } catch { /* this visit only */ }
+  window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT))
+}
+
+/** Who's signed in, and the token the worker knows them by -- the
+ *  directory, the rooms. Null when no one is (or a Google account's
+ *  sign-in has been taken back). */
+export async function whoIsSignedIn(): Promise<{ id: string; token: string } | null> {
+  const google = googleAccount()
+  if (google) {
+    const token = await (await import('./drive')).workerSession()
+    return token ? { id: google.id, token } : null
+  }
   const session = (await cloudClient?.auth.getSession())?.data.session
-  return session?.access_token ?? null
+  return session ? { id: session.user.id, token: session.access_token } : null
+}
+export const accountToken = async () => (await whoIsSignedIn())?.token ?? null
+
+// Asked "who's signed in" -- the app asks Supabase's auth everywhere -- a
+// Google account answers for itself. Only getUser: getSession is what
+// Supabase's own requests are signed with, and a Google account has none.
+if (cloudClient?.auth) {
+  const asked = cloudClient.auth.getUser.bind(cloudClient.auth)
+  cloudClient.auth.getUser = async (...args: unknown[]) => {
+    const google = googleAccount()
+    if (!google) return asked(...args)
+    return { data: { user: { id: google.id, email: google.email ?? undefined, app_metadata: {}, user_metadata: { name: google.name } } }, error: null }
+  }
 }

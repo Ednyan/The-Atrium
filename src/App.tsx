@@ -13,7 +13,8 @@ import LandingPage from './components/LandingPage'
 import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
-import { publishAccount } from './lib/people'
+import { myEntry, publishAccount } from './lib/people'
+import { ACCOUNT_EVENT, googleAccount } from './lib/signedIn'
 import { readRecentThanksName } from './lib/pendingContribution'
 
 // The developer's tools: few will ever open them, so they load when opened.
@@ -975,7 +976,8 @@ function AppInner() {
   // Set when a session exists but has no usable username yet -- a first OAuth
   // sign-in, or a profile the trigger failed to create. Holds the username
   // screen open until they pick one.
-  const [pendingUsernameUser, setPendingUsernameUser] = useState<{ id: string; email: string } | null>(null)
+  // `google`: a Google account's, whose username is the directory's (lib/people).
+  const [pendingUsernameUser, setPendingUsernameUser] = useState<{ id: string; email: string; google?: boolean } | null>(null)
   // Going on without an account: this browser's atriums only, as its guest.
   const [isGuest, setIsGuest] = useState(() => !isDesktop && isGuestHere())
   // An OAuth failure handed back on the return URL. Supabase reports these as
@@ -1502,7 +1504,59 @@ function AppInner() {
       localStorage.removeItem('username')
     }
 
+    // Signed out: nothing of the account kept here -- and, if `leave`, away
+    // from a page that needed it. Supabase's sign-out and a Google account's.
+    const signedOut = (leave: boolean) => {
+      setIsAuthenticated(false)
+      // Reset so the next sign-in counts as a real transition and does
+      // redirect to /welcome.
+      wasSignedInRef.current = false
+      // Cleared too, or signing out mid-way through picking a username would
+      // leave that screen up with no session behind it.
+      setPendingUsernameUser(null)
+      setCurrentLobbyId(null)
+      // Clear persisted state on logout
+      localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
+      if (leave && !ACCOUNT_FREE_ROUTES.has(parseRoute().page)) navigate('/')
+    }
+
+    // A Google account (docs/DECENTRALIZING.md, phase 6): no Supabase session
+    // at all. Who it is comes from the directory, through the worker -- and a
+    // username is chosen there first, as an existing account chooses one in
+    // its profile.
+    const loadGoogleAccount = async (signingIn: boolean) => {
+      const account = googleAccount()
+      if (!account) return
+      try {
+        const entry = await myEntry()
+        if (!entry.username) {
+          setPendingUsernameUser({ id: account.id, email: account.email ?? '', google: true })
+          setLoading(false)
+          return
+        }
+        setUserId(account.id)
+        setUsername(entry.display_name || entry.username)
+        setPlayerColor('#ffffff')
+        setIsAuthenticated(true)
+        wasSignedInRef.current = true
+        if (signingIn) navigate('/welcome')
+      } catch (error) {
+        // Its sign-in taken back (lib/drive signs it out, and this hears it),
+        // or the worker out of reach: said, and the landing page meanwhile.
+        console.warn('[atrium] the Google account:', error)
+      }
+      setLoading(false)
+    }
+    const onAccount = () => {
+      if (googleAccount()) void loadGoogleAccount(true)
+      else signedOut(true)
+    }
+    window.addEventListener(ACCOUNT_EVENT, onAccount)
+    if (googleAccount()) void loadGoogleAccount(cameFromSignIn)
+
     supabase.auth.getSession().then(({ data: { session } }: any) => {
+      if (!session?.user && googleAccount()) return
       if (session?.user && supabase) {
         // Get user profile
         (supabase
@@ -1771,18 +1825,8 @@ function AppInner() {
         }
         loadProfile()
       } else {
-        setIsAuthenticated(false)
-        // Reset so the next sign-in counts as a real transition and does
-        // redirect to /welcome.
-        wasSignedInRef.current = false
-        // Cleared too, or signing out mid-way through picking a username would
-        // leave that screen up with no session behind it.
-        setPendingUsernameUser(null)
-        setCurrentLobbyId(null)
-        // Clear persisted state on logout
-        localStorage.removeItem(STORAGE_KEYS.HAS_ENTERED)
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_LOBBY)
-
+        // No Supabase session is a Google account's ordinary state.
+        if (googleAccount()) return
         // Not on INITIAL_SESSION, which fires on every page load and means
         // "there is no session" -- not "a session just ended". Navigating
         // there threw away the URL of anyone arriving signed out, so every
@@ -1796,13 +1840,14 @@ function AppInner() {
         //
         // A real sign-out still leaves, unless the page in hand is one that
         // never needed the account that just went away.
-        if (event !== 'INITIAL_SESSION' && !ACCOUNT_FREE_ROUTES.has(parseRoute().page)) {
-          navigate('/')
-        }
+        signedOut(event !== 'INITIAL_SESSION')
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener(ACCOUNT_EVENT, onAccount)
+    }
   }, [setUsername, setUserId])
 
   // Clear active_lobby_id when browser/tab is closed
@@ -2037,6 +2082,7 @@ function AppInner() {
       <ChooseUsernameScreen
         userId={pendingUsernameUser.id}
         email={pendingUsernameUser.email}
+        google={pendingUsernameUser.google}
         onComplete={(chosen) => {
           setUserId(pendingUsernameUser.id)
           setUsername(chosen)

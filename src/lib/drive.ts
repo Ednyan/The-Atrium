@@ -10,7 +10,8 @@
 // client *secret* is never here: the rooms worker holds it, to keep a browser
 // signed in -- see driveToken.)
 import { workerUrl } from './rooms'
-import { cloudClient } from './supabase'
+import { cloudClient, isDesktop } from './supabase'
+import { googleAccount, keepGoogleAccount, type GoogleAccount } from './signedIn'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
 // The Picker's key (APIs & Services > Credentials).
@@ -50,8 +51,10 @@ export const loadGoogleSignIn = () => script('https://accounts.google.com/gsi/cl
 // with it from then on, no window, no click. Without the worker (not set up,
 // or failing), the window asks for an hour's pass, as before.
 let token: { value: string; until: number } | null = null
+// A Google account's: the worker's word for who it is, from the same answers.
+let session: { value: string; until: number } | null = null
 let renewing: Promise<string> | null = null
-const fresh = () => !!token && Date.now() < token.until - 60_000
+const fresh = (held: { until: number } | null) => !!held && Date.now() < held.until - 60_000
 const GRANT = 'atrium.driveGrant'
 interface Grant { user: string; grant: string }
 function grantKept(): Grant | null {
@@ -66,57 +69,109 @@ let renewFailed = false
 let codeFailed = false
 const grantServer = workerUrl
 
+/** Google accounts are being tried (phase 6), with Drive atriums: testers
+ *  only, by localStorage['atrium.drivespike'] = 'on'. */
+export const driveTesting = !isDesktop && (() => { try { return localStorage.getItem('atrium.drivespike') === 'on' } catch { return false } })()
+
 /** A Drive access token: renewed by the worker when this browser has a
  *  grant, else Google's window (a click's), once. */
 export function driveToken(): Promise<string> {
-  if (fresh()) return Promise.resolve(token!.value)
+  if (fresh(token)) return Promise.resolve(token!.value)
   return renewing ??= newToken().finally(() => { renewing = null })
 }
 
 /** Signed in to Drive now, or able to be without asking: Google's window
  *  can't open without a click, so whoever needs it otherwise asks for one
  *  (lib/driveSync). */
-export const hasDriveToken = () => fresh() || (!renewFailed && !!grantServer() && !!grantKept())
+export const hasDriveToken = () => fresh(token) || (!renewFailed && !!grantServer() && !!grantKept())
 
-const took = (answer: { access_token: string; expires_in: number }) => {
+type Answer = { access_token: string; expires_in: number; grant?: string; session?: string; until?: number; account?: { id: string; kind: 'google' | 'supabase'; email?: string; name?: string } }
+const took = (answer: Answer) => {
   token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000 }
+  if (answer.session && answer.until) session = { value: answer.session, until: answer.until }
   return token.value
 }
 
+// Who asks: a Google account -- its grant is its sign-in -- or an existing
+// account, by its Supabase sign-in.
+async function whoAsks(): Promise<{ user: string; token: string | null } | null> {
+  const google = googleAccount()
+  if (google) return { user: google.id, token: null }
+  const signedIn = (await cloudClient?.auth.getSession())?.data.session
+  return signedIn ? { user: signedIn.user.id as string, token: signedIn.access_token as string } : null
+}
+
 async function newToken(): Promise<string> {
-  const session = (await cloudClient?.auth.getSession())?.data.session
-  const me = session ? { user: session.user.id as string, token: session.access_token as string } : null
-  const kept = grantKept()
-  if (me && kept?.user === me.user && !renewFailed && grantServer()) {
-    try {
-      return took(await askWorker('renew', { token: me.token, grant: kept.grant }))
-    } catch (error) {
-      // Taken back on Google's side, or not this worker's: asked again.
-      // Anything else (offline, the worker's day spent): the button, this visit.
-      if ((error as { refused?: boolean }).refused) keepGrant(null)
-      else renewFailed = true
-      console.warn('[drive] renewing:', error)
-    }
-  }
+  const me = await whoAsks()
+  if (me && await renew(me)) return token!.value
   return askGoogle(me)
 }
 
+// The pass (and a Google account's session) renewed from the grant kept here,
+// with no window. False if it can't be: none kept, or it failed.
+async function renew(me: { user: string; token: string | null }): Promise<boolean> {
+  const kept = grantKept()
+  if (kept?.user !== me.user || renewFailed) return false
+  try {
+    took(await askWorker('renew', { grant: kept.grant, ...(me.token ? { token: me.token } : {}) }))
+    return true
+  } catch (error) {
+    // Taken back on Google's side, or not this worker's: asked again -- for a
+    // Google account, that's signing in again. Anything else (offline, the
+    // worker's day spent): the button, this visit.
+    if ((error as { refused?: boolean }).refused) {
+      keepGrant(null)
+      if (googleAccount()) signOutGoogle()
+    } else renewFailed = true
+    console.warn('[drive] renewing:', error)
+    return false
+  }
+}
+
+/** A Google account's session for the worker -- the directory, the rooms --
+ *  renewed without a window. Null if it can't be. */
+export async function workerSession(): Promise<string | null> {
+  if (fresh(session)) return session!.value
+  const google = googleAccount()
+  if (!google) return null
+  await (renewing ??= renew({ user: google.id, token: null }).then(() => token?.value ?? '').finally(() => { renewing = null }))
+  return fresh(session) ? session!.value : null
+}
+
+/** Signing in with Google: a Google account, with no Supabase account at all
+ *  -- or, if this Google account is an existing account's, EXISTING_ACCOUNT.
+ *  On a click: Google's window opens. */
+export async function signInWithGoogle(): Promise<GoogleAccount> {
+  await askGoogle(null)
+  const account = googleAccount()
+  if (!account) throw new Error('Google sign-in failed')
+  return account
+}
+/** Out: the Google account, its grant and its passes. */
+export function signOutGoogle(): void {
+  token = null
+  session = null
+  keepGrant(null)
+  keepGoogleAccount(null)
+}
+
 // A plain request (a string body, no headers of its own): no preflight.
-async function askWorker(what: 'grant' | 'renew', body: object): Promise<{ access_token: string; expires_in: number; grant?: string }> {
+async function askWorker(what: 'grant' | 'renew', body: object): Promise<Answer> {
   const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
   const answer = await response.json().catch(() => ({}))
+  if (answer.error === 'existing account') throw Object.assign(new Error('EXISTING_ACCOUNT'), { email: answer.email })
   if (!response.ok || !answer.access_token) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant' })
   return answer
 }
 
-async function askGoogle(me: { user: string; token: string } | null): Promise<string> {
+async function askGoogle(me: { user: string; token: string | null } | null): Promise<string> {
   if (!GOOGLE_CLIENT_ID) throw new Error("Google sign-in isn't set up in this build (VITE_GOOGLE_CLIENT_ID)")
   await loadGoogleSignIn()
   const { oauth2 } = (window as any).google.accounts
   // Each permission can be unticked on Google's screen.
   const allowed = (scope: unknown) => typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
   const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
-  if (me && grantServer() && !codeFailed) {
+  if (grantServer() && !codeFailed) {
     const code = await new Promise<string>((resolve, reject) => {
       oauth2.initCodeClient({
         client_id: GOOGLE_CLIENT_ID,
@@ -130,17 +185,10 @@ async function askGoogle(me: { user: string; token: string } | null): Promise<st
         error_callback: closed(reject),
       }).requestCode()
     })
-    try {
-      const answer = await askWorker('grant', { token: me.token, code })
-      if (answer.grant) keepGrant({ user: me.user, grant: answer.grant })
-      renewFailed = false
-      return took(answer)
-    } catch (error) {
-      // The worker can't yet (no secret set): the next click asks Google for an hour's pass.
-      codeFailed = true
-      throw error
-    }
+    return takeCode(code, me)
   }
+  // Without the worker: an hour's pass for Drive, no account.
+  if (!me) throw new Error("Google sign-in isn't available right now")
   return new Promise((resolve, reject) => {
     oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
@@ -153,6 +201,25 @@ async function askGoogle(me: { user: string; token: string } | null): Promise<st
       error_callback: closed(reject),
     }).requestAccessToken({ prompt: '' })
   })
+}
+
+/** Google's code, from its window, turned into a pass and a grant by the
+ *  worker: the account it's for kept -- a Google account, if no one was
+ *  signed in. */
+export async function takeCode(code: string, me: { user: string; token: string | null } | null): Promise<string> {
+  let answer: Answer
+  try {
+    answer = await askWorker('grant', { code, ...(me?.token ? { token: me.token } : {}) })
+  } catch (error) {
+    // The worker can't yet (no secret set): the next click asks Google for an hour's pass.
+    if ((error as Error).message !== 'EXISTING_ACCOUNT') codeFailed = true
+    throw error
+  }
+  const account = answer.account
+  if (account?.kind === 'google') keepGoogleAccount({ id: account.id, email: account.email ?? null, name: account.name ?? null })
+  if (answer.grant && account) keepGrant({ user: account.id, grant: answer.grant })
+  renewFailed = false
+  return took(answer)
 }
 
 /** Calls tried again on a rate limit or Google's own failure, further apart

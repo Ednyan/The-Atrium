@@ -27,13 +27,15 @@ import { getCachedContributions, startContributionsRefresh, type ContributionsDa
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 // Phase 4's Drive test (components/DriveSpike), for whoever turned it on.
 const DriveSpike = lazy(() => import('./DriveSpike'))
-const driveSpikeOn = !isDesktop && (() => { try { return localStorage.getItem('atrium.drivespike') === 'on' } catch { return false } })()
+const driveSpikeOn = driveTesting
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium, vaultProblem } from '../lib/browserAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
+import { driveTesting } from '../lib/drive'
+import { googleAccount } from '../lib/signedIn'
 
 // An atrium in the browser's lists, the same in each: a card -- its picture
 // (AtriumPreview), its name and what's known of it, and what can be done with
@@ -145,6 +147,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const browserChoice = !isDesktop && newWhere !== 'cloud'
   // Drive atriums: testers, signed in, where Google sign-in is set up.
   const canDrive = driveSpikeOn && !guest && !!GOOGLE_CLIENT_ID
+  // A guest, or a Google account (phase 6): no atriums in the cloud --
+  // those are an existing account's.
+  const noCloud = guest || !!googleAccount()
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null)
   const [passwordInput, setPasswordInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -453,7 +458,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
+      if (!user || noCloud) {
         setLoading(false)
         return
       }
@@ -624,6 +629,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
     if (isDesktop) {
       setCanCreateMore(true)
+      return
+    }
+    if (noCloud) {
+      setCanCreateMore(false)
       return
     }
     
@@ -1195,6 +1204,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   <KeptWhere
                     where={newWhere}
                     canCloud={canCreateMore}
+                    noCloud={noCloud}
                     canDrive={canDrive}
                     onChange={where => {
                       setNewWhere(where)
@@ -1241,7 +1251,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               // Never out of room: past the cloud's three, it's kept in the browser.
               <button
                 onClick={() => {
-                  setNewWhere(guest || !canCreateMore ? 'browser' : 'cloud')
+                  setNewWhere(noCloud || !canCreateMore ? 'browser' : 'cloud')
                   setShowCreateLobby(true)
                 }}
                 className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
@@ -1266,7 +1276,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                     of something they cannot run out of. */}
                 {/* The cloud's, of its three; those kept in the browser aren't counted. */}
                 <span className="text-nier-bg/70 text-xs tabular-nums">
-                  {isDesktop || guest ? yours.length : `${userLobbies.length}/3`}
+                  {isDesktop || noCloud ? yours.length : `${userLobbies.length}/3`}
                 </span>
               </div>
               <div className={ROW_GRID}>
@@ -1494,7 +1504,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           )}
 
           {/* Public Atriums -- for a guest, what an account adds. */}
-          {guest ? (
+          {!guest && noCloud ? null : guest ? (
             <section className="border border-nier-border/20 p-5 flex flex-wrap items-center gap-4">
               <p className="flex-1 min-w-[14rem] text-nier-bg/80 text-xs tracking-wide leading-relaxed">{t('browser.guestNote')}</p>
               <button onClick={onSignIn} className={ROW_ENTER}>{t('auth.logIn')}</button>
@@ -1728,7 +1738,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       {/* Import Atrium Modal */}
       {showImport && (
         <ImportAtrium
-          canCloud={!guest && canCreateMore}
+          canCloud={!noCloud && canCreateMore}
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
         />

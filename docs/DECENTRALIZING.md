@@ -777,6 +777,23 @@ public list. Contributions already need no account.
    - an existing account linked to a Google sign-in, keeping its id;
    - banned account ids, checked by the directory and the rooms.
 
+**Built so far (2026-10-17):**
+- **Steps 1, 2 and 4 are live for everyone.** The worker signs Google
+  accounts in, and the directory (D1 `atrium-people`) holds usernames,
+  Drive keys and folders, and invitations. Drive atriums find people there.
+  Existing accounts publish themselves as they sign in, and can claim only
+  their own Supabase username.
+- **Step 3 is for testers only** (`localStorage['atrium.drivespike']='on'`).
+  "Continue with Google" makes a Google account, chooses a username in the
+  directory, comes back after a reload from its grant, and has browser and
+  Drive atriums but no cloud ones.
+  - An existing account's Google is linked as it connects Drive. Signing in
+    with that Google afresh points to the existing account ("Signed up with
+    Google before October 2026?") rather than making a second one.
+  - Not yet for Google accounts: profile settings (name, colour), Pinterest,
+    feedback, deletion (steps 5-6).
+  - Usernames for Google accounts need `add_username_taken.sql` run.
+
 ## Phase 7: local atriums in the browser, for everyone else
 
 - **The engine:** the desktop vault's design on the web, SQLite compiled to

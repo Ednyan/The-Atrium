@@ -17,6 +17,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase, isLocalData, isSharedLocal } from './supabase'
 import { userOf } from './peers'
+import { whoIsSignedIn } from './signedIn'
 
 // The room service (workers/rooms), on the site's own domain.
 const ROOM_URL = 'wss://rooms.digitalatrium.org'
@@ -220,9 +221,11 @@ class RoomChannel {
 
   private async connect() {
     if (this.closed || this.fallback) return
-    const session = (await supabase?.auth.getSession())?.data.session
-    const token = session?.access_token
-    this.userId = session?.user?.id ?? null
+    // Whoever's signed in: an existing account's Supabase sign-in, or a
+    // Google account's session from the worker (lib/signedIn).
+    const who = await whoIsSignedIn()
+    const token = who?.token
+    this.userId = who?.id ?? null
     if (!token) { this.giveUp(); return }
     // The token as a subprotocol, not in the address, where errors, logs and
     // policy reports would show it. And a socket refused outright -- Firefox

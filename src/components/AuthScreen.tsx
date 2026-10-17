@@ -3,6 +3,7 @@ import { friendlyAuthError } from '../lib/authErrors'
 import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
+import { driveTesting } from '../lib/drive'
 
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
@@ -217,6 +218,27 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   // Hands off to Google and returns to the app via redirect, so there's no
   // success path to handle here -- the page navigates away. Only a failure to
   // even start the handoff surfaces as an error.
+  // A Google account (phase 6, testers for now): Google's window, then the
+  // app takes it from there (App, ACCOUNT_EVENT). A Google account that's an
+  // existing account's is pointed at that account instead.
+  const [oldGoogle, setOldGoogle] = useState(false)
+  const handleGoogleAccount = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const { signInWithGoogle } = await import('../lib/drive')
+      await signInWithGoogle()
+    } catch (err: any) {
+      if (err?.message === 'EXISTING_ACCOUNT') {
+        setError(t('auth.error.existingAccount'))
+        setOldGoogle(true)
+      } else {
+        setError(err?.message || t('auth.error.googleFailed'))
+      }
+      setLoading(false)
+    }
+  }
+
   const handleGoogleSignIn = async () => {
     if (!supabase) return
     setError('')
@@ -598,7 +620,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
               <button
                 type="button"
                 disabled={loading}
-                onClick={handleGoogleSignIn}
+                onClick={driveTesting ? handleGoogleAccount : handleGoogleSignIn}
                 className="w-full py-3 border border-nier-border/40 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:border-nier-border/80 hover:bg-nier-border/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
               >
                 <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
@@ -609,6 +631,17 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                 </svg>
                 {t('auth.continueWithGoogle')}
               </button>
+              {/* An account made with Google before Google accounts: Supabase's own sign-in. */}
+              {driveTesting && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleGoogleSignIn}
+                  className={`w-full text-[10px] tracking-[0.12em] uppercase transition-colors disabled:opacity-50 ${oldGoogle ? 'text-nier-bg underline' : 'text-nier-bg/60 hover:text-nier-bg'}`}
+                >
+                  {t('auth.oldGoogle')}
+                </button>
+              )}
               {onGuest && (
                 <button
                   type="button"
