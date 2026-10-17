@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, ownerOf, readInvite, rosterVersion, type Invitation, type JoinStep } from '../lib/driveSync'
+import { askToJoin, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -250,6 +250,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   inviteNow.current = invite
   const [joining, setJoining] = useState<JoinStep | 'opening' | 'waiting' | null>(null)
   const [joinNote, setJoinNote] = useState('')
+  // Not added: they can ask an owner or admin in the atrium to let them in.
+  const [askable, setAskable] = useState(false)
   // Looked for as the browser opens, and again whenever the # changes: a link
   // pasted here, on this very page, changes only that and reloads nothing.
   useEffect(() => {
@@ -268,30 +270,40 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     window.addEventListener('hashchange', look)
     return () => window.removeEventListener('hashchange', look)
   }, [])
-  const joinInvite = async (asked = invite) => {
+  const joinInvite = async (asked = invite, ask = false) => {
     if (!asked) return
     setJoinNote('')
+    setAskable(false)
     setJoining('signIn')
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
       const me = { id: user.id, name: username || 'You' }
       let result = await joinDriveAtrium(asked.rosterId, me, setJoining)
-      // Added, and let in by the next owner's or admin's app to look: the
+      // Added, and let in by the next owner's or admin's app to look -- or
+      // not added, asking an owner or admin in the atrium (its room): the
       // roster's version watched, while this stays open, and the join asked
       // again only once it moves (a download every few seconds is what
       // Google's robot check answers).
-      if (result.state === 'waiting') {
+      const outside = () => result.state === 'waiting' || (ask && result.state === 'notAdded')
+      if (outside()) {
         setJoining('waiting')
-        setJoinNote(t(result.why === 'otherAccount' ? 'browser.drive.waitingAccount' : 'browser.drive.waiting', { owner: asked.owner }))
-        let version = await rosterVersion(asked.rosterId)
-        while (result.state === 'waiting' && inviteNow.current?.rosterId === asked.rosterId) {
-          await new Promise(wait => setTimeout(wait, 10_000))
-          const now = await rosterVersion(asked.rosterId)
-          if (now !== version) {
-            version = now
-            result = await joinDriveAtrium(asked.rosterId, me)
+        setJoinNote(result.state === 'notAdded'
+          ? t('browser.drive.asked', { owner: asked.owner })
+          : t(result.why === 'otherAccount' ? 'browser.drive.waitingAccount' : 'browser.drive.waiting', { owner: asked.owner }))
+        const stopAsking = result.state === 'notAdded' ? askToJoin(asked.lobbyId) : () => {}
+        try {
+          let version = await rosterVersion(asked.rosterId)
+          while (outside() && inviteNow.current?.rosterId === asked.rosterId) {
+            await new Promise(wait => setTimeout(wait, 10_000))
+            const now = await rosterVersion(asked.rosterId)
+            if (now !== version) {
+              version = now
+              result = await joinDriveAtrium(asked.rosterId, me)
+            }
           }
+        } finally {
+          stopAsking()
         }
       }
       if (result.state === 'in') {
@@ -299,13 +311,14 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         // Its working copy, filled by the first sync (lib/driveSync, down first).
         const { localClient } = await browserEngine()
         const { data: had } = await localClient.from('lobbies').select('id').eq('id', result.lobbyId)
-        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, owner_user_id: ownerOf(result.lobbyId) ?? user.id, is_public: false, max_players: 50 })
+        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, ...(rowFromRoster(result.lobbyId, user.id) ?? { owner_user_id: user.id }), is_public: false, max_players: 50 })
         rememberBrowserAtrium(result.lobbyId)
         setInvite(null)
         onJoinLobby(result.lobbyId)
       } else if (result.state === 'notAdded') {
         const { data: profile } = await (supabase.from('profiles') as any).select('username').eq('id', user.id).maybeSingle()
         setJoinNote(t('browser.drive.notAdded', { owner: asked.owner, username: profile?.username ?? username }))
+        setAskable(true)
       } else if (result.state === 'blocked') {
         setJoinNote(t('browser.drive.blockedHere'))
       }
@@ -1140,10 +1153,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   <div className="w-48 h-[3px] bg-nier-bg/15 overflow-hidden">
                     <div className="h-full bg-nier-bg/80 animate-nier-slide" />
                   </div>
+                  {joining === 'waiting' && <button onClick={() => setInvite(null)} className={`${ROW_BUTTON} mt-3`}>{t('common.cancel')}</button>}
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <button onClick={() => void joinInvite()} className={ROW_ENTER}>{t('browser.drive.join')}</button>
+                  {askable
+                    ? <button onClick={() => void joinInvite(invite, true)} className={ROW_ENTER}>{t('browser.drive.ask')}</button>
+                    : <button onClick={() => void joinInvite()} className={ROW_ENTER}>{t('browser.drive.join')}</button>}
                   <button onClick={() => setInvite(null)} className={ROW_BUTTON}>{t('common.cancel')}</button>
                 </div>
               )}

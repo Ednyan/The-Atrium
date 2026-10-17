@@ -699,7 +699,25 @@ media, because it changes the file format.
     growing.
   - Tested: scratchpad `drivecompact` (105 saves → a snapshot of 100, the
     folded saves removed, and a fresh copy from the snapshot plus 8 saves).
-- Not yet: asking to join from inside the atrium.
+- **Roles inside the atrium (2026-10-17).**
+  - The roster's owner, admins and whether one may edit are written into
+    each copy's atrium row, and no save carries them. So the atrium shows
+    the right owner and admins, and a viewer gets no edit controls.
+  - Changes to the atrium's own row (its name, its theme) are taken only
+    from its owner and admins, and only they send them.
+  - Saves through the room are taken only from someone whose saves are
+    taken. The room says who sent each one: not a viewer, nor someone
+    removed, who may still hold a key.
+  - Atrium Settings opens the members panel. Share gives the invite link, or
+    for an atrium kept only in this browser, saving it as a file.
+- **Asking to be let in.**
+  - Someone with the invite link who isn't added can ask. Their page says
+    so through the atrium's room every 15 s while it waits.
+  - An owner or admin inside sees "X asks to join", with Let in (as an
+    editor) and Not now. The name is as the room knows the sender, not as
+    claimed.
+  - Once let in, the asker's page enters by itself.
+  - Tested: scratchpad `driveroles` (room stack), `driveui`, `drivejoinui`.
 
 **Unchanged:** Supabase atriums and browser atriums. "Move this atrium to
 my Drive" comes later.

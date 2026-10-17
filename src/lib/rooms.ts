@@ -68,8 +68,11 @@ type Seat = { id: string; meta: Record<string, unknown> }
 export type RoomStatus = 'trying' | 'live' | 'gone'
 let inUse: { lobbyId: string; status: RoomStatus; room: RoomChannel } | null = null
 const statusWatchers = new Set<() => void>()
-const roomListeners = new Map<string, Set<(payload: unknown) => void>>()
+// Each told what was said and who said it, as the room stamps it.
+const roomListeners = new Map<string, Set<(payload: unknown, sender: string) => void>>()
 function setStatus(room: RoomChannel, lobbyId: string, status: RoomStatus | null) {
+  // A word said from outside (sayToRoom) isn't the room in use.
+  if (room.aside) return
   if (status === null) {
     if (inUse?.room !== room) return
     inUse = null
@@ -89,12 +92,30 @@ export function sendThroughRoom(event: string, payload: unknown): boolean {
   void inUse.room.send({ type: 'broadcast', event, payload })
   return true
 }
-/** What others in the room say of `event`. */
-export function onRoomEvent(event: string, listener: (payload: unknown) => void) {
+/** What others in the room say of `event`, and who said it -- as the room
+ *  knows them by their sign-in, not as they claim. */
+export function onRoomEvent(event: string, listener: (payload: unknown, sender: string) => void) {
   const listeners = roomListeners.get(event) ?? new Set()
   roomListeners.set(event, listeners)
   listeners.add(listener)
   return () => { listeners.delete(listener) }
+}
+
+/** A word to an atrium's room from outside it -- not present in it, hearing
+ *  nothing back -- said again every `everyMs`, so whoever comes in later
+ *  hears it too, until what this returns is called. */
+export function sayToRoom(lobbyId: string, event: string, payload: unknown, everyMs: number): () => void {
+  const url = roomServer()
+  if (!url || typeof WebSocket === 'undefined') return () => {}
+  const room = new RoomChannel(url, lobbyId, () => supabase!.channel(`lobby-${lobbyId}-presence`, {}), true)
+  room.subscribe()
+  const say = () => void room.send({ type: 'broadcast', event, payload })
+  say()
+  const again = window.setInterval(say, everyMs)
+  return () => {
+    window.clearInterval(again)
+    void room.unsubscribe()
+  }
 }
 
 /** The atrium's presence channel: its room, or Supabase's channel by the name
@@ -124,7 +145,8 @@ class RoomChannel {
   private readonly lobbyId: string
   private readonly viaSupabase: () => RealtimeChannel
 
-  constructor(url: string, lobbyId: string, viaSupabase: () => RealtimeChannel) {
+  // `aside`: a connection of its own beside the room in use, if any (sayToRoom).
+  constructor(url: string, lobbyId: string, viaSupabase: () => RealtimeChannel, readonly aside = false) {
     this.url = url.replace(/\/$/, '')
     this.lobbyId = lobbyId
     this.viaSupabase = viaSupabase
@@ -270,7 +292,7 @@ class RoomChannel {
       const claimed = typeof payload.userId === 'string' ? payload.userId : typeof payload.from === 'string' ? userOf(payload.from) : null
       if (claimed !== null && claimed !== message.u) return
       this.emit('broadcast', message.e, { type: 'broadcast', event: message.e, payload: message.p })
-      roomListeners.get(message.e)?.forEach(listener => listener(message.p))
+      roomListeners.get(message.e)?.forEach(listener => listener(message.p, message.u))
     }
   }
 

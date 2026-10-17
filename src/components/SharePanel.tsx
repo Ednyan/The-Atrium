@@ -7,7 +7,8 @@
 
 import { useEffect, useRef } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { isDesktop } from '../lib/supabase'
+import { isDesktop, isLocalData } from '../lib/supabase'
+import { inviteLink } from '../lib/driveSync'
 import { copyText } from '../lib/clipboard'
 
 export const atriumLink = (id: string) => `${window.location.origin}/atrium/${id}`
@@ -36,6 +37,10 @@ export default function SharePanel({ atriumId, onSaveFile, onClose }: {
     return () => { window.removeEventListener('pointerdown', press, true); window.removeEventListener('keydown', key) }
   }, [onClose])
   const link = atriumLink(atriumId)
+  // Kept in Google Drive: its invite link, for those added. Kept in this
+  // browser or on this computer: no link reaches it.
+  const invite = isLocalData && !isDesktop ? inviteLink(atriumId) : null
+  const keptHere = isLocalData && !invite
 
   return (
     <div
@@ -47,10 +52,19 @@ export default function SharePanel({ atriumId, onSaveFile, onClose }: {
     >
       <h3 className="text-nier-strong text-xs tracking-[0.2em] uppercase"><span className="text-nier-bg/60 mr-2">◇</span>{t('share.title')}</h3>
 
-      {isDesktop ? (
+      {keptHere ? (
         <div className="space-y-2">
-          <p className="text-nier-bg/80 text-[11px] leading-relaxed tracking-wide">{t('share.desktopHint')}</p>
+          <p className="text-nier-bg/80 text-[11px] leading-relaxed tracking-wide">{t(isDesktop ? 'share.desktopHint' : 'share.browserHint')}</p>
           <button type="button" className={`${BUTTON} w-full`} onClick={() => { onSaveFile(); onClose() }}>◇ {t('share.saveFile')}</button>
+        </div>
+      ) : invite ? (
+        <div className="space-y-2">
+          <label className="block text-nier-bg/70 text-[10px] tracking-[0.15em] uppercase" htmlFor="share-link">{t('browser.drive.inviteLink')}</label>
+          <div className="flex gap-2">
+            <input id="share-link" readOnly value={invite} className={FIELD} onFocus={e => e.currentTarget.select()} />
+            <button type="button" data-copy="link" className={BUTTON} onClick={() => void copyText(invite, t('share.linkCopied'))}>{t('share.copyLink')}</button>
+          </div>
+          <p className="text-nier-bg/60 text-[10px] leading-relaxed tracking-wide">{t('share.driveHint')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -63,13 +77,14 @@ export default function SharePanel({ atriumId, onSaveFile, onClose }: {
         </div>
       )}
 
-      <div className="space-y-2 pt-3 border-t border-nier-border/20">
+      {/* Its ID finds it among the cloud's: of no use for one kept in a browser. */}
+      {(isDesktop || !isLocalData) && <div className="space-y-2 pt-3 border-t border-nier-border/20">
         <label className="block text-nier-bg/70 text-[10px] tracking-[0.15em] uppercase" htmlFor="share-id">{t('share.id')}</label>
         <div className="flex gap-2">
           <input id="share-id" readOnly value={atriumId} className={FIELD} onFocus={e => e.currentTarget.select()} />
           <button type="button" data-copy="id" className={BUTTON} onClick={() => void copyText(atriumId, t('share.idCopied'))}>{t('share.copyId')}</button>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }

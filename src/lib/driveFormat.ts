@@ -191,10 +191,13 @@ export const rowsOf = (merged: Merged, table: Table) =>
 
 export const TABLES: Table[] = ['lobbies', 'traces', 'layers', 'trace_links', 'lobby_locations']
 
-// Columns that are each device's own and never carried: who an atrium shows
-// as its owner here (lib/browserAtriums), its own picture of it, when its row
-// was last written here.
-const OWN: Partial<Record<Table, string[]>> = { lobbies: ['owner_user_id', 'preview_url', 'preview_at', 'updated_at'] }
+// Columns that are each device's own and never carried: its owner, its
+// admins and whether this person may edit -- the roster's to say, written
+// into each copy from it (lib/driveSync) -- its own picture of it, and when
+// its row was last written here.
+const OWN: Partial<Record<Table, string[]>> = {
+  lobbies: ['owner_user_id', 'admin_user_ids', 'edit_permission_mode', 'preview_url', 'preview_at', 'updated_at'],
+}
 /** A row as it's carried: without its device's own columns. */
 export function carried(table: Table, row: Record<string, unknown>): Record<string, unknown> {
   const own = OWN[table]
