@@ -10,22 +10,13 @@
 // just fail, and the app falls back to Supabase. Sockets hibernate between
 // messages, so an idle room costs nothing.
 //
-// It also keeps Drive atriums signed in to Google (google, below).
+// It also signs people in with Google and keeps them signed in
+// (src/google.ts), and keeps the directory of who's who (src/people.ts).
 
 import { DurableObject } from 'cloudflare:workers'
-
-interface Env {
-  ROOMS: DurableObjectNamespace<Room>
-  // Whose a sign-in token is: Supabase Auth is asked once per connection.
-  SUPABASE_URL: string
-  SUPABASE_ANON_KEY: string
-  // Google sign-in for Drive atriums: the app's client id (wrangler.toml)
-  // and secret (a secret). Without the secret, the app asks Google itself.
-  GOOGLE_CLIENT_ID?: string
-  GOOGLE_CLIENT_SECRET?: string
-  // Google's token address; another only in a local test.
-  GOOGLE_TOKEN_URL?: string
-}
+import { google } from './google'
+import { people } from './people'
+import { whoIs, type Env } from './who'
 
 // What each socket keeps through hibernation (2 KB at most).
 interface Seat { user: string; ref: string; meta: unknown }
@@ -43,7 +34,8 @@ const MOST_PER_SECOND = 40
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname === '/google/grant' || url.pathname === '/google/renew') return google(request, env, url.pathname.slice('/google/'.length))
+    if (url.pathname.startsWith('/google/')) return google(request, env, url.pathname.slice('/google/'.length))
+    if (url.pathname.startsWith('/people/')) return people(request, env, url.pathname.slice('/people/'.length))
     const atrium = url.pathname.match(ATRIUM)?.[1]
     if (!atrium) return new Response('Not found', { status: 404 })
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })
@@ -52,25 +44,13 @@ export default {
     // in the URL.
     const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map(part => part.trim())
     const token = offered[0] === 'atrium' && offered[1] ? offered[1] : url.searchParams.get('token')
-    const user = await whoIs(token, env)
+    const user = (await whoIs(token, env))?.id
     if (!user) return new Response('Not signed in', { status: 401 })
     const headers = new Headers(request.headers)
     headers.set('X-Atrium-User', user)
     headers.set('X-Atrium-Protocol', offered[0] === 'atrium' ? 'atrium' : '')
     return env.ROOMS.get(env.ROOMS.idFromName(atrium)).fetch(new Request(request.url, { headers }))
   },
-}
-
-async function whoIs(token: string | null, env: Env): Promise<string | null> {
-  if (!token) return null
-  try {
-    const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY } })
-    if (!response.ok) return null
-    const user = await response.json() as { id?: unknown }
-    return typeof user.id === 'string' ? user.id : null
-  } catch {
-    return null
-  }
 }
 
 export class Room extends DurableObject<Env> {
@@ -146,85 +126,5 @@ export class Room extends DurableObject<Env> {
     if (++sent.count <= MOST_PER_SECOND) return false
     try { ws.close(1008, 'too many messages') } catch { /* closed */ }
     return true
-  }
-}
-
-// ---------------------------------------------------------------- Google
-
-// Drive atriums stay signed in to Google (src/lib/drive.ts). Google's pass
-// lasts an hour, and in a browser only a click can ask for another; so a
-// browser asks once, in Google's code flow, and this turns the code into a
-// pass and a renewal grant -- which takes the app's secret, kept here. The
-// grant never rests here: it goes back to the browser sealed with a key only
-// this worker has, bound to whose it is, and comes back with each renewal,
-// with that person's sign-in. Plain requests (a text body, no headers of
-// their own): a browser sends them without asking first, so a renewal is one
-// request an hour per person saving.
-const ORIGINS = /^(https:\/\/(www\.)?digitalatrium\.org|http:\/\/(localhost|127\.0\.0\.1):\d+)$/
-
-async function google(request: Request, env: Env, what: string): Promise<Response> {
-  const origin = request.headers.get('Origin') ?? ''
-  const allowed = ORIGINS.test(origin)
-  const answer = (status: number, body: unknown) => new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...(allowed ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}) },
-  })
-  if (request.method !== 'POST' || !allowed) return answer(403, { error: 'origin' })
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return answer(503, { error: 'not set up' })
-  let asked: { token?: unknown; code?: unknown; grant?: unknown }
-  try {
-    asked = await request.json()
-  } catch {
-    return answer(400, { error: 'body' })
-  }
-  const user = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
-  if (!user) return answer(401, { error: 'sign-in' })
-  const key = await grantKey(env.GOOGLE_CLIENT_SECRET)
-  let form: Record<string, string>
-  if (what === 'grant' && typeof asked.code === 'string') {
-    // A code from Google's window in popup mode is exchanged with this address.
-    form = { grant_type: 'authorization_code', code: asked.code, redirect_uri: 'postmessage' }
-  } else if (what === 'renew' && typeof asked.grant === 'string') {
-    const refresh = await unsealGrant(key, asked.grant, user)
-    if (!refresh) return answer(401, { error: 'grant' })
-    form = { grant_type: 'refresh_token', refresh_token: refresh }
-  } else {
-    return answer(400, { error: 'body' })
-  }
-  const response = await fetch(env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    body: new URLSearchParams({ ...form, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET }),
-  })
-  const got = await response.json().catch(() => ({})) as { access_token?: string; expires_in?: number; scope?: string; refresh_token?: string; error?: string }
-  // Taken back (the person removed the app's access), or a code already used.
-  if (got.error === 'invalid_grant') return answer(401, { error: 'grant' })
-  if (!response.ok || !got.access_token) return answer(502, { error: 'google', detail: got.error })
-  return answer(200, {
-    access_token: got.access_token,
-    expires_in: got.expires_in,
-    scope: got.scope,
-    ...(got.refresh_token ? { grant: await sealGrant(key, got.refresh_token, user) } : {}),
-  })
-}
-
-// The key grants are sealed with: made from the app's secret, so a new secret
-// makes every grant useless, and each browser asks once again.
-const grantKey = async (secret: string) =>
-  crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`atrium drive grant\n${secret}`)), 'AES-GCM', false, ['encrypt', 'decrypt'])
-
-async function sealGrant(key: CryptoKey, refresh: string, user: string): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(user) }, key, new TextEncoder().encode(refresh)))
-  return btoa(String.fromCharCode(...iv, ...sealed))
-}
-
-// Null for anything not sealed here for this person.
-async function unsealGrant(key: CryptoKey, grant: string, user: string): Promise<string | null> {
-  try {
-    const bytes = Uint8Array.from(atob(grant), c => c.charCodeAt(0))
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12), additionalData: new TextEncoder().encode(user) }, key, bytes.subarray(12))
-    return new TextDecoder().decode(plain)
-  } catch {
-    return null
   }
 }

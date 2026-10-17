@@ -729,13 +729,53 @@ my Drive" comes later.
 
 ## Phase 6: accounts with Google first
 
-- **Profiles** (name, colour, settings) live in `drive.appdata`.
-- **Supabase Auth only where needed:** existing accounts, publishing an atrium
-  to the public list, and contributions. That keeps monthly active users far
-  below the free 50,000.
-- **Linking:** an existing account can be linked to a Google identity.
-- **Bans:** a list of banned Google account ids, checked by the public list and
-  the introduction step.
+**Decided 2026-10-17: the full plan.** New accounts are Google accounts with
+no Supabase account at all. Supabase Auth stays for existing accounts and the
+public list. Contributions already need no account.
+
+**What a Supabase account carries today, and where it goes:**
+- **Who someone is,** to the rooms worker: a Supabase sign-in. Google
+  accounts get the worker's own sign-in instead (step 1).
+- **Their public profile:** username, display name, and Drive's public key
+  and folder. This moves to a directory on Cloudflare (D1), for everyone, so
+  a Google account and a Supabase account can add each other (step 2).
+- **Drive invitations** (`drive_invites`): also to the directory (step 2).
+- **Their own settings:** colour, custom themes. Google accounts keep them
+  in their Google Drive's hidden app folder (step 5).
+- **Server functions:** Pinterest, feedback, the welcome mail, account
+  deletion, the relay pass. They move to the worker for Google accounts
+  (step 6).
+- **Cloud atriums** stay Supabase's, for existing accounts: paid later.
+
+**Build order, each step testable, nothing breaks existing accounts:**
+1. **Identity from the worker.**
+   - "Continue with Google" is the code flow the Drive sign-in already uses,
+     with `openid email profile`.
+   - The worker reads who it is from Google's own answer (the ID token). The
+     account's id is a UUID made from Google's id for the person (v5), so the
+     app can't choose it.
+   - The worker signs short sessions (an hour, HMAC) that it checks itself:
+     the rooms accept them without asking Supabase.
+   - The renewal grant is the lasting sign-in, bound to the account.
+2. **The directory** (D1, free: 5 GB, 5 M rows read and 100 k written a
+   day).
+   - Accounts: id, username (unique, also against Supabase's), display
+     name, Drive key and folder. Email is kept private.
+   - Invitations, as `drive_invites` was.
+   - Reached through the worker with either kind of sign-in.
+3. **The app's account.** One notion of who's signed in, either kind. Sign-in
+   leads with Google, with a username chosen in the directory, and the
+   session comes back on reload from the grant.
+4. **Drive and browser atriums for Google accounts:** finding people,
+   inviting, letting in, and the rooms, all through the directory and the
+   worker's sessions.
+5. **Settings in Drive:** display name, colour and custom themes in the app
+   folder.
+6. **Server functions on the worker:** relay pass, feedback, deletion,
+   Pinterest.
+7. **Linking and bans:**
+   - an existing account linked to a Google sign-in, keeping its id;
+   - banned account ids, checked by the directory and the rooms.
 
 ## Phase 7: local atriums in the browser, for everyone else
 

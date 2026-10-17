@@ -19,6 +19,13 @@ new_sqlite_classes = ["Room"]
 pattern = "rooms.digitalatrium.org"
 custom_domain = true
 
+# The directory of who's who (src/people.ts): usernames, Drive keys and
+# folders, invitations. Its tables are made by the worker on first use.
+[[d1_databases]]
+binding = "PEOPLE"
+database_name = "atrium-people"
+database_id = "98e3f3c7-95f3-4482-b0b2-f8be13c26562"
+
 # SUPABASE_URL and SUPABASE_ANON_KEY are secrets (wrangler secret put), or
 # .dev.vars locally. So is GOOGLE_CLIENT_SECRET: Drive atriums staying signed
 # in to Google (src/index.ts, google). The client id is public.
