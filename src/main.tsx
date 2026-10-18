@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import ToastHost from './components/ToastHost.tsx'
+import FarewellNotice from './components/FarewellNotice.tsx'
 import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
 import { localDbReady, isDesktop } from './lib/supabase'
@@ -36,6 +37,7 @@ Promise.all([localDbReady, languageOrNot]).then(() => {
           each of its many early returns, so there is no single place within
           it that stays mounted across every route. */}
       <ToastHost />
+      <FarewellNotice />
     </React.StrictMode>,
   )
 }).catch((error) => {

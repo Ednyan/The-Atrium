@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
 import { supabase, isDesktop } from '../lib/supabase'
 import { useGamePick } from '../store/gameStore'
-import { deleteMyAccount, requestDeletionCode } from '../lib/account'
+import { deleteMyAccount, markFarewell, requestDeletionCode } from '../lib/account'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
 import {
@@ -356,8 +356,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     leaveAfterDeletion()
   }
 
-  // Gone: what this browser kept of where one was, and on to the start.
+  // Gone: what this browser kept of where one was, and on to the start --
+  // where it's said, with thanks (App's FarewellNotice).
   const leaveAfterDeletion = () => {
+    markFarewell()
     localStorage.removeItem('lobby_hasEntered')
     localStorage.removeItem('lobby_currentLobbyId')
     localStorage.removeItem('lobby_showBrowser')

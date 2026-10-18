@@ -91,3 +91,20 @@ export async function deleteMyAccount(code: string): Promise<DeleteAccountResult
     return { success: false, error: err?.message || t('profile.errDeleteAccount') }
   }
 }
+
+// After a deletion the page goes back to the start, from scratch: what's to be
+// said there -- the account is gone, and thanks -- is kept across that reload
+// (App's FarewellNotice), and said once.
+const FAREWELL = 'atrium.farewell'
+export function markFarewell() {
+  try { sessionStorage.setItem(FAREWELL, '1') } catch { /* not said, then */ }
+}
+export function takeFarewell(): boolean {
+  try {
+    const due = sessionStorage.getItem(FAREWELL) === '1'
+    sessionStorage.removeItem(FAREWELL)
+    return due
+  } catch {
+    return false
+  }
+}

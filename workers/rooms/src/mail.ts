@@ -1,12 +1,14 @@
 // Mail from the Atrium, through Resend (its key a secret here, RESEND_API_KEY):
 // the report form's, to support, for either kind of account; and a Google
-// account's welcome, as it chooses its username (src/people.ts) -- an
-// existing account's comes from Supabase (supabase/functions/send-welcome).
-// The card and the welcome's words are the Supabase functions' own files,
-// the same ones, not copies.
+// account's welcome, as it chooses its username (src/people.ts), and its
+// goodbye, once it's deleted (src/google.ts) -- an existing account's come
+// from Supabase (supabase/functions/send-welcome, delete-account). The card
+// and the words are the Supabase functions' own files, the same ones, not
+// copies.
 
 import { renderAtriumEmail } from '../../../supabase/functions/_shared/atriumEmail'
-import { WELCOME_COPY, type WelcomeLanguage } from '../../../supabase/functions/send-welcome/copy'
+import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
+import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
 import { emailOf } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
@@ -59,10 +61,15 @@ export async function feedback(request: Request, env: Env): Promise<Response> {
   return sent ? answer(200, { success: true }) : answer(502, { error: 'Failed to send email' })
 }
 
-/** A Google account's welcome, in the language its page shows (English if
- *  that's not one there's copy for). Never in the way: a failure is logged. */
-export async function welcome(env: Env, to: string, name: string, language: unknown): Promise<void> {
-  const copy = WELCOME_COPY[(typeof language === 'string' && language in WELCOME_COPY ? language : 'en') as WelcomeLanguage]
+/** A Google account's welcome, and its goodbye: in the language its page
+ *  shows (English if there's no copy in it). Never in the way: a failure is
+ *  logged. */
+export const welcome = (env: Env, to: string, name: string, language: unknown) => greet(env, to, name, WELCOME_COPY, language)
+export const goodbye = (env: Env, to: string, name: string, language: unknown) => greet(env, to, name, GOODBYE_COPY, language)
+
+interface Greeting { subject: string; heading: string; greeting: (name: string) => string; body: string; action: string; footnote: string; footer: string }
+async function greet(env: Env, to: string, name: string, copies: Record<string, Greeting>, language: unknown): Promise<void> {
+  const copy = copies[typeof language === 'string' && language in copies ? language : 'en']
   const { html, text } = renderAtriumEmail({
     heading: copy.heading,
     body: name ? `${copy.greeting(name)}\n\n${copy.body}` : copy.body,
@@ -70,5 +77,5 @@ export async function welcome(env: Env, to: string, name: string, language: unkn
     footnote: copy.footnote,
     footer: copy.footer,
   })
-  await send(env, { from: FROM_HELLO, to, subject: copy.subject, html, text }).catch(error => console.error('[mail] the welcome:', error))
+  await send(env, { from: FROM_HELLO, to, subject: copy.subject, html, text }).catch(error => console.error(`[mail] ${copy.subject}:`, error))
 }

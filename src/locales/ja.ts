@@ -29,6 +29,8 @@ const ja: Catalogue = {
   'common.save': '保存',
   'common.close': '閉じる',
   'common.okay': 'OK',
+  'farewell.title': 'アカウントを削除しました',
+  'farewell.body': 'アカウントを削除しました。The Digital Atrium で過ごしてくださった時間に感謝します。お別れのメールをお送りしています。',
   'common.back': '戻る',
   'common.delete': '削除',
   'common.confirm': '確認',

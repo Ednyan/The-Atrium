@@ -18,6 +18,8 @@ const de: Catalogue = {
   'common.save': 'Speichern',
   'common.close': 'Schließen',
   'common.okay': 'Alles klar',
+  'farewell.title': 'Konto gelöscht',
+  'farewell.body': 'Dein Konto wurde gelöscht. Danke für die Zeit, die du im Digital Atrium verbracht hast. Ein Abschiedsgruß ist unterwegs in dein Postfach.',
   'common.back': 'Zurück',
   'common.delete': 'Löschen',
   'common.confirm': 'Bestätigen',

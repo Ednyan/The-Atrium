@@ -32,6 +32,8 @@ const zh: Catalogue = {
   'common.save': '保存',
   'common.close': '关闭',
   'common.okay': '好',
+  'farewell.title': '账号已删除',
+  'farewell.body': '你的账号已删除。感谢你在 The Digital Atrium 度过的时光。一封告别信正在发往你的邮箱。',
   'common.back': '返回',
   'common.delete': '删除',
   'common.confirm': '确认',

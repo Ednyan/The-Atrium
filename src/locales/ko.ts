@@ -33,6 +33,8 @@ const ko: Catalogue = {
   'common.save': '저장',
   'common.close': '닫기',
   'common.okay': '확인',
+  'farewell.title': '계정 삭제됨',
+  'farewell.body': '계정이 삭제되었습니다. The Digital Atrium에서 함께한 시간에 감사드립니다. 작별 인사 메일이 곧 도착합니다.',
   'common.back': '뒤로',
   'common.delete': '삭제',
   'common.confirm': '확인',

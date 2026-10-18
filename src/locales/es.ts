@@ -15,6 +15,8 @@ const es: Catalogue = {
   'common.save': 'Guardar',
   'common.close': 'Cerrar',
   'common.okay': 'De acuerdo',
+  'farewell.title': 'Cuenta eliminada',
+  'farewell.body': 'Tu cuenta se ha eliminado. Gracias por el tiempo que pasaste en The Digital Atrium. Una despedida va de camino a tu bandeja de entrada.',
   'common.back': 'Atrás',
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',

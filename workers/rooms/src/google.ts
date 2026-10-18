@@ -16,6 +16,7 @@
 // for the person -- and who gets the worker's own session with each pass
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
+import { goodbye } from './mail'
 import { accountKept, forgetAccount, forgetGoogleGrant, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
 import { accountIdFor, fromBase64, fromUrl, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
@@ -30,7 +31,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return answer(503, { error: 'not set up' })
-  let asked: { token?: unknown; code?: unknown; grant?: unknown; id_token?: unknown }
+  let asked: { token?: unknown; code?: unknown; grant?: unknown; id_token?: unknown; language?: unknown }
   try {
     asked = await request.json()
   } catch {
@@ -124,7 +125,10 @@ export async function google(request: Request, env: Env, what: string): Promise<
     if (!person || await accountIdFor(person.sub) !== who.id) return answer(403, { error: 'confirm' })
     const grant = typeof asked.grant === 'string' ? await openGrant(key, asked.grant, token, env) : null
     await giveBack(env, key, [person.sub], grant && grant !== 'sign-in' && grant.r ? [grant.r] : [])
+    // Whom to say goodbye to, read before the row goes: once it has, said.
+    const row = env.PEOPLE ? await env.PEOPLE.prepare('select email, username, display_name from accounts where id = ?').bind(who.id).first<{ email: string | null; username: string | null; display_name: string | null }>() : null
     if (env.PEOPLE) await forgetAccount(env.PEOPLE, who.id)
+    if (row?.email) await goodbye(env, row.email, row.display_name || row.username || '', asked.language)
     return answer(200, { deleted: true })
   }
 

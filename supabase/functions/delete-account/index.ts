@@ -27,6 +27,37 @@
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient, getAuthenticatedUser } from '../_shared/supabaseAdmin.ts'
 import { MAX_ATTEMPTS, hashCode, hashesMatch } from '../_shared/deletionCode.ts'
+import { renderAtriumEmail } from '../_shared/atriumEmail.ts'
+import { GOODBYE_COPY, type GoodbyeLanguage } from '../_shared/goodbyeCopy.ts'
+
+const RESEND_FROM = 'Digital Atrium <hello@mail.digitalatrium.org>'
+const SITE = 'https://digitalatrium.org'
+
+// A goodbye, once the account is gone: in the language its profile recorded
+// (add_profile_language.sql), to the address it had. Never in the way of the
+// deletion's answer -- a failure is logged.
+async function sayGoodbye(to: string, name: string, language: unknown) {
+  const resendKey = Deno.env.get('RESEND_API_KEY')
+  if (!resendKey) return
+  const copy = GOODBYE_COPY[(typeof language === 'string' && language in GOODBYE_COPY ? language : 'en') as GoodbyeLanguage]
+  const { html, text } = renderAtriumEmail({
+    heading: copy.heading,
+    body: name ? `${copy.greeting(name)}\n\n${copy.body}` : copy.body,
+    action: { label: copy.action, href: SITE },
+    footnote: copy.footnote,
+    footer: copy.footer,
+  })
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESEND_FROM, to, subject: copy.subject, html, text }),
+    })
+    if (!response.ok) console.error('[delete-account] the goodbye was refused:', response.status, await response.text())
+  } catch (error) {
+    console.error('[delete-account] the goodbye:', error)
+  }
+}
 
 // Not a real user id (real ones are UUIDs) -- just a stable marker so
 // anonymized content can still be told apart from a live account if ever
@@ -137,6 +168,9 @@ Deno.serve(async (req: Request) => {
       console.error('[delete-account] failed to strip admin lists:', adminStripError)
     }
 
+    // Whom to say goodbye to, read before the profile goes with the account.
+    const { data: profile } = await admin.from('profiles').select('username, display_name, language').eq('id', userId).maybeSingle()
+
     const { error: authDeleteError } = await admin.auth.admin.deleteUser(userId)
     if (authDeleteError) {
       console.error('[delete-account] failed to delete auth user:', authDeleteError)
@@ -145,6 +179,8 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    if (user.email) await sayGoodbye(user.email, (profile?.display_name || profile?.username || '').trim(), profile?.language)
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -23,6 +23,8 @@ export const en = {
   'common.save': 'Save',
   'common.close': 'Close',
   'common.okay': 'Okay',
+  'farewell.title': 'Account Deleted',
+  'farewell.body': 'Your account has been deleted. Thank you for the time you spent in The Digital Atrium. A goodbye is on its way to your inbox.',
   'common.back': 'Back',
   'common.delete': 'Delete',
   'common.confirm': 'Confirm',

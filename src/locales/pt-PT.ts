@@ -22,6 +22,8 @@ const ptPT: Catalogue = {
   'common.save': 'Guardar',
   'common.close': 'Fechar',
   'common.okay': 'Está bem',
+  'farewell.title': 'Conta eliminada',
+  'farewell.body': 'A sua conta foi eliminada. Obrigado pelo tempo que passou no The Digital Atrium. Uma despedida está a caminho da sua caixa de correio.',
   'common.back': 'Voltar',
   'common.delete': 'Eliminar',
   'common.confirm': 'Confirmar',

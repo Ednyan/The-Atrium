@@ -19,6 +19,8 @@ const ptBR: Catalogue = {
   'common.save': 'Salvar',
   'common.close': 'Fechar',
   'common.okay': 'Ok',
+  'farewell.title': 'Conta excluída',
+  'farewell.body': 'Sua conta foi excluída. Obrigado pelo tempo que você passou no The Digital Atrium. Uma despedida está a caminho da sua caixa de entrada.',
   'common.back': 'Voltar',
   'common.delete': 'Excluir',
   'common.confirm': 'Confirmar',

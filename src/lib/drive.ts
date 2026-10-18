@@ -12,6 +12,7 @@
 import { workerUrl } from './rooms'
 import { cloudClient, isDesktop } from './supabase'
 import { googleAccount, keepGoogleAccount, type GoogleAccount, type SignedOutReason } from './signedIn'
+import { currentLanguage } from './i18n'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
 // The Picker's key (APIs & Services > Credentials).
@@ -237,7 +238,8 @@ export async function deleteGoogleAccount(idToken: string): Promise<void> {
   const session = await workerSession()
   if (!google || !session) throw new Error('NOT_SIGNED_IN')
   const kept = grantKept()
-  await askWorker('delete', { token: session, id_token: idToken, ...(kept?.user === google.id ? { grant: kept.grant } : {}) })
+  // The goodbye mailed after is in the page's language.
+  await askWorker('delete', { token: session, id_token: idToken, language: currentLanguage(), ...(kept?.user === google.id ? { grant: kept.grant } : {}) })
   signOutGoogle()
 }
 

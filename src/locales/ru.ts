@@ -21,6 +21,8 @@ const ru: Catalogue = {
   'common.save': 'Сохранить',
   'common.close': 'Закрыть',
   'common.okay': 'Хорошо',
+  'farewell.title': 'Аккаунт удалён',
+  'farewell.body': 'Ваш аккаунт удалён. Спасибо за время, проведённое в The Digital Atrium. Прощальное письмо уже в пути.',
   'common.back': 'Назад',
   'common.delete': 'Удалить',
   'common.confirm': 'Подтвердить',

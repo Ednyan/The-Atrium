@@ -17,6 +17,8 @@ const fr: Catalogue = {
   'common.save': 'Enregistrer',
   'common.close': 'Fermer',
   'common.okay': 'D’accord',
+  'farewell.title': 'Compte supprimé',
+  'farewell.body': 'Votre compte a été supprimé. Merci pour le temps passé dans The Digital Atrium. Un mot d’au revoir est en route vers votre boîte de réception.',
   'common.back': 'Retour',
   'common.delete': 'Supprimer',
   'common.confirm': 'Confirmer',
