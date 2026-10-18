@@ -215,25 +215,55 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   // Hands off to Google and returns to the app via redirect, so there's no
   // success path to handle here -- the page navigates away. Only a failure to
   // even start the handoff surfaces as an error.
-  // A Google account (phase 6, testers for now): Google's window, then the
-  // app takes it from there (App, ACCOUNT_EVENT). A Google account that's an
-  // existing account's goes to that account: on with its own Google sign-in
-  // if it signed up with this Google, else told to sign in with its email
-  // and password.
+  // Signing in with Google (phase 6, testers for now). Google's window
+  // without its consent screen; the first time for this Google account, a
+  // second click for the one that asks (`needsConsent`) -- the worker keeps
+  // the grant, so never again. Then a Google account (the app takes it from
+  // there: App, ACCOUNT_EVENT), or the existing account this Google is:
+  // signed in to it by Supabase with Google's own token where Supabase will
+  // (it has this Google, or this verified address -- and links it), on to
+  // its own Google sign-in if it was made with Google, else told to sign in
+  // with its email and password.
+  const [needsConsent, setNeedsConsent] = useState(false)
   const handleGoogleAccount = async () => {
     setError('')
     setLoading(true)
     try {
       const { signInWithGoogle } = await import('../lib/drive')
-      await signInWithGoogle()
-    } catch (err: any) {
-      if (err?.message === 'EXISTING_ACCOUNT' && err.how === 'google') {
+      const result = await signInWithGoogle(needsConsent)
+      if (result.kind === 'consent') {
+        setNeedsConsent(true)
+        setLoading(false)
+        return
+      }
+      setNeedsConsent(false)
+      if (result.kind === 'google') return
+      if (result.joinable && result.idToken && await signInToExisting(result.idToken, result.account)) return
+      if (result.how === 'google') {
         await handleGoogleSignIn()
         return
       }
-      setError(err?.message === 'EXISTING_ACCOUNT' ? t('auth.error.existingPassword') : err?.message || t('auth.error.googleFailed'))
-      setLoading(false)
+      setError(t('auth.error.existingPassword'))
+    } catch (err: any) {
+      setError(err?.message || t('auth.error.googleFailed'))
     }
+    setLoading(false)
+  }
+
+  // Into the existing account with Google's ID token -- true if that's where
+  // Supabase put us. Anywhere else, out again at once: an account is never
+  // made, or kept, by guessing.
+  const signInToExisting = async (idToken: string, account: string): Promise<boolean> => {
+    if (!supabase) return false
+    markSignInStarted()
+    const { data, error: idError } = await supabase.auth.signInWithIdToken({ provider: 'google', token: idToken })
+    if (idError) {
+      console.warn('[atrium] signing in to the account from before with Google:', idError.message)
+      return false
+    }
+    if (data?.user?.id === account) return true
+    await supabase.auth.signOut()
+    return false
   }
 
   const handleGoogleSignIn = async () => {
@@ -621,17 +651,8 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                 </svg>
                 {t('auth.continueWithGoogle')}
               </button>
-              {/* An account made with Google before Google accounts: Supabase's own sign-in. */}
-              {driveTesting && (
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleGoogleSignIn}
-                  className="w-full text-[10px] tracking-[0.12em] uppercase transition-colors disabled:opacity-50 text-nier-bg/60 hover:text-nier-bg"
-                >
-                  {t('auth.oldGoogle')}
-                </button>
-              )}
+              {/* Google's consent, the first time for this Google account: what it's for. */}
+              {needsConsent && <p className="text-nier-bg/80 text-[11px] leading-relaxed text-center">{t('auth.googleConsent')}</p>}
               {onGuest && (
                 <button
                   type="button"

@@ -20,6 +20,10 @@ const TABLES = [
   // Which existing account a Google account is the same person as: seen
   // when the existing account connected its Google Drive.
   'create table if not exists links (google_id text primary key, account text not null, created_at integer not null)',
+  // Each Google account's grant (its refresh token, sealed -- src/google.ts):
+  // so it consents once, not at each sign-in on each browser.
+  'create table if not exists google_grants (google_id text primary key, sealed text not null, updated_at integer not null)',
+  'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
 ]
@@ -29,6 +33,31 @@ const tablesIn = (db: D1Database) => (made ??= db.batch(TABLES.map(sql => db.pre
 
 const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
 const MOST_IDS = 200
+
+/** A Google account's grant, kept (sealed), replaced, or forgotten (its
+ *  access taken back). */
+export async function keepGoogleGrant(env: Env, googleId: string, sealed: string): Promise<void> {
+  if (!env.PEOPLE) return
+  await tablesIn(env.PEOPLE)
+  await env.PEOPLE.prepare('insert into google_grants (google_id, sealed, updated_at) values (?, ?, ?) on conflict (google_id) do update set sealed = excluded.sealed, updated_at = excluded.updated_at')
+    .bind(googleId, sealed, Date.now()).run()
+}
+export async function googleGrantFor(env: Env, googleId: string): Promise<string | null> {
+  if (!env.PEOPLE) return null
+  await tablesIn(env.PEOPLE)
+  return (await env.PEOPLE.prepare('select sealed from google_grants where google_id = ?').bind(googleId).first<{ sealed: string }>())?.sealed ?? null
+}
+export async function forgetGoogleGrant(env: Env, googleId: string): Promise<void> {
+  if (!env.PEOPLE) return
+  await env.PEOPLE.prepare('delete from google_grants where google_id = ?').bind(googleId).run()
+}
+/** The Google accounts an existing account is linked with, the latest first. */
+export async function linkedGoogleIds(env: Env, account: string): Promise<string[]> {
+  if (!env.PEOPLE) return []
+  await tablesIn(env.PEOPLE)
+  const { results } = await env.PEOPLE.prepare('select google_id from links where account = ? order by created_at desc').bind(account).all<{ google_id: string }>()
+  return results.map(row => row.google_id)
+}
 
 /** An existing account's own Google account, as it connected Drive with it. */
 export async function link(env: Env, googleId: string, account: string): Promise<void> {
@@ -52,16 +81,25 @@ export async function linkedTo(env: Env, googleId: string | null, email: string 
   const seen = googleId
     ? (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account ?? null
     : null
-  const account = seen ?? signedUpWithGoogle
-    ?? (email && env.SUPABASE_WORKER_KEY ? await supabaseAnswer(env, 'account_for_email', { p_email: email, p_key: env.SUPABASE_WORKER_KEY }) : null)
+  const byAddress = email && env.SUPABASE_WORKER_KEY ? await supabaseAnswer(env, 'account_for_email', { p_email: email, p_key: env.SUPABASE_WORKER_KEY }) : null
+  const account = seen ?? signedUpWithGoogle ?? byAddress
   if (!account) return null
   if (googleId && !seen) await link(env, googleId, account)
-  // How it signs in: with this Google, through Supabase -- or with its
-  // email and a password.
-  return { account, how: account === signedUpWithGoogle ? 'google' : 'password' }
+  return {
+    account,
+    // How it signs in now: with this Google, through Supabase -- or with
+    // its email and a password.
+    how: account === signedUpWithGoogle ? 'google' : 'password',
+    // Whether Supabase itself will take this Google for that account: it
+    // has this Google already, or this address Google verified (Supabase
+    // links an identity with the same confirmed address by itself). Not so
+    // for an account known only by its Drive, under another address.
+    joinable: account === signedUpWithGoogle || account === byAddress,
+  }
 }
-/** An existing account, and how its person signs in to it. */
-export interface Existing { account: string; how: 'google' | 'password' }
+/** An existing account, how its person signs in to it, and whether
+ *  Supabase will sign this Google in to it. */
+export interface Existing { account: string; how: 'google' | 'password'; joinable: boolean }
 
 /** A Google account made for someone whose Google is an existing account's
  *  -- made before the worker asked, or by an existing account signing up

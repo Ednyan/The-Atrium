@@ -1558,7 +1558,7 @@ function AppInner() {
       // one to sign in to -- said on the sign-in page, as it signs in.
       const reason = (event as CustomEvent<{ reason?: SignedOutReason }>).detail?.reason
       if (reason) {
-        setOauthError(translate(reason === 'existingGoogle' ? 'auth.error.existingGoogle' : 'auth.error.existingPassword'))
+        setOauthError(translate('auth.error.existingAccount'))
         navigate('/login')
       }
     }

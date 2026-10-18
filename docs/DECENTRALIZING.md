@@ -797,9 +797,25 @@ public list. Contributions already need no account.
       email and password or with Google (`add_account_for_email.sql`).
       That function answers only the worker's key, whose SHA-256 Supabase
       keeps, so nobody else can look up an address.
-  - The person is sent on as that account signs in. One made with this
-    Google goes straight on to its own Google sign-in. One made with an
-    email and password is told to sign in with them.
+  - **"Continue with Google" signs into the existing account** where
+    Supabase will take this Google for it: the account has this Google, or
+    the same verified address. Supabase links that by itself. The worker
+    hands the browser Google's own ID token for `signInWithIdToken`, which
+    needs this app's client ID in Supabase's Google provider. The app checks
+    it landed in the expected account, and signs straight back out if not.
+    Otherwise it's on to the account's own Google sign-in (one made with
+    Google), or "sign in with your email and password" (an account known
+    only through its Drive, under another address).
+- **Consent once per Google account, not at each sign-in.** Google's code
+  flow always shows its consent screen. So the worker keeps each Google
+  account's grant (sealed, D1 `google_grants`), and signing in again uses
+  the token flow (`prompt: ''`), which shows none.
+  - The worker checks that pass with Google (tokeninfo: issued to this app)
+    and uses the grant it keeps.
+  - No grant kept yet: "one more step, this first time only" asks for
+    consent on a second click.
+  - An existing account on a new browser gets its Drive from the grant kept
+    for its linked Google, with no window (`resume`).
   - The rule holds wherever a session is given, not only at sign-in. A
     Google account made before the worker could tell, never finished (no
     username yet), is refused at its next renewal and removed from the

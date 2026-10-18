@@ -10,10 +10,8 @@ const ACCOUNT = 'atrium.account'
 /** Fired on window as a Google account signs in or out -- with why it was
  *  signed out, when that's to be said (detail.reason). */
 export const ACCOUNT_EVENT = 'atrium:account'
-// Its Google is an existing account's -- one that signs in with this Google
-// (through Supabase), or with an email and password: that's the one to sign
-// in to.
-export type SignedOutReason = 'existingGoogle' | 'existingPassword'
+// Its Google is an existing account's: that's the one to sign in to.
+export type SignedOutReason = 'existingAccount'
 
 export function googleAccount(): GoogleAccount | null {
   try {

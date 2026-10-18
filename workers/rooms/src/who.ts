@@ -14,8 +14,9 @@ export interface Env {
   // no Google accounts.
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
-  // Google's token address; another only in a local test.
+  // Google's token and token-info addresses; others only in a local test.
   GOOGLE_TOKEN_URL?: string
+  GOOGLE_TOKENINFO_URL?: string
   // The directory (src/people.ts).
   PEOPLE?: D1Database
   // The worker's key to Supabase's account_for_email (a secret; Supabase

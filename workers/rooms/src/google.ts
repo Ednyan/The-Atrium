@@ -10,7 +10,7 @@
 // for the person -- and who gets the worker's own session with each pass
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
-import { link, linkedTo, meet, supersededBy } from './people'
+import { forgetGoogleGrant, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
 import { accountIdFor, fromBase64, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
 // A grant: Google's refresh token, the account it's for, its kind, and the
@@ -23,7 +23,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return answer(503, { error: 'not set up' })
-  let asked: { token?: unknown; code?: unknown; grant?: unknown }
+  let asked: { token?: unknown; code?: unknown; grant?: unknown; access_token?: unknown }
   try {
     asked = await request.json()
   } catch {
@@ -31,36 +31,64 @@ export async function google(request: Request, env: Env, what: string): Promise<
   }
   const token = typeof asked.token === 'string' ? asked.token : null
   const key = await keyFrom(env.GOOGLE_CLIENT_SECRET, 'atrium drive grant', 'AES-GCM', ['encrypt', 'decrypt'])
+  // Signed in already -- an existing account, or a Google account -- or not.
+  const who = token ? await whoIs(token, env) : null
+  if (token && !who) return answer(401, { error: 'sign-in' })
 
+  // Google's code, from its window -- the one that asks for consent: the
+  // grant kept here too, so that Google account needn't consent again, on
+  // any browser.
   if (what === 'grant' && typeof asked.code === 'string') {
-    // Signed in already -- an existing account connecting Drive, or a
-    // Google account asking Google for more -- or signing in now.
-    const who = token ? await whoIs(token, env) : null
-    if (token && !who) return answer(401, { error: 'sign-in' })
     // A code from Google's window in popup mode is exchanged with this address.
     const got = await fromGoogle(env, { grant_type: 'authorization_code', code: asked.code, redirect_uri: 'postmessage' })
     if (got instanceof Response) return withCors(got, answer)
     const person = personOf(got.id_token)
-    let account: Who
-    if (who?.kind === 'supabase') {
-      account = who
-      if (person) await link(env, person.sub, who.id)
-    } else {
-      if (!person) return answer(400, { error: 'identity' })
-      // Already someone's existing account: theirs to sign in to, not a second one.
-      const existing = who ? null : await linkedTo(env, person.sub, person.email ?? null)
-      if (existing) return answer(409, { error: 'existing account', how: existing.how })
-      account = { id: await accountIdFor(person.sub), kind: 'google' }
-      // A Google account is that Google account's alone.
-      if (who && who.id !== account.id) return answer(409, { error: 'another google account' })
-      await meet(env, account.id, person)
+    if (person && got.refresh_token) await keepGoogleGrant(env, person.sub, await sealFor(key, person.sub, got.refresh_token))
+    const [status, body] = await signedIn(env, key, who, got, person, got.refresh_token ?? null)
+    return answer(status, body)
+  }
+
+  // Signing in again, without Google's consent screen: a pass Google gave
+  // this browser without asking (the token flow, prompt ''), checked with
+  // Google as this app's -- then the grant kept here. None kept yet (this
+  // Google's first time, or its access taken back): consent, once.
+  if (what === 'signin' && typeof asked.access_token === 'string') {
+    const pass = await tokenInfo(env, asked.access_token)
+    if (!pass) return answer(401, { error: 'google' })
+    const kept = await googleGrantFor(env, pass.sub)
+    const refresh = kept ? await openFor(key, pass.sub, kept) : null
+    if (!refresh) return answer(200, { consent: true })
+    const got = await fromGoogle(env, { grant_type: 'refresh_token', refresh_token: refresh })
+    if (got instanceof Response) {
+      if (got.status !== 401) return withCors(got, answer)
+      await forgetGoogleGrant(env, pass.sub)
+      return answer(200, { consent: true })
     }
-    return answer(200, {
-      ...passOf(got),
-      account: { ...account, ...(person ? { email: person.email, name: person.name, picture: person.picture } : {}) },
-      ...(got.refresh_token ? { grant: await sealGrant(key, { r: got.refresh_token, a: account.id, k: account.kind, ...(person ? { g: person.sub } : {}) }) } : {}),
-      ...(account.kind === 'google' ? await signSession(env, account.id) : {}),
-    })
+    // Who it is: Google's ID token, if this answer has one -- else the pass's own word.
+    const person = personOf(got.id_token) ?? { sub: pass.sub, email: pass.email }
+    const [status, body] = await signedIn(env, key, who, got, person, got.refresh_token ?? refresh)
+    return answer(status, body)
+  }
+
+  // An existing account on a browser without its grant: its Drive pass from
+  // the grant kept here for its Google -- no window at all.
+  if (what === 'resume' && who?.kind === 'supabase') {
+    for (const googleId of await linkedGoogleIds(env, who.id)) {
+      const kept = await googleGrantFor(env, googleId)
+      const refresh = kept ? await openFor(key, googleId, kept) : null
+      if (!refresh) continue
+      const got = await fromGoogle(env, { grant_type: 'refresh_token', refresh_token: refresh })
+      if (got instanceof Response) {
+        if (got.status === 401) await forgetGoogleGrant(env, googleId)
+        continue
+      }
+      return answer(200, {
+        ...passOf(got),
+        account: who,
+        grant: await sealGrant(key, { r: got.refresh_token ?? refresh, a: who.id, k: 'supabase', g: googleId }),
+      })
+    }
+    return answer(200, { consent: true })
   }
 
   if (what === 'renew' && typeof asked.grant === 'string') {
@@ -84,6 +112,73 @@ export async function google(request: Request, env: Env, what: string): Promise<
     })
   }
   return answer(400, { error: 'body' })
+}
+
+/** Google has said who it is (`person`) and given a pass: the answer for the
+ *  page, as [status, body]. An existing account connecting Drive gets its
+ *  grant; someone signing in gets their Google account -- or, if this Google
+ *  is an existing account's, that account to sign in to: with Google's own
+ *  ID token, which Supabase signs this Google in with (linking it, if need
+ *  be), where it will; and a grant for that account's Drive, which renews
+ *  only with that account's own sign-in. */
+async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, person: Person | null, refresh: string | null): Promise<[number, object]> {
+  const grantFor = async (account: Who) => (refresh ? { grant: await sealGrant(key, { r: refresh, a: account.id, k: account.kind, ...(person ? { g: person.sub } : {}) }) } : {})
+  if (who?.kind === 'supabase') {
+    if (person) await link(env, person.sub, who.id)
+    return [200, { ...passOf(got), account: who, ...(await grantFor(who)) }]
+  }
+  if (!person) return [400, { error: 'identity' }]
+  const existing = who ? null : await linkedTo(env, person.sub, person.email ?? null)
+  if (existing) {
+    return [200, {
+      ...passOf(got),
+      existing,
+      ...(existing.joinable && got.id_token ? { id_token: got.id_token } : {}),
+      ...(await grantFor({ id: existing.account, kind: 'supabase' })),
+    }]
+  }
+  const account: Who = { id: await accountIdFor(person.sub), kind: 'google' }
+  // A Google account is that Google account's alone.
+  if (who && who.id !== account.id) return [409, { error: 'another google account' }]
+  await meet(env, account.id, person)
+  return [200, {
+    ...passOf(got),
+    account: { ...account, email: person.email, name: person.name, picture: person.picture },
+    ...(await grantFor(account)),
+    ...(await signSession(env, account.id)),
+  }]
+}
+type Person = NonNullable<ReturnType<typeof personOf>>
+
+/** A pass's owner, as Google says: only one given to this app. */
+async function tokenInfo(env: Env, accessToken: string): Promise<{ sub: string; email?: string } | null> {
+  try {
+    const response = await fetch(`${env.GOOGLE_TOKENINFO_URL || 'https://oauth2.googleapis.com/tokeninfo'}?access_token=${encodeURIComponent(accessToken)}`)
+    if (!response.ok) return null
+    const info = await response.json() as { aud?: string; azp?: string; sub?: string; email?: string; email_verified?: string | boolean }
+    if (info.aud !== env.GOOGLE_CLIENT_ID && info.azp !== env.GOOGLE_CLIENT_ID) return null
+    if (typeof info.sub !== 'string') return null
+    const verified = info.email_verified === true || info.email_verified === 'true'
+    return { sub: info.sub, email: verified ? info.email : undefined }
+  } catch {
+    return null
+  }
+}
+
+// The grant kept here for a Google account: its refresh token, sealed to
+// that account (the key is the app's secret's, as browsers' grants are).
+async function sealFor(key: CryptoKey, googleId: string, refresh: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(`kept:${googleId}`) }, key, new TextEncoder().encode(refresh)))
+  return toBase64(new Uint8Array([...iv, ...sealed]))
+}
+async function openFor(key: CryptoKey, googleId: string, sealed: string): Promise<string | null> {
+  try {
+    const bytes = fromBase64(sealed)
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12), additionalData: new TextEncoder().encode(`kept:${googleId}`) }, key, bytes.subarray(12)))
+  } catch {
+    return null
+  }
 }
 
 const passOf = (got: Answer) => ({ access_token: got.access_token, expires_in: got.expires_in, scope: got.scope })

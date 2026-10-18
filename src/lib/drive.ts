@@ -85,7 +85,14 @@ export function driveToken(): Promise<string> {
  *  (lib/driveSync). */
 export const hasDriveToken = () => fresh(token) || (!renewFailed && !!grantServer() && !!grantKept())
 
-type Answer = { access_token: string; expires_in: number; grant?: string; session?: string; until?: number; account?: { id: string; kind: 'google' | 'supabase'; email?: string; name?: string } }
+type Answer = {
+  access_token: string; expires_in: number; grant?: string; session?: string; until?: number
+  account?: { id: string; kind: 'google' | 'supabase'; email?: string; name?: string }
+  // Signing in: Google's consent not given yet; or an existing account's Google.
+  consent?: boolean
+  existing?: { account: string; how: 'google' | 'password'; joinable: boolean }
+  id_token?: string
+}
 const took = (answer: Answer) => {
   token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000 }
   if (answer.session && answer.until) session = { value: answer.session, until: answer.until }
@@ -104,6 +111,7 @@ async function whoAsks(): Promise<{ user: string; token: string | null } | null>
 async function newToken(): Promise<string> {
   const me = await whoAsks()
   if (me && await renew(me)) return token!.value
+  if (me?.token && await resume(me)) return token!.value
   return askGoogle(me)
 }
 
@@ -117,9 +125,9 @@ async function renew(me: { user: string; token: string | null }): Promise<boolea
     return true
   } catch (error) {
     // A Google account that's really an existing account's (the worker
-    // knows): out, and pointed to that account, as it signs in.
+    // knows): out, and pointed to that account.
     if ((error as Error).message === 'EXISTING_ACCOUNT') {
-      signOutGoogle((error as { how?: string }).how === 'google' ? 'existingGoogle' : 'existingPassword')
+      signOutGoogle('existingAccount')
       return false
     }
     // Taken back on Google's side, or not this worker's: asked again -- for a
@@ -134,6 +142,20 @@ async function renew(me: { user: string; token: string | null }): Promise<boolea
   }
 }
 
+// An existing account on a browser without its grant: the grant the worker
+// keeps for its Google, with no window. False if it keeps none.
+async function resume(me: { user: string; token: string | null }): Promise<boolean> {
+  try {
+    const answer = await askWorker('resume', { token: me.token })
+    if (answer.consent || !answer.access_token) return false
+    keep(answer)
+    return true
+  } catch (error) {
+    console.warn('[drive] resuming:', error)
+    return false
+  }
+}
+
 /** A Google account's session for the worker -- the directory, the rooms --
  *  renewed without a window. Null if it can't be. */
 export async function workerSession(): Promise<string | null> {
@@ -144,14 +166,31 @@ export async function workerSession(): Promise<string | null> {
   return fresh(session) ? session!.value : null
 }
 
-/** Signing in with Google: a Google account, with no Supabase account at all
- *  -- or, if this Google account is an existing account's, EXISTING_ACCOUNT.
- *  On a click: Google's window opens. */
-export async function signInWithGoogle(): Promise<GoogleAccount> {
-  await askGoogle(null)
+/** Signing in with Google, on a click. Again, it's Google's window without
+ *  its consent screen (the token flow): the worker keeps each Google
+ *  account's grant, so consent is given once, ever. Not given yet: 'consent'
+ *  -- and the next click (`consent`) is the window that asks for it. Then: a
+ *  Google account, with no Supabase account at all -- or, if this Google is
+ *  an existing account's, that account to sign in to. */
+export type GoogleSignIn =
+  | { kind: 'google'; account: GoogleAccount }
+  | { kind: 'existing'; account: string; how: 'google' | 'password'; joinable: boolean; idToken: string | null }
+  | { kind: 'consent' }
+export async function signInWithGoogle(consent = false): Promise<GoogleSignIn> {
+  const answer = consent
+    ? await askWorker('grant', { code: await googleCode() })
+    : await askWorker('signin', { access_token: await googlePass(IDENTITY) })
+  if (answer.consent) return { kind: 'consent' }
+  if (answer.existing) {
+    // Its grant is that account's, renewing only with its own sign-in.
+    if (answer.grant) keepGrant({ user: answer.existing.account, grant: answer.grant })
+    took(answer)
+    return { kind: 'existing', ...answer.existing, idToken: answer.id_token ?? null }
+  }
+  keep(answer)
   const account = googleAccount()
   if (!account) throw new Error('Google sign-in failed')
-  return account
+  return { kind: 'google', account }
 }
 /** Out: the Google account, its grant and its passes -- and why, if it's
  *  to be said. */
@@ -163,71 +202,89 @@ export function signOutGoogle(reason?: SignedOutReason): void {
 }
 
 // A plain request (a string body, no headers of its own): no preflight.
-async function askWorker(what: 'grant' | 'renew', body: object): Promise<Answer> {
+async function askWorker(what: 'grant' | 'renew' | 'signin' | 'resume', body: object): Promise<Answer> {
   const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
   const answer = await response.json().catch(() => ({}))
-  // An existing account's Google, and how that account signs in.
-  if (answer.error === 'existing account') throw Object.assign(new Error('EXISTING_ACCOUNT'), { how: answer.how })
+  // A Google account that's an existing account's (refused at renewal).
+  if (answer.error === 'existing account') throw new Error('EXISTING_ACCOUNT')
+  if (answer.consent) return answer
   if (!response.ok || !answer.access_token) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant' })
   return answer
 }
 
-async function askGoogle(me: { user: string; token: string | null } | null): Promise<string> {
+// The worker's answer kept: the account it's for -- a Google account, if no
+// one was signed in -- its grant, and its pass.
+function keep(answer: Answer) {
+  const account = answer.account
+  if (account?.kind === 'google') keepGoogleAccount({ id: account.id, email: account.email ?? null, name: account.name ?? null })
+  if (answer.grant && account) keepGrant({ user: account.id, grant: answer.grant })
+  renewFailed = false
+  took(answer)
+}
+
+const IDENTITY = 'openid email profile'
+// Each permission can be unticked on Google's screen.
+const allowed = (scope: unknown) => typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
+const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
+async function oauth2() {
   if (!GOOGLE_CLIENT_ID) throw new Error("Google sign-in isn't set up in this build (VITE_GOOGLE_CLIENT_ID)")
   await loadGoogleSignIn()
-  const { oauth2 } = (window as any).google.accounts
-  // Each permission can be unticked on Google's screen.
-  const allowed = (scope: unknown) => typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
-  const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
-  if (grantServer() && !codeFailed) {
-    const code = await new Promise<string>((resolve, reject) => {
-      oauth2.initCodeClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        ux_mode: 'popup',
-        callback: (answer: any) => {
-          if (answer.error) return reject(new Error(answer.error_description || answer.error))
-          if (!allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
-          resolve(answer.code)
-        },
-        error_callback: closed(reject),
-      }).requestCode()
-    })
-    return takeCode(code, me)
-  }
-  // Without the worker: an hour's pass for Drive, no account.
-  if (!me) throw new Error("Google sign-in isn't available right now")
-  return new Promise((resolve, reject) => {
-    oauth2.initTokenClient({
+  return (window as any).google.accounts.oauth2
+}
+
+/** Google's window that asks for consent (the code flow, which always does):
+ *  a code for the worker to turn into a grant. */
+async function googleCode(): Promise<string> {
+  const client = await oauth2()
+  return new Promise<string>((resolve, reject) => {
+    client.initCodeClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPES,
+      ux_mode: 'popup',
       callback: (answer: any) => {
         if (answer.error) return reject(new Error(answer.error_description || answer.error))
-        if (!oauth2.hasGrantedAllScopes(answer, DRIVE_FILE)) return reject(new Error('Drive access was not allowed'))
-        resolve(took(answer))
+        if (!allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
+        resolve(answer.code)
       },
+      error_callback: closed(reject),
+    }).requestCode()
+  })
+}
+
+/** Google's window without its consent screen, once consent is given (the
+ *  token flow, prompt ''): a pass, of `scope`. */
+async function googlePass(scope: string): Promise<string> {
+  const client = await oauth2()
+  return new Promise<string>((resolve, reject) => {
+    client.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope,
+      callback: (answer: any) => (answer.error ? reject(new Error(answer.error_description || answer.error)) : resolve(answer.access_token)),
       error_callback: closed(reject),
     }).requestAccessToken({ prompt: '' })
   })
 }
 
+async function askGoogle(me: { user: string; token: string | null } | null): Promise<string> {
+  if (grantServer() && !codeFailed) return takeCode(await googleCode(), me)
+  // Without the worker: an hour's pass for Drive, no account.
+  if (!me) throw new Error("Google sign-in isn't available right now")
+  return took({ access_token: await googlePass(SCOPES), expires_in: 3600 })
+}
+
 /** Google's code, from its window, turned into a pass and a grant by the
- *  worker: the account it's for kept -- a Google account, if no one was
- *  signed in. */
+ *  worker, for whoever's signed in. */
 export async function takeCode(code: string, me: { user: string; token: string | null } | null): Promise<string> {
   let answer: Answer
   try {
     answer = await askWorker('grant', { code, ...(me?.token ? { token: me.token } : {}) })
   } catch (error) {
     // The worker can't yet (no secret set): the next click asks Google for an hour's pass.
-    if ((error as Error).message !== 'EXISTING_ACCOUNT') codeFailed = true
+    codeFailed = true
     throw error
   }
-  const account = answer.account
-  if (account?.kind === 'google') keepGoogleAccount({ id: account.id, email: account.email ?? null, name: account.name ?? null })
-  if (answer.grant && account) keepGrant({ user: account.id, grant: answer.grant })
-  renewFailed = false
-  return took(answer)
+  keep(answer)
+  return token!.value
 }
 
 /** Calls tried again on a rate limit or Google's own failure, further apart
