@@ -14,6 +14,8 @@ import {
 } from '../lib/atriumPreferences'
 import { goTo } from '../lib/route'
 import { daysUntilNameChange, loadMyProfile, saveMyProfile } from '../lib/profile'
+import { googleAccount } from '../lib/signedIn'
+import GoogleButton from './GoogleButton'
 
 // The same five the in-atrium panel offers, from the palette the rest of the
 // app is drawn in. The picker under them still takes anything.
@@ -58,6 +60,8 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   // countdown only stops the button offering something that will be refused.
   const [resendIn, setResendIn] = useState(0)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  // A Google account (lib/signedIn) is deleted on Google's word, not a code.
+  const google = !!googleAccount()
   const [deleteError, setDeleteError] = useState('')
 
   // The three settings that follow the person rather than the atrium. They
@@ -332,10 +336,31 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       return
     }
 
+    leaveAfterDeletion()
+  }
+
+  // A Google account's: confirmed by a sign-in with its Google just now (the
+  // button below), which the worker checks -- no code to email. It signs this
+  // browser out as it goes (lib/drive).
+  const handleDeleteGoogleAccount = async (idToken: string) => {
+    if (!actualUsername || deleteConfirmText !== actualUsername) return
+    setDeleteError('')
+    setDeleteLoading(true)
+    try {
+      await (await import('../lib/drive')).deleteGoogleAccount(idToken)
+    } catch (err: any) {
+      setDeleteError(err?.message || t('profile.errDeleteAccount'))
+      setDeleteLoading(false)
+      return
+    }
+    leaveAfterDeletion()
+  }
+
+  // Gone: what this browser kept of where one was, and on to the start.
+  const leaveAfterDeletion = () => {
     localStorage.removeItem('lobby_hasEntered')
     localStorage.removeItem('lobby_currentLobbyId')
     localStorage.removeItem('lobby_showBrowser')
-
     goTo('/')
     window.location.reload()
   }
@@ -725,7 +750,15 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                       unlocked machine -- the code is what tells those two
                       apart, and unlike the password it replaced, every account
                       has one. */}
-                  {!codeSent ? (
+                  {google ? (
+                    // A Google account confirms with Google, once its name is typed.
+                    actualUsername && deleteConfirmText === actualUsername && (
+                      <div className="space-y-2">
+                        <p className="text-nier-bg/70 text-[0.75rem] leading-relaxed tracking-wide normal-case">{t('profile.deleteWithGoogle')}</p>
+                        <GoogleButton busy={deleteLoading} onCredential={idToken => void handleDeleteGoogleAccount(idToken)} />
+                      </div>
+                    )
+                  ) : !codeSent ? (
                     <button
                       onClick={handleSendDeletionCode}
                       disabled={codeSending || !actualUsername || deleteConfirmText !== actualUsername}
@@ -776,13 +809,13 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                   )}
 
                   <div className="flex gap-2">
-                    <button
+                    {!google && <button
                       onClick={handleDeleteAccount}
                       disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || !codeSent || deleteCode.length < 6}
                       className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {deleteLoading ? t('profile.deleting') : t('profile.deletePermanently')}
-                    </button>
+                    </button>}
                     <button
                       onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteCode(''); setCodeSent(false); setResendIn(0); setDeleteError('') }}
                       disabled={deleteLoading}

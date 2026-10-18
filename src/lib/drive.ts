@@ -228,6 +228,19 @@ export async function disconnectDrive(): Promise<void> {
   keepGrant(me.google && answer.grant ? { user: me.user, grant: answer.grant, drive: false } : null)
 }
 
+/** The Google account deleted, on a sign-in with its Google just now
+ *  (`idToken`, from Google's button): Google told to forget this app, the
+ *  account gone from the directory -- and this browser signed out. What it
+ *  keeps in its Google Drive stays there, its own. */
+export async function deleteGoogleAccount(idToken: string): Promise<void> {
+  const google = googleAccount()
+  const session = await workerSession()
+  if (!google || !session) throw new Error('NOT_SIGNED_IN')
+  const kept = grantKept()
+  await askWorker('delete', { token: session, id_token: idToken, ...(kept?.user === google.id ? { grant: kept.grant } : {}) })
+  signOutGoogle()
+}
+
 /** Out: the Google account, its grant and its passes -- and why, if it's
  *  to be said. */
 export function signOutGoogle(reason?: SignedOutReason): void {
@@ -238,7 +251,7 @@ export function signOutGoogle(reason?: SignedOutReason): void {
 }
 
 // A plain request (a string body, no headers of its own): no preflight.
-async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disconnect', body: object): Promise<Answer> {
+async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disconnect' | 'delete', body: object): Promise<Answer> {
   const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
   const answer = await response.json().catch(() => ({}))
   // A Google account that's an existing account's (refused at renewal).

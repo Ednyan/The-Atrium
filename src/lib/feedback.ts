@@ -5,7 +5,9 @@
 // `.functions` at all, so this always reports itself unavailable there and
 // the caller (LobbyScene) falls back to a mailto: link instead.
 
-import { cloudClient, isDesktop } from './supabase'
+import { isDesktop } from './supabase'
+import { workerUrl } from './rooms'
+import { toWorker } from './worker'
 import { t } from './i18n'
 
 export interface FeedbackReport {
@@ -20,7 +22,7 @@ export interface FeedbackReport {
 }
 
 export function canSendFeedbackDirectly(): boolean {
-  return !isDesktop && !!cloudClient && typeof cloudClient.functions?.invoke === 'function'
+  return !isDesktop && !!workerUrl()
 }
 
 export async function sendFeedbackReport(report: FeedbackReport): Promise<{ success: boolean; error?: string }> {
@@ -29,11 +31,11 @@ export async function sendFeedbackReport(report: FeedbackReport): Promise<{ succ
   }
 
   try {
-    const { data, error } = await cloudClient.functions.invoke('send-feedback', {
-      body: { ...report, platform: isDesktop ? 'Desktop' : 'Web' },
-    })
-    if (error || data?.error) {
-      return { success: false, error: data?.error || error?.message || t('report.sendFailed') }
+    // The worker's (workers/rooms, mail): replies go to the sender's own
+    // address only where it's known to be theirs.
+    const { ok, answer } = await toWorker('/feedback', { ...report, platform: 'Web' })
+    if (!ok || answer?.error) {
+      return { success: false, error: answer?.error || t('report.sendFailed') }
     }
     return { success: true }
   } catch (err: any) {

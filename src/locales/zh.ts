@@ -1503,6 +1503,7 @@ const zh: Catalogue = {
   'profile.sendingCode': '发送中…',
   'profile.deleteCode': '确认码',
   'profile.deleteCodeSent': '我们已经把六位验证码发到你的邮箱，10 分钟内有效。',
+  'profile.deleteWithGoogle': '用 Google 确认即可立即删除。保存在你的 Google 云端硬盘中的 Atrium 仍留在那里，归你所有。',
   'profile.resendCode': '重新发送验证码',
   'profile.resendCodeIn': '{seconds} 秒后可重新发送',
   'profile.errEnterCode': '请输入邮件里的验证码',

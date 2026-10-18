@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTranslation } from '../lib/i18n'
+import { currentLanguage, useTranslation } from '../lib/i18n'
 import RichText from './RichText'
 import { supabase } from '../lib/supabase'
 import { myEntry, publishAccount, usernameAvailable } from '../lib/people'
@@ -54,7 +54,7 @@ export default function ChooseUsernameScreen({ userId, email, google = false, on
     if (google) {
       try {
         // Unique across every account: the directory asks Supabase too.
-        await myEntry({ username: trimmed, display_name: trimmed })
+        await myEntry({ username: trimmed, display_name: trimmed }, currentLanguage())
         onComplete(trimmed)
       } catch (err: any) {
         setError(err?.message === 'USERNAME_TAKEN' ? t('auth.errUsernameTaken') : err?.message === 'USERNAME_CHECK' ? t('auth.error.usernameLookup') : err?.message || t('chooseName.errSave'))

@@ -29,7 +29,9 @@
 
 import { useSyncExternalStore } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { cloudClient, isLocalData, isSharedLocal } from './supabase'
+import { isDesktop, isLocalData, isSharedLocal } from './supabase'
+import { workerUrl } from './rooms'
+import { toWorker } from './worker'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // Longest wait for this side's addresses before sending what's known (ms).
@@ -94,19 +96,20 @@ try {
 let asking: Promise<boolean> | null = null
 const relayNow = () => (relay && relay.until > Date.now() ? relay : null)
 
-/** Whether there's a relay pass -- asking for one, or a new one, if it's
- *  time. Never on desktop: no functions there, and no one else in its atriums. */
+/** Whether there's a relay pass -- asking the worker (workers/rooms, relay)
+ *  for one, or a new one, if it's time. Never on desktop: no one else is in
+ *  its atriums. */
 export function askForRelay(): Promise<boolean> {
   const now = Date.now()
   if (relay && relay.until - now > RENEW_MS) return Promise.resolve(true)
-  if ((isLocalData && !isSharedLocal) || !cloudClient || now - refusedAt < REFUSED_MS) return Promise.resolve(!!relayNow())
+  if (isDesktop || (isLocalData && !isSharedLocal) || !workerUrl() || now - refusedAt < REFUSED_MS) return Promise.resolve(!!relayNow())
   return asking ??= (async () => {
     try {
-      const { data, error } = await Promise.race([
-        cloudClient.functions.invoke('relay-pass'),
+      const { ok, answer: data } = await Promise.race([
+        toWorker('/relay'),
         new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('no answer')), ASK_MS)),
       ])
-      const servers = !error && Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : []
+      const servers = ok && Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : []
       const seconds = Number(data?.seconds)
       if (servers.length && seconds > 0) {
         relay = { servers, until: Date.now() + seconds * 1000 }

@@ -1500,6 +1500,7 @@ const ru: Catalogue = {
   'profile.sendingCode': 'Отправка...',
   'profile.deleteCode': 'Код подтверждения',
   'profile.deleteCodeSent': 'Мы отправили шестизначный код на вашу почту. Он действует 10 минут.',
+  'profile.deleteWithGoogle': 'Подтвердите через Google, чтобы удалить его сейчас. Атриумы в вашем Google Диске останутся там, ваши.',
   'profile.resendCode': 'Отправить новый код',
   'profile.resendCodeIn': 'Новый код через {seconds} с',
   'profile.errEnterCode': 'Введите код из письма',

@@ -1497,6 +1497,7 @@ const de: Catalogue = {
   'profile.sendingCode': 'Wird gesendet...',
   'profile.deleteCode': 'Bestätigungscode',
   'profile.deleteCodeSent': 'Wir haben einen sechsstelligen Code an deine E-Mail-Adresse geschickt. Er gilt 10 Minuten.',
+  'profile.deleteWithGoogle': 'Bestätige mit Google, um es jetzt zu löschen. Atrien in deinem Google Drive bleiben dort, deine.',
   'profile.resendCode': 'Neuen Code schicken',
   'profile.resendCodeIn': 'Neuen Code in {seconds} s',
   'profile.errEnterCode': 'Gib den Code aus deiner E-Mail ein',

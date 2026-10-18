@@ -1498,6 +1498,7 @@ const it: Catalogue = {
   'profile.sendingCode': 'Invio...',
   'profile.deleteCode': 'Codice di conferma',
   'profile.deleteCodeSent': 'Abbiamo inviato un codice di sei cifre al tuo indirizzo e-mail. Dura 10 minuti.',
+  'profile.deleteWithGoogle': 'Conferma con Google per eliminarlo ora. Gli atrium tenuti nel tuo Google Drive restano lì, tuoi.',
   'profile.resendCode': 'Invia un altro codice',
   'profile.resendCodeIn': 'Invia un altro codice tra {seconds} s',
   'profile.errEnterCode': 'Inserisci il codice ricevuto per e-mail',

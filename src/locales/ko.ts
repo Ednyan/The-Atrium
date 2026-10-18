@@ -1504,6 +1504,7 @@ const ko: Catalogue = {
   'profile.sendingCode': '보내는 중…',
   'profile.deleteCode': '확인 코드',
   'profile.deleteCodeSent': '여섯 자리 코드를 메일 주소로 보냈습니다. 10분 동안 유효합니다.',
+  'profile.deleteWithGoogle': 'Google로 확인하면 지금 삭제됩니다. Google 드라이브에 보관된 Atrium은 그대로 당신의 것으로 남습니다.',
   'profile.resendCode': '코드 다시 보내기',
   'profile.resendCodeIn': '{seconds}초 후 다시 보내기',
   'profile.errEnterCode': '메일로 받은 코드를 입력해 주세요',

@@ -1500,6 +1500,7 @@ const ja: Catalogue = {
   'profile.sendingCode': '送信中…',
   'profile.deleteCode': '確認コード',
   'profile.deleteCodeSent': '6 桁のコードをメールアドレスに送りました。有効期限は 10 分です。',
+  'profile.deleteWithGoogle': 'Google で確認すると、すぐに削除されます。Google ドライブにある Atrium はそのまま、あなたのものとして残ります。',
   'profile.resendCode': 'コードを再送する',
   'profile.resendCodeIn': '再送まで {seconds} 秒',
   'profile.errEnterCode': 'メールに届いたコードを入力してください',

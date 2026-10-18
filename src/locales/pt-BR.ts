@@ -1498,6 +1498,7 @@ const ptBR: Catalogue = {
   'profile.sendingCode': 'Enviando...',
   'profile.deleteCode': 'Código de confirmação',
   'profile.deleteCodeSent': 'Enviamos um código de seis dígitos para o seu e-mail. Ele vale por 10 minutos.',
+  'profile.deleteWithGoogle': 'Confirme com o Google para excluí-la agora. Os atriums guardados no seu Google Drive continuam lá, seus.',
   'profile.resendCode': 'Enviar outro código',
   'profile.resendCodeIn': 'Enviar outro código em {seconds}s',
   'profile.errEnterCode': 'Digite o código do seu e-mail',

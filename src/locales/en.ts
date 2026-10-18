@@ -1448,6 +1448,7 @@ export const en = {
   'profile.sendingCode': 'Sending...',
   'profile.deleteCode': 'Confirmation code',
   'profile.deleteCodeSent': 'We sent a six-digit code to your email address. It lasts 10 minutes.',
+  'profile.deleteWithGoogle': 'Confirm with Google to delete it now. Atriums kept in your Google Drive stay there, yours.',
   'profile.resendCode': 'Send another code',
   'profile.resendCodeIn': 'Send another code in {seconds}s',
   'profile.errEnterCode': 'Enter the code from your email',
