@@ -14,7 +14,7 @@ import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
-import { ACCOUNT_EVENT, googleAccount } from './lib/signedIn'
+import { ACCOUNT_EVENT, googleAccount, type SignedOutReason } from './lib/signedIn'
 import { readRecentThanksName } from './lib/pendingContribution'
 
 // The developer's tools: few will ever open them, so they load when opened.
@@ -1555,9 +1555,10 @@ function AppInner() {
       }
       signedOut(true)
       // Signed out by the worker: its Google is an existing account's, the
-      // one to sign in to -- said on the sign-in page.
-      if ((event as CustomEvent<{ reason?: string }>).detail?.reason === 'existingAccount') {
-        setOauthError(translate('auth.error.existingAccount'))
+      // one to sign in to -- said on the sign-in page, as it signs in.
+      const reason = (event as CustomEvent<{ reason?: SignedOutReason }>).detail?.reason
+      if (reason) {
+        setOauthError(translate(reason === 'existingGoogle' ? 'auth.error.existingGoogle' : 'auth.error.existingPassword'))
         navigate('/login')
       }
     }

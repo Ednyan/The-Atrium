@@ -38,30 +38,44 @@ export async function link(env: Env, googleId: string, account: string): Promise
     .bind(googleId, account, Date.now()).run()
 }
 
-/** The existing account a Google account belongs to: one seen connecting
- *  Drive with it, or one that signed up with it (Supabase knows, by Google's
- *  id for the person -- add_account_for_google.sql). Linked from then on. */
-export async function linkedTo(env: Env, googleId: string): Promise<string | null> {
+/** The existing account a Google account belongs to -- known whichever way
+ *  that account was made: it connected Drive with this Google (linked here),
+ *  it signed up with it (Supabase's identities, by Google's id for the
+ *  person -- add_account_for_google.sql), or it has the address Google has
+ *  verified as this person's (by email and password, say --
+ *  add_account_for_email.sql). Linked from then on, where Google's id is
+ *  known. */
+export async function linkedTo(env: Env, googleId: string | null, email: string | null): Promise<Existing | null> {
   if (!env.PEOPLE) return null
   await tablesIn(env.PEOPLE)
-  const seen = (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account
-  if (seen) return seen
-  const signedUp = await supabaseAccountFor(env, googleId)
-  if (signedUp) await link(env, googleId, signedUp)
-  return signedUp
+  const signedUpWithGoogle = googleId ? await supabaseAnswer(env, 'account_for_google', { p_google_id: googleId }) : null
+  const seen = googleId
+    ? (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account ?? null
+    : null
+  const account = seen ?? signedUpWithGoogle
+    ?? (email && env.SUPABASE_WORKER_KEY ? await supabaseAnswer(env, 'account_for_email', { p_email: email, p_key: env.SUPABASE_WORKER_KEY }) : null)
+  if (!account) return null
+  if (googleId && !seen) await link(env, googleId, account)
+  // How it signs in: with this Google, through Supabase -- or with its
+  // email and a password.
+  return { account, how: account === signedUpWithGoogle ? 'google' : 'password' }
 }
+/** An existing account, and how its person signs in to it. */
+export interface Existing { account: string; how: 'google' | 'password' }
 
 /** A Google account made for someone whose Google is an existing account's
  *  -- made before the worker asked, or by an existing account signing up
  *  with that Google since -- and never finished (no username): not kept. Its
  *  row and invitations go, and the existing account it is, is returned. A
  *  finished one stays as it is. */
-export async function supersededBy(env: Env, id: string, googleId: string): Promise<string | null> {
+export async function supersededBy(env: Env, id: string, googleId: string | null): Promise<Existing | null> {
   if (!env.PEOPLE) return null
   await tablesIn(env.PEOPLE)
-  const row = await env.PEOPLE.prepare('select username from accounts where id = ?').bind(id).first<{ username: string | null }>()
+  const row = await env.PEOPLE.prepare('select username, email from accounts where id = ?').bind(id).first<{ username: string | null; email: string | null }>()
   if (row?.username) return null
-  const existing = await linkedTo(env, googleId)
+  // Its email as it signed in (Google-verified): known even where its grant
+  // is from before grants said whose Google they are.
+  const existing = await linkedTo(env, googleId, row?.email ?? null)
   if (!existing) return null
   await env.PEOPLE.batch([
     env.PEOPLE.prepare('delete from invites where to_user = ?').bind(id),
@@ -70,14 +84,14 @@ export async function supersededBy(env: Env, id: string, googleId: string): Prom
   return existing
 }
 
-// Supabase's answer, or null -- also where it can't answer (the function not
-// made yet): the account is then made as before.
-async function supabaseAccountFor(env: Env, googleId: string): Promise<string | null> {
+// An account id from one of Supabase's functions, or null -- also where it
+// can't answer (the function not made yet): the account is then made as before.
+async function supabaseAnswer(env: Env, fn: 'account_for_google' | 'account_for_email', args: Record<string, string>): Promise<string | null> {
   try {
-    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/account_for_google`, {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_google_id: googleId }),
+      body: JSON.stringify(args),
     })
     const account = response.ok ? await response.json() : null
     return typeof account === 'string' ? account : null

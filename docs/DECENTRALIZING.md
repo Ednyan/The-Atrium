@@ -789,10 +789,17 @@ public list. Contributions already need no account.
   Drive atriums but no cloud ones.
   - **One person, one account.** "Continue with Google" never makes a
     second account for someone who has one. The worker knows an existing
-    account's Google two ways: the account connected Drive with it, or it
-    signed up with it (Supabase's sign-in identities, by Google's id for the
-    person, `add_account_for_google.sql`). Such a person is pointed to the
-    existing account ("Signed up with Google before October 2026?").
+    account three ways:
+    - it connected Drive with this Google;
+    - it signed up with it (Supabase's sign-in identities, by Google's id
+      for the person, `add_account_for_google.sql`);
+    - it has the address Google verified as this person's, whether made by
+      email and password or with Google (`add_account_for_email.sql`).
+      That function answers only the worker's key, whose SHA-256 Supabase
+      keeps, so nobody else can look up an address.
+  - The person is sent on as that account signs in. One made with this
+    Google goes straight on to its own Google sign-in. One made with an
+    email and password is told to sign in with them.
   - The rule holds wherever a session is given, not only at sign-in. A
     Google account made before the worker could tell, never finished (no
     username yet), is refused at its next renewal and removed from the

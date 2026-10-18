@@ -117,9 +117,9 @@ async function renew(me: { user: string; token: string | null }): Promise<boolea
     return true
   } catch (error) {
     // A Google account that's really an existing account's (the worker
-    // knows): out, and pointed to that account.
+    // knows): out, and pointed to that account, as it signs in.
     if ((error as Error).message === 'EXISTING_ACCOUNT') {
-      signOutGoogle('existingAccount')
+      signOutGoogle((error as { how?: string }).how === 'google' ? 'existingGoogle' : 'existingPassword')
       return false
     }
     // Taken back on Google's side, or not this worker's: asked again -- for a
@@ -166,7 +166,8 @@ export function signOutGoogle(reason?: SignedOutReason): void {
 async function askWorker(what: 'grant' | 'renew', body: object): Promise<Answer> {
   const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
   const answer = await response.json().catch(() => ({}))
-  if (answer.error === 'existing account') throw Object.assign(new Error('EXISTING_ACCOUNT'), { email: answer.email })
+  // An existing account's Google, and how that account signs in.
+  if (answer.error === 'existing account') throw Object.assign(new Error('EXISTING_ACCOUNT'), { how: answer.how })
   if (!response.ok || !answer.access_token) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant' })
   return answer
 }

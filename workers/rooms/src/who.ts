@@ -18,6 +18,9 @@ export interface Env {
   GOOGLE_TOKEN_URL?: string
   // The directory (src/people.ts).
   PEOPLE?: D1Database
+  // The worker's key to Supabase's account_for_email (a secret; Supabase
+  // keeps only its SHA-256 -- add_account_for_email.sql).
+  SUPABASE_WORKER_KEY?: string
 }
 
 export interface Who { id: string; kind: 'google' | 'supabase' }
@@ -115,14 +118,16 @@ export async function accountIdFor(googleId: string): Promise<string> {
 }
 
 /** Who Google says it is, from the ID token in Google's own answer -- had
- *  from Google directly, over TLS, so it needn't be checked further. */
+ *  from Google directly, over TLS, so it needn't be checked further. Its
+ *  email only where Google has verified it's theirs. */
 export function personOf(idToken: unknown): { sub: string; email?: string; name?: string; picture?: string } | null {
   if (typeof idToken !== 'string') return null
   try {
-    const claims = JSON.parse(new TextDecoder().decode(fromUrl(idToken.split('.')[1]))) as { sub?: unknown; email?: unknown; name?: unknown; picture?: unknown }
+    const claims = JSON.parse(new TextDecoder().decode(fromUrl(idToken.split('.')[1]))) as { sub?: unknown; email?: unknown; email_verified?: unknown; name?: unknown; picture?: unknown }
     if (typeof claims.sub !== 'string') return null
     const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
-    return { sub: claims.sub, email: text(claims.email), name: text(claims.name), picture: text(claims.picture) }
+    const verified = claims.email_verified === true || claims.email_verified === 'true'
+    return { sub: claims.sub, email: verified ? text(claims.email) : undefined, name: text(claims.name), picture: text(claims.picture) }
   } catch {
     return null
   }

@@ -48,7 +48,8 @@ export async function google(request: Request, env: Env, what: string): Promise<
     } else {
       if (!person) return answer(400, { error: 'identity' })
       // Already someone's existing account: theirs to sign in to, not a second one.
-      if (!who && await linkedTo(env, person.sub)) return answer(409, { error: 'existing account', email: person.email })
+      const existing = who ? null : await linkedTo(env, person.sub, person.email ?? null)
+      if (existing) return answer(409, { error: 'existing account', how: existing.how })
       account = { id: await accountIdFor(person.sub), kind: 'google' }
       // A Google account is that Google account's alone.
       if (who && who.id !== account.id) return answer(409, { error: 'another google account' })
@@ -74,7 +75,8 @@ export async function google(request: Request, env: Env, what: string): Promise<
     if (googleId && grant.k === 'supabase') await link(env, googleId, grant.a)
     // A Google account that's really an existing account's, never finished:
     // gone, and its person pointed to the account they already have.
-    if (googleId && grant.k === 'google' && await supersededBy(env, grant.a, googleId)) return answer(409, { error: 'existing account' })
+    const superseded = grant.k === 'google' ? await supersededBy(env, grant.a, googleId ?? null) : null
+    if (superseded) return answer(409, { error: 'existing account', how: superseded.how })
     return answer(200, {
       ...passOf(got),
       account: { id: grant.a, kind: grant.k },

@@ -217,8 +217,9 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   // even start the handoff surfaces as an error.
   // A Google account (phase 6, testers for now): Google's window, then the
   // app takes it from there (App, ACCOUNT_EVENT). A Google account that's an
-  // existing account's is pointed at that account instead.
-  const [oldGoogle, setOldGoogle] = useState(false)
+  // existing account's goes to that account: on with its own Google sign-in
+  // if it signed up with this Google, else told to sign in with its email
+  // and password.
   const handleGoogleAccount = async () => {
     setError('')
     setLoading(true)
@@ -226,12 +227,11 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
       const { signInWithGoogle } = await import('../lib/drive')
       await signInWithGoogle()
     } catch (err: any) {
-      if (err?.message === 'EXISTING_ACCOUNT') {
-        setError(t('auth.error.existingAccount'))
-        setOldGoogle(true)
-      } else {
-        setError(err?.message || t('auth.error.googleFailed'))
+      if (err?.message === 'EXISTING_ACCOUNT' && err.how === 'google') {
+        await handleGoogleSignIn()
+        return
       }
+      setError(err?.message === 'EXISTING_ACCOUNT' ? t('auth.error.existingPassword') : err?.message || t('auth.error.googleFailed'))
       setLoading(false)
     }
   }
@@ -627,7 +627,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                   type="button"
                   disabled={loading}
                   onClick={handleGoogleSignIn}
-                  className={`w-full text-[10px] tracking-[0.12em] uppercase transition-colors disabled:opacity-50 ${oldGoogle ? 'text-nier-bg underline' : 'text-nier-bg/60 hover:text-nier-bg'}`}
+                  className="w-full text-[10px] tracking-[0.12em] uppercase transition-colors disabled:opacity-50 text-nier-bg/60 hover:text-nier-bg"
                 >
                   {t('auth.oldGoogle')}
                 </button>
