@@ -3,10 +3,12 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGamePick } from '../store/gameStore'
+import { showToast } from '../lib/toast'
+import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
-import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { anotherAccountsDriveAtrium, askToJoin, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
+import { GOOGLE_CLIENT_ID, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
+import { anotherAccountsDriveAtrium, askToJoin, driveStanding, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -314,9 +316,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (result.state === 'in') {
         setJoining('opening')
         // Its working copy, filled by the first sync (lib/driveSync, down first).
-        const { localClient } = await browserEngine()
-        const { data: had } = await localClient.from('lobbies').select('id').eq('id', result.lobbyId)
-        if (!had?.length) await (localClient.from('lobbies') as any).insert({ id: result.lobbyId, name: asked.name, ...(rowFromRoster(result.lobbyId, user.id) ?? { owner_user_id: user.id }), is_public: false, max_players: 50 })
+        await browserEngine()
+        await makeWorkingCopy(result.lobbyId, { name: asked.name, ...(rowFromRoster(result.lobbyId, user.id) ?? { owner_user_id: user.id }), is_public: false, max_players: 50 })
         rememberBrowserAtrium(result.lobbyId)
         setInvite(null)
         onJoinLobby(result.lobbyId)
@@ -437,6 +438,35 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // Atriums kept in this browser, from its engine -- not opened at all while
   // there are none.
+  // A Drive atrium opened without Drive connected: Drive asked for on this
+  // click (Google's window, while the click counts) -- closed, not opened.
+  const enterBrowserLobby = async (lobby: { id: string; inDrive?: boolean }) => {
+    if (lobby.inDrive && !hasDriveToken()) {
+      try {
+        await ensureSignedIn()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        return
+      }
+    }
+    onJoinLobby(lobby.id)
+  }
+
+  // Drive atriums one's out of -- removed, blocked, or deleted by their owner,
+  // as each one's roster says -- let go of: off the list, the copy here gone
+  // (lib/driveSync, leaveDriveAtrium), and said.
+  const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    for (const lobby of lobbies) {
+      const standing = await driveStanding(lobby.id, user.id)
+      if (!standing || standing === 'in') continue
+      await leaveDriveAtrium(lobby.id).catch(error => console.warn('[drive] letting go of', lobby.id, error))
+      setBrowserLobbies(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
+      showToast(t(standing === 'deleted' ? 'browser.drive.deletedBy' : 'browser.drive.removedFrom', { name: lobby.name }))
+    }
+  }
+
   const loadBrowserLobbies = async () => {
     // Another account's Drive atriums on this browser aren't this one's.
     const ids = isDesktop ? [] : browserAtriumIds().filter(id => !anotherAccountsDriveAtrium(id))
@@ -446,6 +476,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       const { data, error } = await localClient.from('lobbies').select('*').in('id', ids)
       if (error) throw error
       setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true, inDrive: isDriveAtrium(lobby.id) })))
+      void letGoOfEnded((data ?? []).filter((lobby: any) => isDriveAtrium(lobby.id)))
     } catch (err) {
       const problem = vaultProblem(err)
       setError(problem ? t(problem) : t('browser.errLoadLobbies', { message: String(err) }))
@@ -887,14 +918,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     try {
       // A Drive atrium's owner deletes it from Drive, for everyone (Google's
       // window first, while the click counts); anyone else leaves it.
-      if (isDriveAtrium(lobbyId) && isDriveOwner(lobbyId)) {
-        await ensureSignedIn()
-        await deleteDriveAtrium(lobbyId)
-      }
-      forgetDriveAtrium(lobbyId)
-      // Its working copy here, unless another account on this browser still
-      // holds it in Drive: that copy is theirs too.
-      if (!anotherAccountsDriveAtrium(lobbyId)) {
+      if (isDriveAtrium(lobbyId)) {
+        if (isDriveOwner(lobbyId)) {
+          await ensureSignedIn()
+          await deleteDriveAtrium(lobbyId)
+        }
+        await leaveDriveAtrium(lobbyId)
+      } else {
         const { error } = await (await clientFor(lobbyId))
           .from('lobbies')
           .delete()
@@ -1188,6 +1218,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               )}
             </section>
           )}
+          {/* Google Drive: connected or not, and the way to change it. */}
+          {canDrive && myId && <DriveConnection buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
           {/* Create Lobby */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -1365,7 +1397,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                       </div>
                       <div className={ROW_ACTIONS}>
                         <button
-                          onClick={() => onJoinLobby(lobby.id)}
+                          onClick={() => void enterBrowserLobby(lobby)}
                           className={ROW_ENTER}
                         >
                           {t('browser.enter')}

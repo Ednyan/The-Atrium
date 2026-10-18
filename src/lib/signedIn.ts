@@ -22,11 +22,15 @@ export function googleAccount(): GoogleAccount | null {
   }
 }
 export function keepGoogleAccount(account: GoogleAccount | null, reason?: SignedOutReason): void {
+  const was = googleAccount()?.id ?? null
   try {
     if (account) localStorage.setItem(ACCOUNT, JSON.stringify(account))
     else localStorage.removeItem(ACCOUNT)
   } catch { /* this visit only */ }
-  window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: { reason } }))
+  // Said only when who's signed in changes (or why they were signed out):
+  // the same account kept again -- its Drive connected, say -- isn't a
+  // sign-in, and the app mustn't take it for one (App moves to /welcome).
+  if ((account?.id ?? null) !== was || reason) window.dispatchEvent(new CustomEvent(ACCOUNT_EVENT, { detail: { reason } }))
 }
 
 /** Who's signed in, and the token the worker knows them by -- the

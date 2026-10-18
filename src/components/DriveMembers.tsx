@@ -118,7 +118,18 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
             {roster.invited.map(invite => (
               <li key={invite.user} className="flex flex-wrap items-center gap-2 text-xs text-nier-bg/70">
                 <span className="flex-1 min-w-[6rem] truncate">{invite.name}</span>
-                <span className="uppercase tracking-wider text-[10px]">{t('browser.drive.invitedTag')} · {t(`browser.drive.role.${invite.role}`)}</span>
+                {/* The role they'll come in with: theirs to change as a member's (an admin's, once they're in). */}
+                {managing && invite.role !== 'admin' ? (
+                  <>
+                    <span className="uppercase tracking-wider text-[10px]">{t('browser.drive.invitedTag')}</span>
+                    <select value={invite.role} disabled={busy} onChange={e => void act(() => setRole(lobbyId, me, invite.user, e.target.value as Assignable))} className={FIELD}>
+                      <option value="editor">{t('browser.drive.role.editor')}</option>
+                      <option value="viewer">{t('browser.drive.role.viewer')}</option>
+                    </select>
+                  </>
+                ) : (
+                  <span className="uppercase tracking-wider text-[10px]">{t('browser.drive.invitedTag')} · {t(`browser.drive.role.${invite.role}`)}</span>
+                )}
                 {managing && (
                   <>
                     <button disabled={busy} onClick={() => void act(async () => t((await resendInvitation(lobbyId, me, invite.user)) === 'in' ? 'browser.drive.added' : 'browser.drive.invited', { name: invite.name }))} className={buttonClass}>{t('browser.drive.resend')}</button>

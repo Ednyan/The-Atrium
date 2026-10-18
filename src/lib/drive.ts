@@ -40,8 +40,9 @@ function script(src: string): Promise<void> {
   }
   return once
 }
-/** Google's sign-in library, fetched ahead: a popup must open while the click that asked for it still counts. */
-export const loadGoogleSignIn = () => script('https://accounts.google.com/gsi/client')
+/** Google's sign-in library, fetched ahead: a popup must open while the click
+ *  that asked for it still counts. (Already on the page, it's taken as is.) */
+export const loadGoogleSignIn = () => ((window as any).google?.accounts ? Promise.resolve() : script('https://accounts.google.com/gsi/client'))
 
 // Google's pass lasts an hour, and in a browser only a click can open
 // Google's window to ask for another. So a browser asks once, in Google's
@@ -69,7 +70,12 @@ function grantKept(): Grant | null {
 }
 function keepGrant(grant: Grant | null) {
   try { if (grant) localStorage.setItem(GRANT, JSON.stringify(grant)); else localStorage.removeItem(GRANT) } catch { /* this visit only */ }
+  connectionChanged()
 }
+/** Said whenever Drive's connection may have changed: the atrium browser's
+ *  indicator (components/DriveConnection) looks again. */
+export const DRIVE_CONNECTION_EVENT = 'atrium:drive-connection'
+const connectionChanged = () => window.dispatchEvent(new Event(DRIVE_CONNECTION_EVENT))
 // For this page: the worker failed at renewing (the button asks instead), or
 // at taking a code (the window asks for an hour's pass instead).
 let renewFailed = false
@@ -96,13 +102,16 @@ export const hasDriveToken = () => (fresh(token) && token!.drive) || (!renewFail
 type Answer = {
   access_token?: string; expires_in?: number; scope?: string; grant?: string; session?: string; until?: number
   account?: { id: string; kind: 'google' | 'supabase'; email?: string; name?: string }
-  // Signing in: Google's consent not given yet; or an existing account's Google.
+  // An existing account's Google kept no grant at the worker (resume); or,
+  // signing in, this Google is an existing account's.
   consent?: boolean
   existing?: { account: string; how: 'google' | 'password'; joinable: boolean }
-  id_token?: string
 }
 const took = (answer: Answer) => {
-  if (answer.access_token) token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000, drive: allowed(answer.scope) }
+  if (answer.access_token) {
+    token = { value: answer.access_token, until: Date.now() + Number(answer.expires_in) * 1000, drive: allowed(answer.scope) }
+    connectionChanged()
+  }
   if (answer.session && answer.until) session = { value: answer.session, until: answer.until }
   return token?.value ?? ''
 }
@@ -185,34 +194,40 @@ export async function workerSession(): Promise<string | null> {
   return fresh(session) ? session!.value : null
 }
 
-/** Signing in with Google, on a click: Google's window, asking only who one
- *  is (the token flow -- Google asks consent for that the first time, and
- *  never again). Then a Google account, with no Supabase account at all --
- *  or, if this Google is an existing account's, that account to sign in to:
- *  by Supabase, with Google's ID token, which the worker has only if this
- *  Google consented in its code flow. Not yet: 'consent' -- and the next
- *  click (`consent`) is the window that asks for it, once ever (the worker
- *  keeps that Google's grant). Drive is asked for later, where it's used. */
+/** Signing in with Google: the ID token from Google's own button
+ *  (renderGoogleButton) -- one click, asking only who one is; Drive is asked
+ *  for later, where it's used. Then a Google account, with no Supabase
+ *  account at all -- or, if this Google is an existing account's, that
+ *  account to sign in to: by Supabase, with that same ID token, where it will. */
 export type GoogleSignIn =
   | { kind: 'google'; account: GoogleAccount }
-  | { kind: 'existing'; account: string; how: 'google' | 'password'; joinable: boolean; idToken: string | null }
-  | { kind: 'consent' }
-export async function signInWithGoogle(consent = false): Promise<GoogleSignIn> {
-  const answer = consent
-    ? await askWorker('grant', { code: await googleCode(IDENTITY) })
-    : await askWorker('signin', { access_token: await googlePass(IDENTITY) })
-  if (answer.consent) return { kind: 'consent' }
+  | { kind: 'existing'; account: string; how: 'google' | 'password'; joinable: boolean }
+export async function signInWithGoogle(idToken: string): Promise<GoogleSignIn> {
+  const answer = await askWorker('identity', { id_token: idToken })
   if (answer.existing) {
-    // Its grant is that account's, renewing only with its own sign-in.
+    // Its grant (Drive given before) is that account's, renewing only with its own sign-in.
     if (answer.grant) keepGrant({ user: answer.existing.account, grant: answer.grant, drive: allowed(answer.scope) })
     took(answer)
-    return { kind: 'existing', ...answer.existing, idToken: answer.id_token ?? null }
+    return { kind: 'existing', ...answer.existing }
   }
   keep(answer)
   const account = googleAccount()
   if (!account) throw new Error('Google sign-in failed')
   return { kind: 'google', account }
 }
+/** Drive given back (components/DriveConnection): Google forgets this app's
+ *  access -- on every device -- and nothing here can renew it. A Google
+ *  account stays signed in, with a grant that doesn't reach Drive; Drive is
+ *  asked for again where it's used. */
+export async function disconnectDrive(): Promise<void> {
+  const me = await whoAsks()
+  if (!me) return
+  const kept = grantKept()
+  const answer = await askWorker('disconnect', { ...(kept?.user === me.user ? { grant: kept.grant } : {}), ...(me.token && !me.google ? { token: me.token } : {}) })
+  token = null
+  keepGrant(me.google && answer.grant ? { user: me.user, grant: answer.grant, drive: false } : null)
+}
+
 /** Out: the Google account, its grant and its passes -- and why, if it's
  *  to be said. */
 export function signOutGoogle(reason?: SignedOutReason): void {
@@ -223,7 +238,7 @@ export function signOutGoogle(reason?: SignedOutReason): void {
 }
 
 // A plain request (a string body, no headers of its own): no preflight.
-async function askWorker(what: 'grant' | 'renew' | 'signin' | 'resume', body: object): Promise<Answer> {
+async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disconnect', body: object): Promise<Answer> {
   const response = await fetch(`${grantServer()}/google/${what}`, { method: 'POST', body: JSON.stringify(body) })
   const answer = await response.json().catch(() => ({}))
   // A Google account that's an existing account's (refused at renewal).
@@ -242,30 +257,45 @@ function keep(answer: Answer) {
   took(answer)
 }
 
-const IDENTITY = 'openid email profile'
 // Drive's permission, as granted: each can be unticked on Google's screen.
 function allowed(scope: unknown): boolean {
   return typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
 }
 const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
-async function oauth2() {
+async function googleAccounts() {
   if (!GOOGLE_CLIENT_ID) throw new Error("Google sign-in isn't set up in this build (VITE_GOOGLE_CLIENT_ID)")
   await loadGoogleSignIn()
-  return (window as any).google.accounts.oauth2
+  return (window as any).google.accounts
+}
+const oauth2 = async () => (await googleAccounts()).oauth2
+
+// Google's button calls one handler a page: the latest button's.
+let toCredential: (idToken: string) => void = () => {}
+let buttonsReady = false
+/** Google's "Sign in with Google" button, drawn by Google (its own frame) in
+ *  `box`, in `locale`: one click, and its ID token to `onCredential`. */
+export async function renderGoogleButton(box: HTMLElement, locale: string, onCredential: (idToken: string) => void): Promise<void> {
+  const { id } = await googleAccounts()
+  toCredential = onCredential
+  if (!buttonsReady) {
+    id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', callback: (answer: { credential?: string }) => { if (answer.credential) toCredential(answer.credential) } })
+    buttonsReady = true
+  }
+  id.renderButton(box, { type: 'standard', theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'center', width: Math.min(400, Math.max(200, box.clientWidth)), locale })
 }
 
-/** Google's window that asks for consent (the code flow, which always does):
- *  a code for the worker to turn into a grant, of `scope`. */
-async function googleCode(scope: string): Promise<string> {
+/** Google's window that asks for Drive (the code flow, which always shows
+ *  its consent screen): a code for the worker to turn into a grant. */
+async function googleCode(): Promise<string> {
   const client = await oauth2()
   return new Promise<string>((resolve, reject) => {
     client.initCodeClient({
       client_id: GOOGLE_CLIENT_ID,
-      scope,
+      scope: SCOPES,
       ux_mode: 'popup',
       callback: (answer: any) => {
         if (answer.error) return reject(new Error(answer.error_description || answer.error))
-        if (allowed(scope) && !allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
+        if (!allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
         resolve(answer.code)
       },
       error_callback: closed(reject),
@@ -288,7 +318,7 @@ async function googlePass(scope: string): Promise<string> {
 }
 
 async function askGoogle(me: Asker | null): Promise<string> {
-  if (grantServer() && !codeFailed) return takeCode(await googleCode(SCOPES), me)
+  if (grantServer() && !codeFailed) return takeCode(await googleCode(), me)
   // Without the worker: an hour's pass for Drive, no account.
   if (!me) throw new Error("Google sign-in isn't available right now")
   return took({ access_token: await googlePass(SCOPES), expires_in: 3600, scope: SCOPES })

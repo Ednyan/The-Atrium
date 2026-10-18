@@ -54,14 +54,8 @@ function Asking({ status }: { status: Status }) {
 
 function Doing({ status }: { status: Status }) {
   const { t } = useTranslation()
-  // Over for this member: said, and nothing more is synced (lib/driveSync).
-  if (status.ended) {
-    return (
-      <div className="max-w-xs px-4 py-3 bg-nier-blackLight border border-nier-red/50" role="status">
-        <p className="text-nier-bg text-xs leading-relaxed">◇ {t(status.ended === 'removed' ? 'atrium.drive.removed' : 'atrium.drive.deleted')}</p>
-      </div>
-    )
-  }
+  // Over for this member: the atrium leaves, saying why (LobbyScene, App's KickedNotice).
+  if (status.ended) return null
   if (status.signInNeeded) {
     return (
       <button

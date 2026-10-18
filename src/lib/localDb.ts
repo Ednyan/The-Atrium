@@ -102,6 +102,11 @@ export async function setVaultBasePath(path: string): Promise<string> {
 export const readVaultBrushes = (): Promise<unknown> => readVaultJson(['brushes.json'], [])
 export const writeVaultBrushes = (brushes: unknown): Promise<void> => writeVaultJson(['brushes.json'], brushes)
 
+/** Where a Drive atrium's sync state is (lib/driveSync): what its working
+ *  copy here has merged and read. It's the copy's -- removed with it
+ *  (removeDeletedLobbyData). */
+export const driveStatePath = (lobbyId: string) => ['drive', `${lobbyId}.json`]
+
 /** A JSON file in the vault, by its place in it (`fallback` where there's none). */
 export async function readVaultJson<T>(segments: string[], fallback: T): Promise<T> {
   const path = await joinPathSegments(await getVaultBasePath(), segments)
@@ -2808,6 +2813,16 @@ async function removeDeletedLobbyData(deletedRows: any[]): Promise<void> {
       }
     } catch {
       // Ignored on purpose -- see above.
+    }
+
+    // A Drive atrium's sync state says what this copy holds: gone with it, or
+    // a copy made here again would take its word -- every save read, and,
+    // against an empty copy, every row deleted.
+    try {
+      const statePath = await joinPathSegments(await getVaultBasePath(), driveStatePath(lobbyId))
+      if (await vaultPathExists(statePath)) await removePath(statePath)
+    } catch {
+      // Ignored on purpose -- see above. (Joining starts a copy's state afresh anyway.)
     }
 
     lobbyNameCache.delete(lobbyId)

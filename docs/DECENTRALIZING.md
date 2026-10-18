@@ -606,6 +606,24 @@ media, because it changes the file format.
   keep). **Blocking** also refuses their requests from then on.
 - **Leave** (a member) removes it from that browser. **Delete** (the owner)
   removes its folder from Drive, and it closes for everyone.
+- **Removed, blocked or deleted means out at once (2026-10-18).**
+  - The owner's or admin's app tells the atrium's room whenever the roster
+    changes. Everyone inside looks at it then, rather than at their next
+    look.
+  - Someone out is put out of the atrium, as a kick, told why, and that
+    nothing but being added again lets them back.
+  - The atrium browser checks each Drive atrium's roster, with the app's key
+    alone, and lets go of those one's out of: off the list, and the copy
+    deleted unless another account here still holds it.
+  - A removed person can still ask to be let in. Only being added gets them
+    in, and Block stops the asking too.
+- **A copy's sync state is the copy's.** `drive/<id>.json` says what the
+  copy holds and which saves it has read. It's deleted with the copy, and
+  a copy made on joining starts it afresh.
+  - A stale state against an empty copy reads every row as deleted, and
+    sent that up: a rejoining editor once wiped an atrium's traces.
+  - For the same reason, a save's changes reach the sync's memory only after
+    the working copy has them.
 - **Each account on a browser has its own list** of Drive atriums
   (`atrium.driveAtriums.byAccount`, 2026-10-18). Another account signing in
   on the same browser neither sees them nor counts as holding them, so its
@@ -813,27 +831,35 @@ public list. Contributions already need no account.
     Otherwise it's on to the account's own Google sign-in (one made with
     Google), or "sign in with your email and password" (an account known
     only through its Drive, under another address).
-- **Signing up asks Google only who you are (2026-10-18).** Drive is asked
-  for the first time it's used: the click that confirms making or joining a
-  Drive atrium (`ensureSignedIn`), or converting one.
-  - Sign-in is the token flow (`prompt: ''`), scope `openid email profile`.
-    Google asks consent for that the first time only. The worker checks the
-    pass with Google (tokeninfo: issued to this app).
+- **Signing in is one click on Google's own button (2026-10-18).** Its ID
+  token says who you are and nothing of Drive.
+  - The worker checks the token itself: RS256 against Google's published
+    keys (cached as long as Google says), the issuer, this app as audience,
+    and not run out.
+  - An existing account is signed in to by Supabase's `signInWithIdToken`
+    with that same token. So there is no consent step for anyone.
+  - The token flow and tokeninfo are gone, and so is "one more step".
+  - Google's button is drawn by Google, in the page's language. The policy
+    allows its stylesheet (`style-src https://accounts.google.com/gsi/style`).
+- **Drive is asked for where it's used:** making, joining or converting a
+  Drive atrium, opening one while disconnected, or the atrium browser's
+  Connect. Each is Google's code flow, on that click (`ensureSignedIn`).
   - With no Drive grant, a Google account's grant holds no Google refresh
     token. It's the worker's own sealed word, and renews the session alone.
     The browser's copy says whether it reaches Drive (`drive`); older grants
     all do.
   - Drive taken back on Google's side no longer signs a Google account out:
     the renewal answers with a session and a grant without Drive.
+- **The atrium browser says whether Drive is connected**, with Connect or
+  Disconnect (`components/DriveConnection`).
+  - Disconnect asks the worker to revoke this app's access at Google, on
+    every device, and to forget the grants it keeps.
+  - A Google account stays signed in. Drive is asked for again where it's
+    used.
 - **Consent once per Google account, not at each use.** Google's code flow
   always shows its consent screen. So the worker keeps each Google
-  account's grant (sealed, D1 `google_grants`), and signs in with it after.
-  - An existing account's sign-in needs Google's ID token, which only the
-    code flow gives. With no grant kept for that Google, "one more step,
-    this first time only" asks for consent, for identity only, on a second
-    click. A new Google account never sees that step.
-  - Drive's consent is kept the same way, so it's given once, on any
-    browser.
+  account's Drive grant (sealed, D1 `google_grants`), and signing in with
+  that Google renews it: Drive at once, on any browser, until disconnected.
   - An existing account on a new browser gets its Drive from the grant kept
     for its linked Google, with no window (`resume`).
   - The rule holds wherever a session is given, not only at sign-in. A

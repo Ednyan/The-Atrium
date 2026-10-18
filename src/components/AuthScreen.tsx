@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
 import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
@@ -212,35 +212,22 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
   }
 
-  // Hands off to Google and returns to the app via redirect, so there's no
-  // success path to handle here -- the page navigates away. Only a failure to
-  // even start the handoff surfaces as an error.
-  // Signing in with Google (phase 6, testers for now). Google's window,
-  // asking only who one is -- Drive is asked for where it's used, a Drive
-  // atrium made or joined. Then a Google account (the app takes it from
-  // there: App, ACCOUNT_EVENT), or the existing account this Google is --
-  // the first time, a second click for Google's consent (`needsConsent`),
-  // whose ID token signs in to it; the worker keeps the grant, so never
-  // again:
-  // signed in to it by Supabase with Google's own token where Supabase will
-  // (it has this Google, or this verified address -- and links it), on to
-  // its own Google sign-in if it was made with Google, else told to sign in
-  // with its email and password.
-  const [needsConsent, setNeedsConsent] = useState(false)
-  const handleGoogleAccount = async () => {
+  // Signing in with Google (phase 6, testers for now): Google's own button,
+  // one click, asking only who one is -- Drive is asked for where it's used, a
+  // Drive atrium made or joined. Then a Google account (the app takes it from
+  // there: App, ACCOUNT_EVENT), or the existing account this Google is:
+  // signed in to it by Supabase with the button's own token where Supabase
+  // will (it has this Google, or this verified address -- and links it), on
+  // to its own Google sign-in if it was made with Google, else told to sign
+  // in with its email and password.
+  const handleGoogleCredential = async (idToken: string) => {
     setError('')
     setLoading(true)
     try {
       const { signInWithGoogle } = await import('../lib/drive')
-      const result = await signInWithGoogle(needsConsent)
-      if (result.kind === 'consent') {
-        setNeedsConsent(true)
-        setLoading(false)
-        return
-      }
-      setNeedsConsent(false)
+      const result = await signInWithGoogle(idToken)
       if (result.kind === 'google') return
-      if (result.joinable && result.idToken && await signInToExisting(result.idToken, result.account)) return
+      if (result.joinable && await signInToExisting(idToken, result.account)) return
       if (result.how === 'google') {
         await handleGoogleSignIn()
         return
@@ -268,6 +255,9 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     return false
   }
 
+  // Hands off to Google and returns to the app via redirect, so there's no
+  // success path to handle here -- the page navigates away. Only a failure to
+  // even start the handoff surfaces as an error.
   const handleGoogleSignIn = async () => {
     if (!supabase) return
     setError('')
@@ -639,10 +629,10 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                 <span className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase">or</span>
                 <div className="flex-1 h-[1px] bg-nier-border/20" />
               </div>
-              <button
+              {driveTesting ? <GoogleButton busy={loading} onCredential={idToken => void handleGoogleCredential(idToken)} /> : <button
                 type="button"
                 disabled={loading}
-                onClick={driveTesting ? handleGoogleAccount : handleGoogleSignIn}
+                onClick={handleGoogleSignIn}
                 className="w-full py-3 border border-nier-border/40 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:border-nier-border/80 hover:bg-nier-border/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
               >
                 <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
@@ -652,9 +642,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                   <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
                 </svg>
                 {t('auth.continueWithGoogle')}
-              </button>
-              {/* Google's consent, the first time for this Google account: what it's for. */}
-              {needsConsent && <p className="text-nier-bg/80 text-[11px] leading-relaxed text-center">{t('auth.googleConsent')}</p>}
+              </button>}
               {onGuest && (
                 <button
                   type="button"
@@ -716,6 +704,28 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Google's own "Continue with Google" button (lib/drive), drawn by Google in
+ *  the page's language: one click, and its ID token to `onCredential`.
+ *  Covered while signing in. */
+function GoogleButton({ busy, onCredential }: { busy: boolean; onCredential: (idToken: string) => void }) {
+  const { language } = useTranslation()
+  const box = useRef<HTMLDivElement>(null)
+  const latest = useRef(onCredential)
+  latest.current = onCredential
+  useEffect(() => {
+    const at = box.current
+    if (!at) return
+    void import('../lib/drive')
+      .then(drive => drive.renderGoogleButton(at, language, idToken => latest.current(idToken)))
+      .catch(error => console.warn('[atrium] the Google button:', error))
+  }, [language])
+  return (
+    <div aria-busy={busy} className={`w-full flex justify-center min-h-[44px] ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div ref={box} className="w-full flex justify-center" />
     </div>
   )
 }

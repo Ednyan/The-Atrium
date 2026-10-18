@@ -14,9 +14,11 @@ export interface Env {
   // no Google accounts.
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
-  // Google's token and token-info addresses; others only in a local test.
+  // Google's token address, its keys for ID tokens, and where access is given
+  // back; others only in a local test.
   GOOGLE_TOKEN_URL?: string
-  GOOGLE_TOKENINFO_URL?: string
+  GOOGLE_CERTS_URL?: string
+  GOOGLE_REVOKE_URL?: string
   // The directory (src/people.ts).
   PEOPLE?: D1Database
   // The worker's key to Supabase's account_for_email (a secret; Supabase
@@ -69,7 +71,7 @@ export const keyFrom = async (secret: string, label: string, algorithm: 'AES-GCM
 export const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
 export const fromBase64 = (text: string) => Uint8Array.from(atob(text), c => c.charCodeAt(0))
 const toUrl = (bytes: Uint8Array) => toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-const fromUrl = (text: string) => fromBase64(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4))
+export const fromUrl = (text: string) => fromBase64(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4))
 
 // ---------------------------------------------------------------- sessions
 

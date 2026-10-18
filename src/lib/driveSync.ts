@@ -193,7 +193,11 @@ function allKept(user = signedInHere()): Record<string, Kept> {
 }
 function belongsTo(kept: Kept, user: string): boolean {
   const roster = rostersKept()[kept.roster]?.roster
-  return !roster || !!placeOf(roster, user) || roster.invited.some(invite => invite.user === user)
+  if (!roster) return true
+  // The owner's own entry (its folder, its keys) is the owner's; anyone
+  // else's, someone in it -- never someone only invited, who'd take another's.
+  const role = placeOf(roster, user)?.role
+  return kept.owner ? role === 'owner' : !!role && role !== 'owner'
 }
 export const isDriveAtrium = (lobbyId: string) => lobbyId in allKept()
 /** Another account's Drive atrium, held on this browser -- and not this
@@ -214,6 +218,45 @@ function keep(lobbyId: string, kept: Kept | null, user = signedInHere()) {
   store_(KEPT, byAccount)
 }
 export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
+
+/** Out of a Drive atrium on this browser, for the account signed in: off its
+ *  list, and its working copy gone -- unless another account here still
+ *  holds it, whose copy it is too. The copy's sync state goes with it. */
+export async function leaveDriveAtrium(lobbyId: string): Promise<void> {
+  forgetDriveAtrium(lobbyId)
+  if (anotherAccountsDriveAtrium(lobbyId)) return
+  const { browserEngine, forgetBrowserAtrium } = await import('./browserAtriums')
+  const { error } = await (await browserEngine()).localClient.from('lobbies').delete().eq('id', lobbyId)
+  if (error) throw error
+  forgetBrowserAtrium(lobbyId)
+}
+
+/** Why one's out of a Drive atrium: removed from its roster, blocked, or the
+ *  atrium deleted by its owner. */
+export type DriveEnd = 'removed' | 'blocked' | 'deleted'
+const outOf = (roster: Roster, me: string): DriveEnd | null =>
+  roster.blocked.includes(me) ? 'blocked'
+    : placeOf(roster, me) || roster.invited.some(invite => invite.user === me) ? null
+      : 'removed'
+// Found out this visit, by account: the open atrium leaves at once
+// (LobbyScene), and the atrium browser lets it go.
+const ended = new Map<string, DriveEnd>()
+export const endedFor = (lobbyId: string, user = signedInHere()) => ended.get(`${user}/${lobbyId}`)
+
+/** Where `me` stands in a Drive atrium held here, by its roster (read with
+ *  the app's key alone, no sign-in): in, or out and why. Null if Drive can't
+ *  say just now -- nothing's let go on a guess. */
+export async function driveStanding(lobbyId: string, me: string): Promise<'in' | DriveEnd | null> {
+  const known = ended.get(`${me}/${lobbyId}`)
+  if (known) return known
+  const kept = allKept(me)[lobbyId]
+  if (!kept) return null
+  try {
+    return outOf(await readRoster(kept.roster), me) ?? 'in'
+  } catch (error) {
+    return /Drive 404/.test(String(error)) ? 'deleted' : null
+  }
+}
 /** Its owner's, here: Delete takes it out of Drive; anyone else's leaves. */
 export const isDriveOwner = (lobbyId: string) => !!allKept()[lobbyId]?.owner
 /** Who its owner and admins are, and whether `me` may edit, as the
@@ -265,7 +308,21 @@ export async function createDriveAtrium(lobbyId: string, name: string, me: { id:
   // A clean slate: what an earlier sync of this atrium kept (what it merged,
   // what it read) isn't this one's, and would stop its first save -- all of
   // it -- from ever going up.
-  await (await import('./localDb')).writeVaultJson(statePath(lobbyId), { merged: [], seen: [], last: null } satisfies State)
+  const local = await import('./localDb')
+  await local.writeVaultJson(local.driveStatePath(lobbyId), FRESH)
+}
+
+/** The working copy of a Drive atrium joined here, made if there's none yet
+ *  (`row`, its atrium's row) -- and its sync started from nothing with it: a
+ *  state left by an earlier copy here would take every save as read and,
+ *  against the empty copy, every row as deleted, sending that up. */
+export async function makeWorkingCopy(lobbyId: string, row: Record<string, unknown>): Promise<void> {
+  const local = await import('./localDb')
+  const { data: had } = await local.localClient.from('lobbies').select('id').eq('id', lobbyId)
+  if (had?.length) return
+  await local.writeVaultJson(local.driveStatePath(lobbyId), FRESH)
+  const { error } = await (local.localClient.from('lobbies') as any).insert({ ...row, id: lobbyId })
+  if (error) throw error
 }
 
 /** An atrium kept in this browser, kept in Drive too, at any time: made a
@@ -407,6 +464,25 @@ async function changeRoster(lobbyId: string, me: string, change: (roster: Roster
     session.roster = null
     if (next.keyring) session.keyring = next.keyring
   }
+  tellRoom(lobbyId)
+}
+
+// Everyone in the atrium's room told the roster changed: through the page's
+// room from inside, else said from outside for a few seconds, while the word
+// gets in (lib/rooms).
+function tellRoom(lobbyId: string) {
+  if (session?.lobbyId === lobbyId && sendThroughRoom(ROSTER_EVENT, {})) return
+  const stop = sayToRoom(lobbyId, ROSTER_EVENT, {}, ROSTER_TOLD_MS)
+  window.setTimeout(stop, ROSTER_TOLD_MS * 3)
+}
+
+/** Told by the room the roster changed: looked at now -- on the word of an
+ *  owner or admin only, as the room knows the sender. */
+async function rosterTold(s: Session, sender: string): Promise<void> {
+  if (!s.roster || !manages(memberOf(s.roster.roster, sender)?.role)) return
+  if (Date.now() - s.rosterToldAt < ROSTER_TOLD_MS) return
+  s.rosterToldAt = Date.now()
+  await lookAtRoster(s)
 }
 
 /** Someone added, by their username: let in now if they have a key pair,
@@ -455,14 +531,19 @@ async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof 
   return result
 }
 
-/** A member's role changed. Admins' alone by the owner, with the admin's
- *  Google address: the roster shared with it to edit (or no longer). */
+/** A member's role changed -- or the role someone invited comes in with.
+ *  Admins' alone by the owner, with the admin's Google address: the roster
+ *  shared with it to edit (or no longer) -- so a member's, once they're in. */
 export async function setRole(lobbyId: string, me: string, user: string, role: Exclude<Role, 'owner'>, adminEmail?: string): Promise<void> {
   const kept = allKept()[lobbyId]
   if (!kept) throw new Error('not a Drive atrium')
   await changeRoster(lobbyId, me, async roster => {
     const member = memberOf(roster, user)
-    if (!member || member.role === 'owner') throw new Error('not a member')
+    if (!member) {
+      if (role === 'admin' || !roster.invited.some(invite => invite.user === user)) throw new Error('not a member')
+      return { roster: { ...roster, invited: roster.invited.map(invite => (invite.user === user ? { ...invite, role } : invite)) } }
+    }
+    if (member.role === 'owner') throw new Error('not a member')
     const owner = memberOf(roster, me)?.role === 'owner'
     if ((role === 'admin' || member.role === 'admin') && !owner) throw new Error('OWNER_ONLY')
     let grant = member.grant
@@ -506,6 +587,8 @@ export async function deleteDriveAtrium(lobbyId: string): Promise<void> {
   const kept = allKept()[lobbyId]
   if (kept) await store.trash(kept.folder)
   forgetDriveAtrium(lobbyId)
+  // Whoever's in finds it gone now.
+  tellRoom(lobbyId)
 }
 
 // ---------------------------------------------------------------- in step, while open
@@ -520,6 +603,11 @@ const AT_ONCE = 6
 const ROOM_EVENT = 'drive-save'
 // A save from someone the roster doesn't have: the roster looked at again, at most this often.
 const ROSTER_AGAIN_MS = 10_000
+// The roster changed (someone added, removed, a role), told to the room by
+// the owner's or an admin's app: whoever's in looks at it now -- someone
+// removed is out at once, not at their app's next look. At most this often.
+const ROSTER_EVENT = 'drive-roster'
+const ROSTER_TOLD_MS = 3_000
 const ROOM_MOST = 40_000
 
 interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] } }
@@ -543,6 +631,7 @@ interface Session {
   putOff: Set<string>
   // When a save from someone the roster didn't have last made it look again.
   rosterAskedAt: number
+  rosterToldAt: number
   // One's invitation deleted, once let in properly.
   inviteCleared: boolean
   // Files: where one's own go (found or made on the first sent), those known
@@ -560,8 +649,8 @@ interface Session {
 }
 let session: Session | null = null
 
-const statePath = (lobbyId: string) => ['drive', `${lobbyId}.json`]
-const persist = (s: Session) => s.local.writeVaultJson(statePath(s.lobbyId), {
+const FRESH: State = { merged: [], seen: [], last: null }
+const persist = (s: Session) => s.local.writeVaultJson(s.local.driveStatePath(s.lobbyId), {
   merged: [...s.merged.values()], seen: [...s.seen], last: s.last,
   ...(s.snapshot ? { snapshot: { version: s.snapshot.version, folded: [...s.snapshot.folded] } } : {}),
 } satisfies State)
@@ -576,12 +665,12 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const kept = allKept(me)[lobbyId]
   if (!kept) return
   const local = await import('./localDb')
-  const state = await local.readVaultJson<State>(statePath(lobbyId), { merged: [], seen: [], last: null })
+  const state = await local.readVaultJson<State>(local.driveStatePath(lobbyId), FRESH)
   const merged: Merged = new Map()
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, inviteCleared: false,
+    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
     filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
@@ -594,7 +683,8 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   // Saves as they're made, from whoever's in the room.
   const stopSaves = onRoomEvent(ROOM_EVENT, (payload, sender) => { if (session === s) void run(s, x => heard(x, payload, sender)) })
   const stopAsks = onRoomEvent(ASK_EVENT, (_payload, sender) => { if (session === s) void run(s, x => asked(x, sender)) })
-  s.stopHearing = () => { stopSaves(); stopAsks() }
+  const stopRoster = onRoomEvent(ROSTER_EVENT, (_payload, sender) => { if (session === s) void run(s, x => rosterTold(x, sender)) })
+  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster() }
   const both = async (x: Session) => { await down(x); await up(x) }
   void run(s, both)
   s.looking = window.setInterval(() => { if (session === s) void run(s, both) }, LOOK_MS)
@@ -617,7 +707,7 @@ export async function stopDriveSync(): Promise<void> {
 // (components/DriveStatus): bringing saves in from Drive, waiting for a
 // sign-in -- which needs a click, so saves wait here meanwhile; reading
 // doesn't need it -- or over for this member: removed, or deleted.
-export interface DriveStatus { catchingUp: boolean; signInNeeded: boolean; ended?: 'removed' | 'deleted'; asking: Asker[] }
+export interface DriveStatus { catchingUp: boolean; signInNeeded: boolean; ended?: DriveEnd; asking: Asker[] }
 export interface Asker { user: string; username: string; name: string }
 let status: DriveStatus = { catchingUp: false, signInNeeded: false, asking: [] }
 const statusWatchers = new Set<(status: DriveStatus) => void>()
@@ -710,13 +800,14 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     version = await store.version(s.kept.roster)
   } catch (error) {
     // Gone: the owner deleted it.
-    if (/Drive 404/.test(String(error))) { setStatus({ ended: 'deleted' }); return null }
+    if (/Drive 404/.test(String(error))) { end(s, 'deleted'); return null }
     throw error
   }
   if (s.roster?.version !== version) {
     const roster = await readRosterAt(s.kept.roster, version)
     s.roster = { version, roster }
-    if (!placeOf(roster, s.me) && !roster.invited.some(invite => invite.user === s.me)) { setStatus({ ended: 'removed' }); return null }
+    const out = outOf(roster, s.me)
+    if (out) { end(s, out); return null }
     // Who owns it, who manages it, whether one may edit: the open atrium shows them.
     await s.local.localClient.from('lobbies').update(rowOf(roster, s.me)).eq('id', s.lobbyId)
     window.dispatchEvent(new CustomEvent(LOBBY_CHANGED_EVENT, { detail: s.lobbyId }))
@@ -741,6 +832,12 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   // As it was read: those just let in are read this look too (by their
   // invitation's folder), and the next look reads the roster written.
   return roster
+}
+
+// Out of it: nothing more synced (up), and the open atrium leaves.
+function end(s: Session, why: DriveEnd) {
+  ended.set(`${s.me}/${s.lobbyId}`, why)
+  setStatus({ ended: why })
 }
 
 /** An owner's or admin's app, as it looks: those it added who now have a key
@@ -886,24 +983,31 @@ interface Saved { id: string; by: string; save: DriveSave }
  *  the working copy. Changes to the atrium's own row only from its owner and
  *  admins. */
 async function take(s: Session, saves: Saved[]): Promise<void> {
+  // Merged apart first: the sync's memory has them only once the working copy
+  // does. Ahead of the copy (bringing in failed), the next diff would take
+  // what's missing from it as deleted here, and send that up.
+  const merged: Merged = new Map(s.merged)
   const took = new Map<string, Change>()
-  for (const { id, by, save } of saves) {
+  let last = s.last
+  for (const { by, save } of saves) {
     const theirs = manages(s.roster ? placeOf(s.roster.roster, by)?.role : undefined) ? save.changes : save.changes.filter(change => change.table !== 'lobbies')
-    for (const change of merge(s.merged, theirs)) took.set(`${change.table}/${change.id}`, change)
-    for (const change of save.changes) s.last = later(s.last, change.at)
-    s.seen.add(id)
+    for (const change of merge(merged, theirs)) took.set(`${change.table}/${change.id}`, change)
+    for (const change of save.changes) last = later(last, change.at)
   }
   // Each row as it ends up merged, not as each save had it on the way.
-  const changes = [...took.keys()].map(key => s.merged.get(key)!)
+  const changes = [...took.keys()].map(key => merged.get(key)!)
   // Their files on the way before the atrium reads them: a trace waits for
   // its file rather than showing it missing. A file sent after its trace
   // (it failed to go at first) comes for the traces that have it.
   const sentLate = new Set(changes.filter(change => change.table === 'media').map(change => change.id))
   await bringFiles(s, [
     ...changes.filter(change => change.table === 'traces').flatMap(change => filesOf(change.row)),
-    ...(sentLate.size ? rowsOf(s.merged, 'traces').flatMap(filesOf).filter(url => sentLate.has(url)) : []),
-  ])
+    ...(sentLate.size ? rowsOf(merged, 'traces').flatMap(filesOf).filter(url => sentLate.has(url)) : []),
+  ], merged)
   await bringIn(s, changes)
+  s.merged = merged
+  s.last = last
+  for (const { id } of saves) s.seen.add(id)
   await persist(s)
 }
 
@@ -934,7 +1038,7 @@ async function bringIn(s: Session, changes: Change[]): Promise<void> {
 // Where a trace's files are on this device: its picture, video, document.
 const filesOf = (row: Record<string, unknown> | null) =>
   [row?.media_url, row?.image_url].filter((url): url is string => typeof url === 'string' && url.startsWith('local://'))
-const mediaOf = (s: Session, url: string) => s.merged.get(`media/${url}`)?.row as { file?: unknown } | null | undefined
+const mediaOf = (merged: Merged, url: string) => merged.get(`media/${url}`)?.row as { file?: unknown } | null | undefined
 
 // Files sent and brought in side by side, AT_ONCE at a time.
 let free = AT_ONCE
@@ -955,7 +1059,7 @@ async function inTurn<T>(task: () => Promise<T>): Promise<T> {
 async function unsentFiles(s: Session, traces: Record<string, unknown>[]): Promise<string[]> {
   const unsent: string[] = []
   for (const url of new Set(traces.flatMap(filesOf))) {
-    if (mediaOf(s, url)) continue
+    if (mediaOf(s.merged, url)) continue
     // One just dropped in, still being written: once it's whole.
     await vaultWriteDone(url)
     if (await s.local.hasLocalFile(url)) unsent.push(url)
@@ -992,9 +1096,9 @@ const RETRY_MOST_MS = 10 * 60_000
  *  (atrium:vault-write-complete), for a trace that showed it missing. One that
  *  fails is tried again at a later look, waiting longer each time: Google's
  *  robot check passes in minutes. */
-async function bringFiles(s: Session, urls: string[]): Promise<void> {
+async function bringFiles(s: Session, urls: string[], merged = s.merged): Promise<void> {
   for (const url of new Set(urls)) {
-    const file = mediaOf(s, url)?.file
+    const file = mediaOf(merged, url)?.file
     if (typeof file !== 'string' || s.present.has(url) || s.fetching.has(url) || (s.retry.get(url)?.at ?? 0) > Date.now()) continue
     if (await s.local.hasLocalFile(url)) { s.present.add(url); continue }
     s.fetching.add(url)

@@ -15,6 +15,7 @@ import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
 import { ACCOUNT_EVENT, googleAccount, type SignedOutReason } from './lib/signedIn'
+import type { DriveEnd } from './lib/driveSync'
 import { readRecentThanksName } from './lib/pendingContribution'
 
 // The developer's tools: few will ever open them, so they load when opened.
@@ -810,7 +811,7 @@ function navigate(path: string) {
 // So this arrives over the atrium browser, and its button only dismisses it:
 // the leaving already happened.
 function KickedNotice({ notice, onDismiss }: {
-  notice: { blacklisted: boolean } | null
+  notice: { blacklisted: boolean; drive?: DriveEnd } | null
   onDismiss: () => void
 }) {
   const { t } = useTranslation()
@@ -830,17 +831,26 @@ function KickedNotice({ notice, onDismiss }: {
 
         <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
           <span className={`mr-2 ${notice.blacklisted ? 'text-red-500' : 'text-nier-bg/70'}`}>◇</span>
-          {notice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')}
+          {notice.drive === 'deleted' ? t('atrium.dialog.deletedTitle') : notice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')}
         </h3>
 
         <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
-          {notice.blacklisted
-            ? t('atrium.dialog.removedBlacklistedBody')
-            : t('atrium.dialog.removedBody')}
+          {notice.drive === 'deleted'
+            ? t('atrium.drive.deleted')
+            : notice.blacklisted
+              ? t('atrium.dialog.removedBlacklistedBody')
+              : t('atrium.dialog.removedBody')}
         </p>
         {notice.blacklisted ? (
           <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
             {t('atrium.dialog.cannotRejoin')}
+          </p>
+        ) : notice.drive === 'deleted' ? (
+          <div className="mb-6" />
+        ) : notice.drive ? (
+          // A Drive atrium's roster is the way in: added again, or not at all.
+          <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
+            {t('atrium.dialog.addedAgainOnly')}
           </p>
         ) : (
           <p className="text-nier-bg/80 text-xs font-mono tracking-wider text-center mb-6">
@@ -2019,7 +2029,7 @@ function AppInner() {
   // Somebody removed from an atrium is taken out of it immediately, so the
   // notice explaining why has to outlive the screen they were removed from.
   // It renders over whatever comes next -- the atrium browser.
-  const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean } | null>(null)
+  const [kickedNotice, setKickedNotice] = useState<{ blacklisted: boolean; drive?: DriveEnd } | null>(null)
 
   // To the atrium browser, or -- back from looking around in a theme being
   // made -- to Developers.
@@ -2353,7 +2363,7 @@ function AppInner() {
       return (
         <>
           <Suspense fallback={null}>
-            <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted) => setKickedNotice({ blacklisted })} />
+            <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted, drive) => setKickedNotice({ blacklisted, drive })} />
             <DriveStatus />
           </Suspense>
           {transitionLobbyId === route.lobbyId && <AtriumRevealOverlay />}

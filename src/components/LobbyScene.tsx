@@ -33,7 +33,7 @@ import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
 import { LOBBY_CHANGED_EVENT, liveTable } from '../lib/liveChanges'
-import { isDriveAtrium } from '../lib/driveSync'
+import { endedFor, isDriveAtrium, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
@@ -428,7 +428,7 @@ interface LobbySceneProps {
   onLeaveLobby: (to?: string) => void
   // Raised when this user is removed by an admin. The notice belongs to
   // whatever screen comes after the atrium, not to the atrium being left.
-  onKicked: (blacklisted: boolean) => void
+  onKicked: (blacklisted: boolean, drive?: DriveEnd) => void
 }
 
 // What's on the ground (lib/ground), as the theme has it: its colour and
@@ -3113,6 +3113,19 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     onKicked(blacklisted)
     leaveWithTransitionRef.current()
   }, [onKicked])
+  // A Drive atrium one's out of -- removed, blocked, or deleted by its owner,
+  // as lib/driveSync finds at its next look or when the room says the roster
+  // changed: out the same way.
+  useEffect(() => {
+    let out = false
+    return watchDriveStatus(() => {
+      const why = endedFor(lobbyId)
+      if (!why || out) return
+      out = true
+      onKicked(why === 'blocked', why)
+      leaveWithTransitionRef.current()
+    })
+  }, [lobbyId, onKicked])
   // Drives the "Hidden" HUD line only -- usePresence resolves this
   // independently for its own purposes (both share one cached round-trip).
   //
