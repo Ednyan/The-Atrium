@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
+import BansTool from './BansTool'
 import { deleteSpecialTheme, refOf, saveSpecialTheme, setSpecialThemeDraft, specialThemeDraft, useSpecialThemes, type SpecialTheme } from '../lib/specialThemes'
 import { PRESETS, modeOf, writeView } from '../lib/customThemes'
 import { Switch } from './Customization'
@@ -20,7 +21,10 @@ import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { THEME_DEFAULTS, ThemeSections, ThemeTile, themeSwatch } from './ThemeCustomization'
 import type { ThemeSettings } from '../types/database'
 
-const TOOLS = [{ id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc' }] as const
+const TOOLS = [
+  { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc' },
+  { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc' },
+] as const
 type ToolId = typeof TOOLS[number]['id']
 
 function Heading({ children }: { children: string }) {
@@ -64,7 +68,7 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
         <header className="mt-10 mb-10">
           <p className="text-nier-bg/60 text-sm tracking-[0.3em] uppercase">{t('developers.title')}</p>
           <h1 className="mt-2 text-3xl sm:text-4xl font-light tracking-[0.06em] uppercase text-nier-strong">
-            {tool ? t('developers.specialThemes') : t('developers.tools')}
+            {t(TOOLS.find(({ id }) => id === tool)?.name ?? 'developers.tools')}
           </h1>
         </header>
 
@@ -90,6 +94,7 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
           </section>
         )}
         {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
+        {allowed && tool === 'bans' && <BansTool />}
       </div>
     </div>
   )

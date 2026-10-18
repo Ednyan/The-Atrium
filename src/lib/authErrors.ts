@@ -22,6 +22,9 @@ import type { TranslationKey } from '../locales/en'
 const MAPPED: Array<{ match: RegExp; key: TranslationKey }> = [
   { match: /^Password should contain at least one character of each/i, key: 'auth.errPasswordComplexity' },
   { match: /^Password should be at least/i, key: 'auth.errPasswordShort' },
+  // Banned by the platform's operator: Supabase's "User is banned", or the
+  // worker's word for a Google account (lib/drive, BANNED).
+  { match: /banned/i, key: 'auth.error.banned' },
 ]
 
 /**

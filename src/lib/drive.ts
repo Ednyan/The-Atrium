@@ -106,7 +106,7 @@ type Answer = {
   // An existing account's Google kept no grant at the worker (resume); or,
   // signing in, this Google is an existing account's.
   consent?: boolean
-  existing?: { account: string; how: 'google' | 'password'; joinable: boolean }
+  existing?: { account: string; how: 'google' | 'password' }
 }
 const took = (answer: Answer) => {
   if (answer.access_token) {
@@ -159,6 +159,11 @@ async function renew(me: Asker): Promise<boolean> {
       signOutGoogle('existingAccount')
       return false
     }
+    // Banned, since: out, and told why.
+    if ((error as Error).message === 'BANNED') {
+      signOutGoogle('banned')
+      return false
+    }
     // Taken back on Google's side, or not this worker's: asked again -- for a
     // Google account, that's signing in again. Anything else (offline, the
     // worker's day spent): the button, this visit.
@@ -202,7 +207,7 @@ export async function workerSession(): Promise<string | null> {
  *  account to sign in to: by Supabase, with that same ID token, where it will. */
 export type GoogleSignIn =
   | { kind: 'google'; account: GoogleAccount }
-  | { kind: 'existing'; account: string; how: 'google' | 'password'; joinable: boolean }
+  | { kind: 'existing'; account: string; how: 'google' | 'password' }
 export async function signInWithGoogle(idToken: string): Promise<GoogleSignIn> {
   const answer = await askWorker('identity', { id_token: idToken })
   if (answer.existing) {
@@ -258,6 +263,8 @@ async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disc
   const answer = await response.json().catch(() => ({}))
   // A Google account that's an existing account's (refused at renewal).
   if (answer.error === 'existing account') throw new Error('EXISTING_ACCOUNT')
+  // Banned by the platform's operator (workers/rooms, people.ts).
+  if (answer.error === 'banned') throw new Error('BANNED')
   if (!response.ok) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant', status: response.status })
   return answer
 }

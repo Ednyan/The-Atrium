@@ -1542,10 +1542,11 @@ function AppInner() {
       }
       signedOut(true)
       // Signed out by the worker: its Google is an existing account's, the
-      // one to sign in to -- said on the sign-in page, as it signs in.
+      // one to sign in to; or the account is banned -- said on the sign-in
+      // page, as it signs in.
       const reason = (event as CustomEvent<{ reason?: SignedOutReason }>).detail?.reason
       if (reason) {
-        setOauthError(translate('auth.error.existingAccount'))
+        setOauthError(translate(reason === 'banned' ? 'auth.error.banned' : 'auth.error.existingAccount'))
         navigate('/login')
       }
     }

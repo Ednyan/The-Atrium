@@ -228,14 +228,14 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
       const { signInWithGoogle } = await import('../lib/drive')
       const result = await signInWithGoogle(idToken)
       if (result.kind === 'google') return
-      if (result.joinable && await signInToExisting(idToken, result.account)) return
+      if (await signInToExisting(idToken, result.account)) return
       if (result.how === 'google') {
         await handleGoogleSignIn()
         return
       }
       setError(t('auth.error.existingPassword'))
     } catch (err: any) {
-      setError(err?.message || t('auth.error.googleFailed'))
+      setError(friendlyAuthError(err, t('auth.error.googleFailed')))
     }
     setLoading(false)
   }
