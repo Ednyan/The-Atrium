@@ -10,10 +10,13 @@
 // for the person -- and who gets the worker's own session with each pass
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
-import { link, linkedTo, meet } from './people'
+import { link, linkedTo, meet, supersededBy } from './people'
 import { accountIdFor, fromBase64, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
-interface Grant { r: string; a: string; k: Who['kind'] }
+// A grant: Google's refresh token, the account it's for, its kind, and the
+// Google account it was given by (Google's id for the person) -- so each
+// renewal can tell whose Google it is.
+interface Grant { r: string; a: string; k: Who['kind']; g?: string }
 interface Answer { access_token?: string; expires_in?: number; scope?: string; refresh_token?: string; id_token?: string; error?: string }
 
 export async function google(request: Request, env: Env, what: string): Promise<Response> {
@@ -54,7 +57,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
     return answer(200, {
       ...passOf(got),
       account: { ...account, ...(person ? { email: person.email, name: person.name, picture: person.picture } : {}) },
-      ...(got.refresh_token ? { grant: await sealGrant(key, { r: got.refresh_token, a: account.id, k: account.kind }) } : {}),
+      ...(got.refresh_token ? { grant: await sealGrant(key, { r: got.refresh_token, a: account.id, k: account.kind, ...(person ? { g: person.sub } : {}) }) } : {}),
       ...(account.kind === 'google' ? await signSession(env, account.id) : {}),
     })
   }
@@ -66,8 +69,12 @@ export async function google(request: Request, env: Env, what: string): Promise<
     if (!grant) return answer(401, { error: 'grant' })
     const got = await fromGoogle(env, { grant_type: 'refresh_token', refresh_token: grant.r })
     if (got instanceof Response) return withCors(got, answer)
-    const person = personOf(got.id_token)
-    if (person && grant.k === 'supabase') await link(env, person.sub, grant.a)
+    // Whose Google: as the grant says, or (one from before it said) Google's answer.
+    const googleId = grant.g ?? personOf(got.id_token)?.sub
+    if (googleId && grant.k === 'supabase') await link(env, googleId, grant.a)
+    // A Google account that's really an existing account's, never finished:
+    // gone, and its person pointed to the account they already have.
+    if (googleId && grant.k === 'google' && await supersededBy(env, grant.a, googleId)) return answer(409, { error: 'existing account' })
     return answer(200, {
       ...passOf(got),
       account: { id: grant.a, kind: grant.k },

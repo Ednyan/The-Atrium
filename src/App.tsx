@@ -3,7 +3,7 @@ import AuthScreen from './components/AuthScreen'
 import ChooseUsernameScreen from './components/ChooseUsernameScreen'
 import UpdateChecker from './components/UpdateChecker'
 import AppVersionBadge from './components/AppVersionBadge'
-import { useTranslation } from './lib/i18n'
+import { t as translate, useTranslation } from './lib/i18n'
 import DesktopIntro from './components/DesktopIntro'
 import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
@@ -1548,9 +1548,18 @@ function AppInner() {
       }
       setLoading(false)
     }
-    const onAccount = () => {
-      if (googleAccount()) void loadGoogleAccount(true)
-      else signedOut(true)
+    const onAccount = (event: Event) => {
+      if (googleAccount()) {
+        void loadGoogleAccount(true)
+        return
+      }
+      signedOut(true)
+      // Signed out by the worker: its Google is an existing account's, the
+      // one to sign in to -- said on the sign-in page.
+      if ((event as CustomEvent<{ reason?: string }>).detail?.reason === 'existingAccount') {
+        setOauthError(translate('auth.error.existingAccount'))
+        navigate('/login')
+      }
     }
     window.addEventListener(ACCOUNT_EVENT, onAccount)
     if (googleAccount()) void loadGoogleAccount(cameFromSignIn)

@@ -38,11 +38,52 @@ export async function link(env: Env, googleId: string, account: string): Promise
     .bind(googleId, account, Date.now()).run()
 }
 
-/** The existing account a Google account belongs to, if it's been seen. */
+/** The existing account a Google account belongs to: one seen connecting
+ *  Drive with it, or one that signed up with it (Supabase knows, by Google's
+ *  id for the person -- add_account_for_google.sql). Linked from then on. */
 export async function linkedTo(env: Env, googleId: string): Promise<string | null> {
   if (!env.PEOPLE) return null
   await tablesIn(env.PEOPLE)
-  return (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account ?? null
+  const seen = (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account
+  if (seen) return seen
+  const signedUp = await supabaseAccountFor(env, googleId)
+  if (signedUp) await link(env, googleId, signedUp)
+  return signedUp
+}
+
+/** A Google account made for someone whose Google is an existing account's
+ *  -- made before the worker asked, or by an existing account signing up
+ *  with that Google since -- and never finished (no username): not kept. Its
+ *  row and invitations go, and the existing account it is, is returned. A
+ *  finished one stays as it is. */
+export async function supersededBy(env: Env, id: string, googleId: string): Promise<string | null> {
+  if (!env.PEOPLE) return null
+  await tablesIn(env.PEOPLE)
+  const row = await env.PEOPLE.prepare('select username from accounts where id = ?').bind(id).first<{ username: string | null }>()
+  if (row?.username) return null
+  const existing = await linkedTo(env, googleId)
+  if (!existing) return null
+  await env.PEOPLE.batch([
+    env.PEOPLE.prepare('delete from invites where to_user = ?').bind(id),
+    env.PEOPLE.prepare('delete from accounts where id = ? and username is null').bind(id),
+  ])
+  return existing
+}
+
+// Supabase's answer, or null -- also where it can't answer (the function not
+// made yet): the account is then made as before.
+async function supabaseAccountFor(env: Env, googleId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/account_for_google`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_google_id: googleId }),
+    })
+    const account = response.ok ? await response.json() : null
+    return typeof account === 'string' ? account : null
+  } catch {
+    return null
+  }
 }
 
 /** A Google account that has just signed in, known here from then on. */

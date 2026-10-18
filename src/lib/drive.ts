@@ -11,7 +11,7 @@
 // signed in -- see driveToken.)
 import { workerUrl } from './rooms'
 import { cloudClient, isDesktop } from './supabase'
-import { googleAccount, keepGoogleAccount, type GoogleAccount } from './signedIn'
+import { googleAccount, keepGoogleAccount, type GoogleAccount, type SignedOutReason } from './signedIn'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
 // The Picker's key (APIs & Services > Credentials).
@@ -116,6 +116,12 @@ async function renew(me: { user: string; token: string | null }): Promise<boolea
     took(await askWorker('renew', { grant: kept.grant, ...(me.token ? { token: me.token } : {}) }))
     return true
   } catch (error) {
+    // A Google account that's really an existing account's (the worker
+    // knows): out, and pointed to that account.
+    if ((error as Error).message === 'EXISTING_ACCOUNT') {
+      signOutGoogle('existingAccount')
+      return false
+    }
     // Taken back on Google's side, or not this worker's: asked again -- for a
     // Google account, that's signing in again. Anything else (offline, the
     // worker's day spent): the button, this visit.
@@ -147,12 +153,13 @@ export async function signInWithGoogle(): Promise<GoogleAccount> {
   if (!account) throw new Error('Google sign-in failed')
   return account
 }
-/** Out: the Google account, its grant and its passes. */
-export function signOutGoogle(): void {
+/** Out: the Google account, its grant and its passes -- and why, if it's
+ *  to be said. */
+export function signOutGoogle(reason?: SignedOutReason): void {
   token = null
   session = null
   keepGrant(null)
-  keepGoogleAccount(null)
+  keepGoogleAccount(null, reason)
 }
 
 // A plain request (a string body, no headers of its own): no preflight.

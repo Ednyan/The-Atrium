@@ -165,6 +165,17 @@ export default function ChooseUsernameScreen({ userId, email, google = false, on
             {loading ? `◇ ${t('chooseName.saving')}` : t('chooseName.continue')}
           </button>
         </form>
+        {/* A Google account just made, not the one meant -- one that was
+            already someone's existing account, say: out, and back to signing in. */}
+        {google && (
+          <button
+            type="button"
+            onClick={() => void import('../lib/drive').then(drive => drive.signOutGoogle())}
+            className="w-full mt-4 text-nier-bg/60 hover:text-nier-bg text-[10px] tracking-[0.15em] uppercase transition-colors"
+          >
+            {t('welcome.logOut')}
+          </button>
+        )}
       </div>
     </div>
   )

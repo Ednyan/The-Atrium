@@ -787,9 +787,18 @@ public list. Contributions already need no account.
   "Continue with Google" makes a Google account, chooses a username in the
   directory, comes back after a reload from its grant, and has browser and
   Drive atriums but no cloud ones.
-  - An existing account's Google is linked as it connects Drive. Signing in
-    with that Google afresh points to the existing account ("Signed up with
-    Google before October 2026?") rather than making a second one.
+  - **One person, one account.** "Continue with Google" never makes a
+    second account for someone who has one. The worker knows an existing
+    account's Google two ways: the account connected Drive with it, or it
+    signed up with it (Supabase's sign-in identities, by Google's id for the
+    person, `add_account_for_google.sql`). Such a person is pointed to the
+    existing account ("Signed up with Google before October 2026?").
+  - The rule holds wherever a session is given, not only at sign-in. A
+    Google account made before the worker could tell, never finished (no
+    username yet), is refused at its next renewal and removed from the
+    directory. Its person lands on the sign-in page, told why. Grants
+    record whose Google they are, so each renewal can check. A finished
+    Google account stays as it is.
   - Not yet for Google accounts: profile settings (name, colour), Pinterest,
     feedback, deletion (steps 5-6).
   - Usernames for Google accounts need `add_username_taken.sql` run.
