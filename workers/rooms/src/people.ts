@@ -6,14 +6,16 @@
 //
 // Cloudflare D1, free: 5 GB, 5 million rows read and 100,000 written a day.
 // Nothing an atrium holds is here -- only who's who, and which atrium (its
-// roster file in Drive) someone's been invited to.
+// roster file in Drive) someone's been invited to. And a Google account's own
+// settings (its colour, its themes): private, as its email is -- an existing
+// account keeps them in its Supabase profile.
 
 import { replies, whoIs, type Env, type Who } from './who'
 
 const TABLES = [
   `create table if not exists accounts (
     id text primary key, kind text not null, username text unique collate nocase, display_name text,
-    drive_key text, drive_root text, email text, created_at integer not null)`,
+    drive_key text, drive_root text, email text, created_at integer not null, settings text, name_changed_at integer)`,
   `create table if not exists invites (
     id text primary key, to_user text not null, from_user text not null, roster text not null, lobby_id text not null,
     name text not null, secret text, created_at integer not null, unique (to_user, roster))`,
@@ -27,9 +29,22 @@ const TABLES = [
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
 ]
+// Columns added since the tables were first made: added where they're missing.
+const ADDED = ['alter table accounts add column settings text', 'alter table accounts add column name_changed_at integer']
 // Made once per instance of the worker, the first time it's needed.
 let made: Promise<unknown> | null = null
-const tablesIn = (db: D1Database) => (made ??= db.batch(TABLES.map(sql => db.prepare(sql))).catch(error => { made = null; throw error }))
+const tablesIn = (db: D1Database) => (made ??= (async () => {
+  await db.batch(TABLES.map(sql => db.prepare(sql)))
+  for (const sql of ADDED) await db.prepare(sql).run().catch(error => { if (!/duplicate column/i.test(String(error))) throw error })
+})().catch(error => { made = null; throw error }))
+
+// A Google account's own settings, each as it may be (null: no longer kept).
+const SETTINGS: Record<string, (value: unknown) => boolean> = {
+  player_color: value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value),
+  custom_themes: value => Array.isArray(value) && value.length <= 12 && JSON.stringify(value).length <= 32_000,
+}
+// A display name changes once in this long, as an existing account's does on the web.
+const NAME_EVERY_MS = 15 * 24 * 60 * 60 * 1000
 
 const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
 const MOST_IDS = 200
@@ -183,6 +198,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
     case 'me': {
       await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
       const set = (asked.set ?? {}) as Record<string, unknown>
+      const before = await db.prepare('select username, display_name, name_changed_at from accounts where id = ?').bind(who.id).first<{ username: string | null; display_name: string | null; name_changed_at: number | null }>()
       if ('username' in set) {
         const username = typeof set.username === 'string' ? set.username.trim() : ''
         if (!USERNAME.test(username)) return answer(400, { error: 'username' })
@@ -199,7 +215,22 @@ export async function people(request: Request, env: Env, what: string): Promise<
       }
       if ('display_name' in set) {
         const name = typeof set.display_name === 'string' ? set.display_name.trim().slice(0, 50) : ''
-        await db.prepare('update accounts set display_name = ? where id = ?').bind(name || null, who.id).run()
+        // A Google account's name, changed once it has one: once in so long
+        // (an existing account's comes from its profile, which says).
+        const changing = who.kind === 'google' && !!before?.username && (name || null) !== before.display_name
+        if (changing && before?.name_changed_at && Date.now() - before.name_changed_at < NAME_EVERY_MS) {
+          return answer(429, { error: 'too soon', until: before.name_changed_at + NAME_EVERY_MS })
+        }
+        await db.prepare('update accounts set display_name = ?, name_changed_at = ? where id = ?')
+          .bind(name || null, changing ? Date.now() : before?.name_changed_at ?? null, who.id).run()
+      }
+      if ('settings' in set) {
+        const patch = set.settings as Record<string, unknown> | null
+        if (who.kind !== 'google') return answer(403, { error: 'settings' })
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return answer(400, { error: 'settings' })
+        for (const [key, value] of Object.entries(patch)) if (!SETTINGS[key] || (value !== null && !SETTINGS[key](value))) return answer(400, { error: 'settings', key })
+        // Merged as one statement: two settings saved at once both stay.
+        await db.prepare("update accounts set settings = json_patch(coalesce(settings, '{}'), ?) where id = ?").bind(JSON.stringify(patch), who.id).run()
       }
       if ('drive_key' in set || 'drive_root' in set) {
         const key = JSON.stringify(set.drive_key ?? null)
@@ -207,7 +238,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         if (key.length > 1000 || (root && root.length > 128)) return answer(400, { error: 'drive' })
         await db.prepare('update accounts set drive_key = ?, drive_root = ? where id = ?').bind(key === 'null' ? null : key, root, who.id).run()
       }
-      const row = await db.prepare('select id, kind, username, display_name, drive_key, drive_root, email from accounts where id = ?').bind(who.id).first()
+      const row = await db.prepare('select id, kind, username, display_name, drive_key, drive_root, email, settings, name_changed_at from accounts where id = ?').bind(who.id).first()
       return answer(200, shown(row))
     }
 
@@ -269,7 +300,8 @@ export async function people(request: Request, env: Env, what: string): Promise<
 // A row as it's given: the Drive key as itself, not its text.
 function shown(row: Record<string, unknown> | null) {
   if (!row) return null
-  return { ...row, drive_key: typeof row.drive_key === 'string' ? JSON.parse(row.drive_key) : null }
+  const json = (value: unknown) => (typeof value === 'string' ? JSON.parse(value) : null)
+  return { ...row, drive_key: json(row.drive_key), ...('settings' in row ? { settings: json(row.settings) ?? {} } : {}) }
 }
 
 /** Whether an existing account has that username (Supabase says yes or no,

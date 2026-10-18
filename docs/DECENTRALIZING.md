@@ -806,8 +806,10 @@ public list. Contributions already need no account.
 4. **Drive and browser atriums for Google accounts:** finding people,
    inviting, letting in, and the rooms, all through the directory and the
    worker's sessions.
-5. **Settings in Drive:** display name, colour and custom themes in the app
-   folder.
+5. **Settings in the directory (changed 2026-10-18):** colour and custom
+   themes, private to the account as its email is, and the display name.
+   Drive's app folder was the plan, but Drive is asked for only where it's
+   used, so a new Google account would have had to grant it for its colour.
 6. **Server functions on the worker:** relay pass, feedback, deletion,
    Pinterest.
 7. **Linking and bans:**
@@ -880,8 +882,20 @@ public list. Contributions already need no account.
     directory. Its person lands on the sign-in page, told why. Grants
     record whose Google they are, so each renewal can check. A finished
     Google account stays as it is.
-  - Not yet for Google accounts: profile settings (name, colour), Pinterest,
-    feedback, deletion (steps 5-6).
+- **Step 5, settings (2026-10-18).** `lib/profile` is one's own profile for
+  either kind of account. An existing account's is its Supabase profile,
+  always the cloud's (`cloudClient`): a colour or theme changed inside a
+  browser atrium used to land in that browser's copy. A Google account's is
+  its directory entry, through `/people/me`.
+  - `settings` (colour, custom themes) is validated at the worker: known
+    keys only, `#rrggbb`, at most 12 themes and 32 KB. It's merged with
+    `json_patch`, and shown only on one's own row.
+  - The display name changes once in 15 days, enforced by the worker for
+    Google accounts (`name_changed_at`). The name chosen with the username
+    doesn't start the clock.
+  - New columns are added to the live table on the worker's first use
+    (`alter table`, tolerating only "duplicate column").
+  - Not yet for Google accounts: Pinterest, feedback, deletion (step 6).
   - Usernames for Google accounts need `add_username_taken.sql` run.
 
 ## Phase 7: local atriums in the browser, for everyone else

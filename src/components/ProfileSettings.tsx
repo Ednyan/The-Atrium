@@ -13,6 +13,7 @@ import {
   writePackingShape,
 } from '../lib/atriumPreferences'
 import { goTo } from '../lib/route'
+import { daysUntilNameChange, loadMyProfile, saveMyProfile } from '../lib/profile'
 
 // The same five the in-atrium panel offers, from the palette the rest of the
 // app is drawn in. The picker under them still takes anything.
@@ -88,36 +89,20 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     return () => clearInterval(timer)
   }, [resendIn])
 
+  // Either kind of account's (lib/profile).
   const loadProfile = async () => {
-    if (!supabase || !userId) return
-
-    const { data } = await (supabase
-      .from('profiles') as any)
-      .select('username, display_name, display_name_last_changed, player_color')
-      .eq('id', userId)
-      .single()
-
-    if (data) {
-      setActualUsername(data.username)
-      setDisplayName(data.display_name || data.username)
-      if (data.player_color) {
-        setSelectedColor(data.player_color)
-        setPlayerColor(data.player_color)
-      }
-      
-      // Desktop: no name change restrictions
-      if (!isDesktop) {
-        const lastChanged = new Date(data.display_name_last_changed)
-        const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
-        
-        if (daysSinceChange >= 15) {
-          setCanChange(true)
-        } else {
-          setCanChange(false)
-          setDaysUntilChange(Math.ceil(15 - daysSinceChange))
-        }
-      }
+    if (!userId) return
+    const profile = await loadMyProfile(userId).catch(() => null)
+    if (!profile) return
+    setActualUsername(profile.username)
+    setDisplayName(profile.displayName)
+    if (profile.color) {
+      setSelectedColor(profile.color)
+      setPlayerColor(profile.color)
     }
+    const days = daysUntilNameChange(profile.nameChangedAt)
+    setCanChange(days === 0)
+    setDaysUntilChange(days)
   }
 
   // Saved on click rather than with the name form: that form's button is
@@ -127,13 +112,11 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     setSelectedColor(color)
     setPlayerColor(color)
     setColorSaved(false)
-    if (!supabase || !userId) return
-    const { error: updateError } = await (supabase
-      .from('profiles') as any)
-      .update({ player_color: color, updated_at: new Date().toISOString() })
-      .eq('id', userId)
-    if (updateError) {
-      setError(updateError.message || t('profile.errCursorColour'))
+    if (!userId) return
+    try {
+      await saveMyProfile(userId, { color })
+    } catch (updateError: any) {
+      setError(updateError?.message || t('profile.errCursorColour'))
       return
     }
     setColorSaved(true)
@@ -160,7 +143,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     setSuccess(false)
     setLoading(true)
 
-    if (!supabase || !userId) return
+    if (!userId) return
 
     if (!isDesktop && !canChange) {
       setError(t('profile.canChangeIn', { days: daysUntilChange }))
@@ -175,26 +158,8 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     }
 
     try {
-      const updateData: any = {
-        updated_at: new Date().toISOString(),
-      }
-
-      if (isDesktop) {
-        // Desktop: update both username and display_name, no cooldown
-        updateData.display_name = displayName
-        updateData.username = displayName
-      } else {
-        // Web: only update display_name with cooldown
-        updateData.display_name = displayName
-        updateData.display_name_last_changed = new Date().toISOString()
-      }
-
-      const { error: updateError } = await (supabase
-        .from('profiles') as any)
-        .update(updateData)
-        .eq('id', userId)
-
-      if (updateError) throw updateError
+      // The web's waits its days; the desktop's is its username too (lib/profile).
+      await saveMyProfile(userId, { displayName })
 
       setUsername(displayName)
       setSuccess(true)
@@ -207,7 +172,9 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         onClose()
       }, 2000)
     } catch (err: any) {
-      setError(err.message || t('profile.errUpdateName'))
+      setError(err?.message === 'NAME_TOO_SOON'
+        ? t('profile.canChangeIn', { days: daysUntilNameChange(null, err.until) })
+        : err?.message || t('profile.errUpdateName'))
     } finally {
       setLoading(false)
     }

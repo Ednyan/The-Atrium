@@ -1547,7 +1547,7 @@ function AppInner() {
         }
         setUserId(account.id)
         setUsername(entry.display_name || entry.username)
-        setPlayerColor('#ffffff')
+        setPlayerColor(entry.settings?.player_color ?? '#ffffff')
         setIsAuthenticated(true)
         wasSignedInRef.current = true
         if (signingIn) navigate('/welcome')

@@ -8,6 +8,8 @@ import { workerUrl } from './rooms'
 
 /** What anyone may know of someone: never their email. */
 export interface Person { id: string; username: string | null; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null }
+/** A Google account's own settings, private to it (lib/profile). */
+export interface Settings { player_color?: string; custom_themes?: unknown[] }
 export interface InvitationRow {
   id: string; from_user: string; from_name: string | null; roster: string; lobby_id: string; name: string; secret: string | null; created_at: number
 }
@@ -21,13 +23,17 @@ async function ask<T>(what: string, body: object = {}): Promise<T> {
   if (answer?.error === 'taken') throw new Error('USERNAME_TAKEN')
   // A username's availability that couldn't be checked: never taken for free.
   if (answer?.error === 'check') throw new Error('USERNAME_CHECK')
+  // A display name changed again too soon: when it may be.
+  if (answer?.error === 'too soon') throw Object.assign(new Error('NAME_TOO_SOON'), { until: answer.until as number })
   if (!response.ok) throw new Error(`The directory said ${answer?.error ?? response.status}`)
   return answer as T
 }
 
-type Settable = Partial<Pick<Person, 'username' | 'display_name' | 'drive_key' | 'drive_root'>>
-/** One's own entry, changed as asked: one's email shown to oneself alone. */
-export const myEntry = (set?: Settable) => ask<Person & { kind: string; email: string | null }>('me', set ? { set } : {})
+type Settable = Partial<Pick<Person, 'username' | 'display_name' | 'drive_key' | 'drive_root'>> & { settings?: Settings }
+/** One's own entry, changed as asked: one's email, settings and when one's
+ *  name last changed shown to oneself alone. Settings given are merged in. */
+export const myEntry = (set?: Settable) =>
+  ask<Person & { kind: string; email: string | null; settings?: Settings; name_changed_at?: number | null }>('me', set ? { set } : {})
 export const personNamed = async (username: string): Promise<Person | null> => (await ask<Person[]>('find', { username }))[0] ?? null
 export const peopleByIds = (ids: string[]): Promise<Person[]> => (ids.length ? ask<Person[]>('find', { ids }) : Promise.resolve([]))
 

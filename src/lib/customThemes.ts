@@ -10,12 +10,14 @@
 // Picking a theme sets light or dark to match it. Only an owner's "Save as
 // this atrium's theme" changes what everyone else sees.
 //
-// A person's own themes live on their account (profiles.custom_themes; the
-// desktop vault's profiles row): three on the web, twelve on the desktop.
+// A person's own themes live on their account (lib/profile: an existing
+// account's profiles.custom_themes, the desktop vault's profiles row, or a
+// Google account's directory entry): three on the web, twelve on the desktop.
 // Loaded once, kept here, and written whole a moment after each change.
 
 import { useSyncExternalStore } from 'react'
-import { supabase, isDesktop } from './supabase'
+import { isDesktop } from './supabase'
+import { loadMyThemes, saveMyThemes } from './profile'
 import { ATRIUM_THEMES } from './atriumThemePresets'
 import { TRACE_PRESETS, defaultPresetFor } from './tracePresets'
 import { presetRowNow, specialThemesNow } from './specialThemes'
@@ -141,9 +143,11 @@ export function asCustomThemes(value: unknown): CustomTheme[] {
 }
 
 export async function loadCustomThemes(userId: string) {
-  if (!supabase) return
-  const { data, error } = await (supabase.from('profiles') as any).select('custom_themes').eq('id', userId).maybeSingle()
-  if (!error) publish(asCustomThemes(data?.custom_themes))
+  try {
+    publish(asCustomThemes(await loadMyThemes(userId)))
+  } catch (error) {
+    console.warn('Could not load your themes:', error)
+  }
 }
 
 // Changed here at once; written a moment after the last change, so dragging
@@ -153,9 +157,9 @@ export function setCustomThemes(userId: string, next: CustomTheme[], onSaveFaile
   publish(next.slice(0, CUSTOM_THEME_LIMIT))
   window.clearTimeout(saveTimer)
   saveTimer = window.setTimeout(async () => {
-    if (!supabase) return
-    const { error } = await (supabase.from('profiles') as any).update({ custom_themes: themes }).eq('id', userId)
-    if (error) {
+    try {
+      await saveMyThemes(userId, themes)
+    } catch (error) {
       console.error('Could not save your themes:', error)
       onSaveFailed?.()
     }

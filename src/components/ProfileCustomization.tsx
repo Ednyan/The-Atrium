@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { supabase, isDesktop } from '../lib/supabase'
+import { isDesktop } from '../lib/supabase'
 import { AUTO_SAVE_MINUTES, useGamePick } from '../store/gameStore'
 import { useTranslation } from '../lib/i18n'
 import { Slider } from './ShapeStyleControls'
 import { CustomizationPanel, Section, Switch } from './Customization'
+import { daysUntilNameChange, loadMyProfile, saveMyProfile } from '../lib/profile'
 import {
   DEFAULT_ZOOM_SENSITIVITY,
   MIN_ZOOM_SENSITIVITY,
@@ -102,33 +103,16 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     window.dispatchEvent(new CustomEvent('lobby-packing-shape-changed', { detail: { lobbyId, shape } }))
   }
 
+  // Either kind of account's (lib/profile).
   const loadProfile = async () => {
-    if (!supabase || !userId) return
-
-    const { data } = await (supabase
-      .from('profiles') as any)
-      .select('username, display_name, display_name_last_changed, player_color')
-      .eq('id', userId)
-      .single()
-
-    if (data) {
-      setDisplayName(data.display_name || data.username)
-      setSelectedColor(data.player_color || '#ffffff')
-      
-      // Desktop: no name change restrictions
-      if (!isDesktop) {
-        const lastChanged = new Date(data.display_name_last_changed)
-        const daysSinceChange = (Date.now() - lastChanged.getTime()) / (1000 * 60 * 60 * 24)
-
-        // Never changed (no date): free to.
-        if (!Number.isFinite(daysSinceChange) || daysSinceChange >= 15) {
-          setCanChangeName(true)
-        } else {
-          setCanChangeName(false)
-          setDaysUntilChange(Math.ceil(15 - daysSinceChange))
-        }
-      }
-    }
+    if (!userId) return
+    const profile = await loadMyProfile(userId).catch(() => null)
+    if (!profile) return
+    setDisplayName(profile.displayName)
+    setSelectedColor(profile.color || '#ffffff')
+    const days = daysUntilNameChange(profile.nameChangedAt)
+    setCanChangeName(days === 0)
+    setDaysUntilChange(days)
   }
 
   const handleSave = async () => {
@@ -136,7 +120,7 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     setSuccess(false)
     setLoading(true)
 
-    if (!supabase || !userId) return
+    if (!userId) return
 
     // Validate display name if attempting to change it (web only)
     const nameChanged = displayName !== username
@@ -153,31 +137,9 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
     }
 
     try {
-      const updateData: any = {
-        player_color: selectedColor,
-        updated_at: new Date().toISOString(),
-      }
-
-      if (isDesktop) {
-        // Desktop: always update the name directly, no cooldown
-        if (nameChanged) {
-          updateData.display_name = displayName
-          updateData.username = displayName
-        }
-      } else {
-        // Web: only update display name if it changed and user can change it
-        if (nameChanged && canChangeName) {
-          updateData.display_name = displayName
-          updateData.display_name_last_changed = new Date().toISOString()
-        }
-      }
-
-      const { error: updateError } = await (supabase
-        .from('profiles') as any)
-        .update(updateData)
-        .eq('id', userId)
-
-      if (updateError) throw updateError
+      // The name only if it changed and may (lib/profile: the desktop's
+      // always may, and is its username too).
+      await saveMyProfile(userId, { color: selectedColor, ...(nameChanged && canChangeName ? { displayName } : {}) })
 
       // Update local state
       setPlayerColor(selectedColor)
@@ -193,7 +155,9 @@ export default function ProfileCustomization({ onClose, lobbyId }: ProfileCustom
         onClose()
       }, 1000)
     } catch (err: any) {
-      setError(err.message || t('atrium.profile.updateFailed'))
+      setError(err?.message === 'NAME_TOO_SOON'
+        ? t('profile.canChangeIn', { days: daysUntilNameChange(null, err.until) })
+        : err?.message || t('atrium.profile.updateFailed'))
     } finally {
       setLoading(false)
     }
