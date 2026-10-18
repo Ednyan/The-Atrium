@@ -624,6 +624,18 @@ media, because it changes the file format.
     sent that up: a rejoining editor once wiped an atrium's traces.
   - For the same reason, a save's changes reach the sync's memory only after
     the working copy has them.
+- **Deleted traces can be brought back** by the owner or an admin, under
+  Atrium Settings → Deleted (`findDeletions`, `restoreDeletions`).
+  - Looking reads every save in Drive once. It lists each save that deleted
+    rows the older saves still hold: whose, when, how many traces and
+    groups.
+  - Restoring writes those rows as they last were into the copy, and the
+    usual upload sends them as a new save. Its later clock wins over the
+    deletion for everyone, including whoever reads from the start.
+  - A group a restored trace or group was in comes back with it.
+  - Limits: a save folded into a snapshot since is gone, and with it what
+    only it held. So is a removed member's folder, which nobody lists any
+    more.
 - **Each account on a browser has its own list** of Drive atriums
   (`atrium.driveAtriums.byAccount`, 2026-10-18). Another account signing in
   on the same browser neither sees them nor counts as holding them, so its

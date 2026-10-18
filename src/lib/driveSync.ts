@@ -34,7 +34,7 @@
 import * as drive from './drive'
 import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, sendInvitation, withdrawInvitation, type Person } from './people'
 import {
-  admit, base64ToBytes, bytesToBase64, carried, changesSince, invitedWritersOf, KeyMissing, keyFromText, keyringOf, keyToText, later, manages,
+  admit, base64ToBytes, bytesToBase64, carried, changesSince, clockTime, clockWho, invitedWritersOf, KeyMissing, keyFromText, keyOf, keyringOf, keyToText, later, manages,
   memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
   snapshotOf, type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Snapshot, type Table,
 } from './driveFormat'
@@ -654,8 +654,15 @@ const persist = (s: Session) => s.local.writeVaultJson(s.local.driveStatePath(s.
   merged: [...s.merged.values()], seen: [...s.seen], last: s.last,
   ...(s.snapshot ? { snapshot: { version: s.snapshot.version, folded: [...s.snapshot.folded] } } : {}),
 } satisfies State)
+// A session's tasks, one at a time: `inQueue` hands back its task's result
+// (or failure); `run` only says, as the sync's own looks need.
+function inQueue<T>(s: Session, task: (s: Session) => Promise<T>): Promise<T> {
+  const done = s.queue.then(() => task(s))
+  s.queue = done.then(() => {}, error => console.warn('[drive] sync:', error))
+  return done
+}
 const run = (s: Session, task: (s: Session) => Promise<void>) => {
-  s.queue = s.queue.then(() => task(s)).catch(error => console.warn('[drive] sync:', error))
+  void inQueue(s, task).catch(() => {})
   return s.queue
 }
 
@@ -873,30 +880,12 @@ async function letIn(s: Session, roster: Roster): Promise<void> {
 async function down(s: Session): Promise<void> {
   const roster = await lookAtRoster(s)
   if (!roster) return
-  // Downloads only for what's new: the roster when its version moves, saves
-  // not read yet. A look at an atrium nobody has changed downloads nothing.
-  const writers: { user: string; root: string | null }[] = writersOf(roster)
-  // Those in by their invitation aren't in the roster with their folder yet:
-  // it's in their profile.
-  const invitedHere = invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
-  if (invitedHere.length) {
-    for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: person.drive_root })
-  }
-  for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
   // Files that didn't come yet: those of saves taken before (in a visit that
   // ended first), and those that failed.
   await bringFiles(s, rowsOf(s.merged, 'traces').flatMap(filesOf))
-  const listed: { user: string; files: Listed[] }[] = []
-  for (const writer of writers) {
-    let folder = s.folders.get(writer.user)
-    if (!folder) {
-      if (!writer.root) continue
-      folder = (await store.listByLink(writer.root)).find(file => file.name === s.lobbyId)?.id
-      if (!folder) continue
-      s.folders.set(writer.user, folder)
-    }
-    listed.push({ user: writer.user, files: await store.listByLink(folder) })
-  }
+  // Downloads only for what's new: the roster when its version moves, saves
+  // not read yet. A look at an atrium nobody has changed downloads nothing.
+  const listed = await listWriters(s, roster)
   // The owner's folder holds the snapshot, once one's been made: read when
   // it's changed, and before the saves -- those it holds aren't read.
   const owner = roster.members.find(member => member.role === 'owner')?.user
@@ -916,6 +905,31 @@ async function down(s: Session): Promise<void> {
     }
   }
   await tidy(s, roster, listed)
+}
+
+/** Each writer's folder for the atrium, listed: their saves -- and, the
+ *  owner's, the snapshot. */
+async function listWriters(s: Session, roster: Roster): Promise<{ user: string; files: Listed[] }[]> {
+  const writers: { user: string; root: string | null }[] = writersOf(roster)
+  // Those in by their invitation aren't in the roster with their folder yet:
+  // it's in their profile.
+  const invitedHere = invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
+  if (invitedHere.length) {
+    for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: person.drive_root })
+  }
+  for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
+  const listed: { user: string; files: Listed[] }[] = []
+  for (const writer of writers) {
+    let folder = s.folders.get(writer.user)
+    if (!folder) {
+      if (!writer.root) continue
+      folder = (await store.listByLink(writer.root)).find(file => file.name === s.lobbyId)?.id
+      if (!folder) continue
+      s.folders.set(writer.user, folder)
+    }
+    listed.push({ user: writer.user, files: await store.listByLink(folder) })
+  }
+  return listed
 }
 
 /** A save read from Drive -- or null, gone: removed by its writer once a
@@ -1156,4 +1170,103 @@ export async function letInAsker(user: string): Promise<void> {
 export function putOffAsker(user: string): void {
   session?.putOff.add(user)
   setStatus({ asking: status.asking.filter(one => one.user !== user) })
+}
+
+// ---------------------------------------------------------------- deletions, brought back
+
+/** A save that deleted rows its writers' older saves still hold as they were:
+ *  whose, when, and how many traces and groups. */
+export interface Deletion { at: Clock; by: string; when: number; traces: number; groups: number }
+// What the last look found: each deleted row as it last was before it went.
+let found: { lobbyId: string; before: Map<string, Change>; gone: Change[] } | null = null
+
+/** The atrium's deletions that can be brought back, newest first -- for its
+ *  owner or an admin. Reads every save in Drive, once, on asking. A save
+ *  folded into a snapshot since is gone, and what only it held with it. */
+export async function findDeletions(lobbyId: string, me: string): Promise<Deletion[]> {
+  return withSession(lobbyId, me, async s => {
+    const roster = await managed(s)
+    const gone = [...s.merged.values()].filter(change => change.row === null && change.table !== 'lobbies' && change.table !== 'media')
+    const goneAt = new Map(gone.map(change => [keyOf(change), change.at]))
+    const before = new Map<string, Change>()
+    if (gone.length) {
+      const files = (await listWriters(s, roster)).flatMap(writer => writer.files
+        .filter(file => file.name.endsWith('.save') || file.name === SNAPSHOT)
+        .map(file => ({ id: file.id, by: writer.user })))
+      for (let at = 0; at < files.length; at += AT_ONCE) {
+        // One that won't open (sealed with a key this account never had) is passed over.
+        const read = await Promise.all(files.slice(at, at + AT_ONCE).map(file => readSave(s, file.id, file.by).catch(() => null)))
+        for (const change of read.flatMap(saved => saved?.save.changes ?? [])) {
+          const key = keyOf(change)
+          const deletedAt = goneAt.get(key)
+          if (!change.row || !deletedAt || change.at >= deletedAt) continue
+          if ((before.get(key)?.at ?? '') < change.at) before.set(key, change)
+        }
+      }
+    }
+    found = { lobbyId, before, gone }
+    const bySave = new Map<Clock, Deletion>()
+    for (const change of gone) {
+      if (!before.has(keyOf(change))) continue
+      const deletion = bySave.get(change.at) ?? { at: change.at, by: clockWho(change.at), when: clockTime(change.at), traces: 0, groups: 0 }
+      if (change.table === 'traces') deletion.traces++
+      if (change.table === 'layers') deletion.groups++
+      bySave.set(change.at, deletion)
+    }
+    return [...bySave.values()].sort((a, b) => (a.at < b.at ? 1 : -1))
+  })
+}
+
+/** What these saves (`ats`, from findDeletions) deleted, brought back: each
+ *  row as it last was, into the working copy and up to Drive as a new save --
+ *  later than the deletion, so it's back for everyone, whoever reads the saves
+ *  from the start. A group a brought-back trace or group is in comes back
+ *  with it. How many traces came back. */
+export async function restoreDeletions(lobbyId: string, me: string, ats: Clock[]): Promise<number> {
+  if (found?.lobbyId !== lobbyId) throw new Error('look for deletions first')
+  const { before, gone } = found
+  return withSession(lobbyId, me, async s => {
+    await managed(s)
+    // Only what's still deleted: another manager may have brought it back since.
+    const stillGone = (key: string) => s.merged.get(key)?.row === null && before.has(key)
+    const chosen = new Set(ats)
+    const back = new Map(gone.filter(change => chosen.has(change.at) && stillGone(keyOf(change))).map(change => [keyOf(change), before.get(keyOf(change))!]))
+    const groupOf = (change: Change) => (change.table === 'traces' ? change.row?.layer_id : change.table === 'layers' ? change.row?.parent_id : null)
+    for (let grew = true; grew;) {
+      grew = false
+      for (const change of [...back.values()]) {
+        const group = groupOf(change)
+        const key = typeof group === 'string' ? `layers/${group}` : null
+        if (key && !back.has(key) && stillGone(key)) { back.set(key, before.get(key)!); grew = true }
+      }
+    }
+    const changes = [...back.values()]
+    // As saves come in (take): their files on the way first, then the rows.
+    await bringFiles(s, changes.filter(change => change.table === 'traces').flatMap(change => filesOf(change.row)))
+    await bringIn(s, changes)
+    await up(s)
+    return changes.filter(change => change.table === 'traces').length
+  })
+}
+
+// The roster, for its owner or an admin only.
+async function managed(s: Session): Promise<Roster> {
+  const roster = await lookAtRoster(s)
+  if (!roster || !manages(memberOf(roster, s.me)?.role)) throw new Error('NOT_A_MANAGER')
+  return roster
+}
+
+// A task in step with `lobbyId`'s sync: the open atrium's, or one started for
+// it now and stopped after (as keepInDrive does), its copy brought up to date
+// first.
+async function withSession<T>(lobbyId: string, me: string, task: (s: Session) => Promise<T>): Promise<T> {
+  if (session?.lobbyId === lobbyId) return inQueue(session, task)
+  await startDriveSync(lobbyId, me)
+  const s = session as Session | null
+  if (!s) throw new Error('not a Drive atrium')
+  try {
+    return await inQueue(s, task)
+  } finally {
+    await stopDriveSync()
+  }
 }

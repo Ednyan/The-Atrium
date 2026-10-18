@@ -138,6 +138,9 @@ export type Clock = string
 const TIME = 9, COUNT = 3
 const timeOf = (clock: Clock) => parseInt(clock.slice(0, TIME), 36)
 const countOf = (clock: Clock) => parseInt(clock.slice(TIME, TIME + COUNT), 36)
+/** When a clock was, and whose it is. */
+export const clockTime = timeOf
+export const clockWho = (clock: Clock) => clock.slice(TIME + COUNT)
 const make = (time: number, count: number, who: string): Clock =>
   time.toString(36).padStart(TIME, '0') + count.toString(36).padStart(COUNT, '0') + who
 
@@ -168,7 +171,7 @@ export interface DriveSave { v: 1; changes: Change[] }
 
 // The atrium as merged so far: each row's latest change.
 export type Merged = Map<string, Change>
-const keyOf = (change: Pick<Change, 'table' | 'id'>) => `${change.table}/${change.id}`
+export const keyOf = (change: Pick<Change, 'table' | 'id'>) => `${change.table}/${change.id}`
 
 /** Changes folded in, each kept only if it's later than what's there: so any
  *  order, any repeats, and any mix of saves and snapshots come out the same.

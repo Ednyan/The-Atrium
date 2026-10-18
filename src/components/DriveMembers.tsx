@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { addPerson, driveMembers, ensureSignedIn, inviteLink, removePerson, resendInvitation, setRole } from '../lib/driveSync'
-import type { Role, Roster } from '../lib/driveFormat'
+import { addPerson, driveMembers, ensureSignedIn, findDeletions, inviteLink, removePerson, resendInvitation, restoreDeletions, setRole, type Deletion } from '../lib/driveSync'
+import type { Clock, Role, Roster } from '../lib/driveFormat'
 
 // A Drive atrium's sharing, on its card in the atrium browser: its invite link
 // -- which lets in only those added -- and its members. Its owner and admins
 // add people by username, set their roles, and remove or block them; only
-// the owner makes admins (lib/driveSync).
+// the owner makes admins (lib/driveSync). They also bring back what was
+// deleted, while the atrium's saves in Drive still hold it.
 type Assignable = Exclude<Role, 'owner'>
 const FIELD = 'bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-xs'
 const LABEL = 'block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase mb-1'
 
 export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: string; me: string; buttonClass: string }) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const [roster, setRoster] = useState<Roster | null>(null)
+  // Deletions that can be brought back, once looked for (every save is read).
+  const [deletions, setDeletions] = useState<Deletion[] | null>(null)
+  const [looking, setLooking] = useState(false)
   const [myRole, setMyRole] = useState<Role | null>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -56,6 +60,18 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
   }
 
   const managing = myRole === 'owner' || myRole === 'admin'
+  const nameOf = (user: string) => roster?.members.find(member => member.user === user)?.name
+    ?? roster?.invited.find(invite => invite.user === user)?.name
+    ?? t('browser.drive.deleted.someone')
+  const lookForDeletions = () => act(async () => {
+    setLooking(true)
+    try { setDeletions(await findDeletions(lobbyId, me)) } finally { setLooking(false) }
+  })
+  const restore = (ats: Clock[]) => act(async () => {
+    const count = await restoreDeletions(lobbyId, me, ats)
+    setDeletions(shown => shown?.filter(deletion => !ats.includes(deletion.at)) ?? null)
+    return t('browser.drive.deleted.restored', { count })
+  })
   // The owner and admins manage others -- an admin, only the owner.
   const canChange = (role: Role, user: string) => managing && role !== 'owner' && user !== me && (role !== 'admin' || myRole === 'owner')
   const link = inviteLink(lobbyId) ?? ''
@@ -164,6 +180,33 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
               {t('browser.drive.add')}
             </button>
           </div>
+        </div>
+      )}
+
+      {managing && (
+        <div>
+          <label className={LABEL}>{t('browser.drive.deleted.title')}</label>
+          {deletions === null ? (
+            <button disabled={busy} onClick={() => void lookForDeletions()} className={buttonClass}>
+              {t(looking ? 'browser.drive.deleted.looking' : 'browser.drive.deleted.look')}
+            </button>
+          ) : deletions.length === 0 ? (
+            <p className="text-nier-bg/60 text-[11px]">{t('browser.drive.deleted.none')}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {deletions.map(deletion => (
+                <li key={deletion.at} className="flex flex-wrap items-center gap-2 text-xs text-nier-bg/85">
+                  <span className="flex-1 min-w-[10rem]">
+                    {t('browser.drive.deleted.entry', { name: nameOf(deletion.by), when: new Date(deletion.when).toLocaleString(language), traces: deletion.traces, groups: deletion.groups })}
+                  </span>
+                  <button disabled={busy} onClick={() => void restore([deletion.at])} className={buttonClass}>{t('browser.drive.deleted.restore')}</button>
+                </li>
+              ))}
+              {deletions.length > 1 && (
+                <li><button disabled={busy} onClick={() => void restore(deletions.map(deletion => deletion.at))} className={buttonClass}>{t('browser.drive.deleted.restoreAll')}</button></li>
+              )}
+            </ul>
+          )}
         </div>
       )}
 
