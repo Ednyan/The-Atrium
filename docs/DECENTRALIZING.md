@@ -901,7 +901,30 @@ public list. Contributions already need no account.
     doesn't start the clock.
   - New columns are added to the live table on the worker's first use
     (`alter table`, tolerating only "duplicate column").
-  - Not yet for Google accounts: Pinterest, feedback, deletion (step 6).
+- **Step 6, the account's functions on the worker (2026-10-18).**
+  - **For everyone:**
+    - `/relay`, the TURN pass under its budget, ported as it was.
+    - `/feedback`, the report form. Replies go only to an address known to
+      be the sender's: Supabase's confirmed one, or the Google-verified one
+      in the directory.
+  - **For Google accounts:**
+    - A welcome, sent once as the username is chosen, in the page's
+      language.
+    - Deletion, confirmed by Google's button once more: a sign-in made in
+      the last 10 minutes, with its own Google. Google's access is revoked,
+      and the directory row, invitations and Pinterest are deleted. Their
+      Drive stays theirs. A deleted account's grant renews nothing, and its
+      old session can't remake its row (`me` makes rows only for existing
+      accounts).
+    - Pinterest through `/pinterest/*`, its tokens sealed in D1 `pinterest`.
+  - **Still Supabase's, for existing accounts:** deletion, which needs its
+    admin access, the welcome, and Pinterest.
+  - **Shared code:** the mail's card and the welcome's words are imported
+    straight from `supabase/functions` (one file, two runtimes).
+    `lib/worker` (`toWorker`) is the app's one way to call the worker.
+  - **Secrets on the worker:** CF_TURN_KEY_ID, CF_TURN_KEY_TOKEN,
+    CF_ACCOUNT_ID, CF_ANALYTICS_TOKEN, RELAY_BUDGET_GB (optional),
+    RESEND_API_KEY, PINTEREST_CLIENT_ID, PINTEREST_CLIENT_SECRET.
   - Usernames for Google accounts need `add_username_taken.sql` run.
 
 ## Phase 7: local atriums in the browser, for everyone else

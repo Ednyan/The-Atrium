@@ -24,9 +24,32 @@ export interface Env {
   // The worker's key to Supabase's account_for_email (a secret; Supabase
   // keeps only its SHA-256 -- add_account_for_email.sql).
   SUPABASE_WORKER_KEY?: string
+  // Cloudflare's relay (src/relay.ts): its TURN key, and an API token that
+  // reads the account's usage (secrets); the budget, in GB a month (800 if
+  // unset, 0 switches the relay off).
+  CF_TURN_KEY_ID?: string
+  CF_TURN_KEY_TOKEN?: string
+  CF_ACCOUNT_ID?: string
+  CF_ANALYTICS_TOKEN?: string
+  RELAY_BUDGET_GB?: string
+  // Mail, through Resend (src/mail.ts): its key (a secret).
+  RESEND_API_KEY?: string
+  // Pinterest's app (src/pinterest.ts): its id and secret (secrets).
+  PINTEREST_CLIENT_ID?: string
+  PINTEREST_CLIENT_SECRET?: string
+  // A local test's stand-in for every other service on the internet
+  // (Resend, Cloudflare's APIs, Pinterest): never set live.
+  TEST_UPSTREAM?: string
 }
 
-export interface Who { id: string; kind: 'google' | 'supabase' }
+// Who's asking: an account, its kind -- and, an existing account's, its
+// address once Supabase has confirmed it (a Google account's is in the
+// directory, src/people.ts emailOf).
+export interface Who { id: string; kind: 'google' | 'supabase'; email?: string }
+
+/** Where a request to another service goes: there, or -- in a local test --
+ *  to its stand-in, by the same address under it. */
+export const outbound = (env: Env, url: string) => (env.TEST_UPSTREAM ? `${env.TEST_UPSTREAM}/${url.replace(/^https:\/\//, '')}` : url)
 
 export async function whoIs(token: string | null | undefined, env: Env): Promise<Who | null> {
   if (!token) return null
@@ -37,8 +60,9 @@ export async function whoIs(token: string | null | undefined, env: Env): Promise
   try {
     const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY } })
     if (!response.ok) return null
-    const user = await response.json() as { id?: unknown }
-    return typeof user.id === 'string' ? { id: user.id, kind: 'supabase' } : null
+    const user = await response.json() as { id?: unknown; email?: unknown; email_confirmed_at?: unknown }
+    if (typeof user.id !== 'string') return null
+    return { id: user.id, kind: 'supabase', ...(typeof user.email === 'string' && user.email_confirmed_at ? { email: user.email } : {}) }
   } catch {
     return null
   }

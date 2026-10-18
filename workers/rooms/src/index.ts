@@ -15,7 +15,10 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import { google } from './google'
+import { feedback } from './mail'
 import { people } from './people'
+import { pinterest } from './pinterest'
+import { relay } from './relay'
 import { whoIs, type Env } from './who'
 
 // What each socket keeps through hibernation (2 KB at most).
@@ -36,6 +39,11 @@ export default {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/google/')) return google(request, env, url.pathname.slice('/google/'.length))
     if (url.pathname.startsWith('/people/')) return people(request, env, url.pathname.slice('/people/'.length))
+    // What the account calls on (phase 6, step 6): its relay pass, the report
+    // form, a Google account's Pinterest.
+    if (url.pathname === '/relay') return relay(request, env)
+    if (url.pathname === '/feedback') return feedback(request, env)
+    if (url.pathname.startsWith('/pinterest/')) return pinterest(request, env, url.pathname.slice('/pinterest/'.length))
     const atrium = url.pathname.match(ATRIUM)?.[1]
     if (!atrium) return new Response('Not found', { status: 404 })
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })

@@ -10,6 +10,7 @@
 // settings (its colour, its themes): private, as its email is -- an existing
 // account keeps them in its Supabase profile.
 
+import { welcome } from './mail'
 import { replies, whoIs, type Env, type Who } from './who'
 
 const TABLES = [
@@ -25,6 +26,8 @@ const TABLES = [
   // Each Google account's grant (its refresh token, sealed -- src/google.ts):
   // so it consents once, not at each sign-in on each browser.
   'create table if not exists google_grants (google_id text primary key, sealed text not null, updated_at integer not null)',
+  // A Google account's Pinterest connection (src/pinterest.ts): its tokens, sealed.
+  'create table if not exists pinterest (account text primary key, sealed text not null, username text, updated_at integer not null)',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -33,7 +36,7 @@ const TABLES = [
 const ADDED = ['alter table accounts add column settings text', 'alter table accounts add column name_changed_at integer']
 // Made once per instance of the worker, the first time it's needed.
 let made: Promise<unknown> | null = null
-const tablesIn = (db: D1Database) => (made ??= (async () => {
+export const tablesIn = (db: D1Database) => (made ??= (async () => {
   await db.batch(TABLES.map(sql => db.prepare(sql)))
   for (const sql of ADDED) await db.prepare(sql).run().catch(error => { if (!/duplicate column/i.test(String(error))) throw error })
 })().catch(error => { made = null; throw error }))
@@ -130,11 +133,36 @@ export async function supersededBy(env: Env, id: string, googleId: string | null
   // is from before grants said whose Google they are.
   const existing = await linkedTo(env, googleId, row?.email ?? null)
   if (!existing) return null
-  await env.PEOPLE.batch([
-    env.PEOPLE.prepare('delete from invites where to_user = ?').bind(id),
-    env.PEOPLE.prepare('delete from accounts where id = ? and username is null').bind(id),
-  ])
+  await forgetAccount(env.PEOPLE, id, true)
   return existing
+}
+
+/** A Google account, gone from the directory: its row, the invitations to
+ *  and from it, its Pinterest -- or, `unfinished`, only while it has no
+ *  username (one chosen meanwhile keeps it). */
+export async function forgetAccount(db: D1Database, id: string, unfinished = false): Promise<void> {
+  await tablesIn(db)
+  await db.batch([
+    db.prepare('delete from invites where to_user = ? or from_user = ?').bind(id, id),
+    db.prepare('delete from pinterest where account = ?').bind(id),
+    db.prepare(`delete from accounts where id = ?${unfinished ? ' and username is null' : ''}`).bind(id),
+  ])
+}
+
+/** Whether an account's row is here (a Google account deleted, or taken for
+ *  a duplicate, has none). */
+export const accountKept = async (db: D1Database, id: string) => {
+  await tablesIn(db)
+  return !!(await db.prepare('select 1 from accounts where id = ?').bind(id).first())
+}
+
+/** Whose address replies may go to: an existing account's, as Supabase has
+ *  confirmed it; a Google account's, as Google verified it (kept here). */
+export async function emailOf(env: Env, who: Who): Promise<string | null> {
+  if (who.kind === 'supabase') return who.email ?? null
+  if (!env.PEOPLE) return null
+  await tablesIn(env.PEOPLE)
+  return (await env.PEOPLE.prepare('select email from accounts where id = ?').bind(who.id).first<{ email: string | null }>())?.email ?? null
 }
 
 // An account id from one of Supabase's functions, or null -- also where it
@@ -196,7 +224,12 @@ export async function people(request: Request, env: Env, what: string): Promise<
   switch (what) {
     // One's own row: made if need be, and changed as asked.
     case 'me': {
-      await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
+      // An existing account's row is made as it first publishes itself. A
+      // Google account's is made as it signs in (google.ts, meet): gone --
+      // deleted, or taken for a duplicate -- a session from before can't make
+      // it again.
+      if (who.kind === 'supabase') await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
+      else if (!await accountKept(db, who.id)) return answer(401, { error: 'gone' })
       const set = (asked.set ?? {}) as Record<string, unknown>
       const before = await db.prepare('select username, display_name, name_changed_at from accounts where id = ?').bind(who.id).first<{ username: string | null; display_name: string | null; name_changed_at: number | null }>()
       if ('username' in set) {
@@ -212,6 +245,12 @@ export async function people(request: Request, env: Env, what: string): Promise<
           if (elsewhere) return answer(409, { error: 'taken' })
         }
         await db.prepare('update accounts set username = ? where id = ?').bind(username, who.id).run()
+        // A Google account's first: finished, and welcomed, once -- in the
+        // language its page shows (`language`).
+        if (who.kind === 'google' && !before?.username) {
+          const email = await emailOf(env, who)
+          if (email) await welcome(env, email, typeof set.display_name === 'string' ? set.display_name : username, asked.language)
+        }
       }
       if ('display_name' in set) {
         const name = typeof set.display_name === 'string' ? set.display_name.trim().slice(0, 50) : ''

@@ -16,7 +16,7 @@
 // for the person -- and who gets the worker's own session with each pass
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
-import { forgetGoogleGrant, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
+import { accountKept, forgetAccount, forgetGoogleGrant, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
 import { accountIdFor, fromBase64, fromUrl, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
 // A grant: Google's refresh token (none for a Google account signed in
@@ -109,15 +109,23 @@ export async function google(request: Request, env: Env, what: string): Promise<
     if (!grant && who?.kind !== 'supabase') return answer(401, { error: 'grant' })
     const googleIds = new Set(grant?.g ? [grant.g] : [])
     if (who?.kind === 'supabase') for (const googleId of await linkedGoogleIds(env, who.id)) googleIds.add(googleId)
-    const renewals = new Set(grant?.r ? [grant.r] : [])
-    for (const googleId of googleIds) {
-      const kept = await googleGrantFor(env, googleId)
-      const refresh = kept ? await openFor(key, googleId, kept) : null
-      if (refresh) renewals.add(refresh)
-      await forgetGoogleGrant(env, googleId)
-    }
-    await Promise.all([...renewals].map(refresh => fetch(env.GOOGLE_REVOKE_URL || 'https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token: refresh }) })))
+    await giveBack(env, key, googleIds, grant?.r ? [grant.r] : [])
     return answer(200, grant?.k === 'google' ? { grant: await sealGrant(key, { a: grant.a, k: grant.k, g: grant.g }) } : {})
+  }
+
+  // A Google account deleted, on its own say-so: its session, and a sign-in
+  // with its Google just now (Google's button, once more) -- so a session
+  // left open somewhere can't do it. Google told to forget this app, and the
+  // account gone from the directory. What it keeps in its own Google Drive
+  // stays its own.
+  if (what === 'delete') {
+    if (who?.kind !== 'google') return answer(403, { error: 'not a Google account' })
+    const person = typeof asked.id_token === 'string' ? await idTokenPerson(env, asked.id_token, CONFIRM_WITHIN_MS) : null
+    if (!person || await accountIdFor(person.sub) !== who.id) return answer(403, { error: 'confirm' })
+    const grant = typeof asked.grant === 'string' ? await openGrant(key, asked.grant, token, env) : null
+    await giveBack(env, key, [person.sub], grant && grant !== 'sign-in' && grant.r ? [grant.r] : [])
+    if (env.PEOPLE) await forgetAccount(env.PEOPLE, who.id)
+    return answer(200, { deleted: true })
   }
 
   if (what === 'renew' && typeof asked.grant === 'string') {
@@ -143,6 +151,8 @@ export async function google(request: Request, env: Env, what: string): Promise<
     // gone, and its person pointed to the account they already have.
     const superseded = grant.k === 'google' ? await supersededBy(env, grant.a, googleId ?? null) : null
     if (superseded) return answer(409, { error: 'existing account', how: superseded.how })
+    // A Google account deleted: its grant renews nothing (the browser signs out).
+    if (grant.k === 'google' && env.PEOPLE && !await accountKept(env.PEOPLE, grant.a)) return answer(401, { error: 'grant' })
     return answer(200, {
       ...(got ? passOf(got) : {}),
       account: { id: grant.a, kind: grant.k },
@@ -191,9 +201,26 @@ async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, 
 }
 type Person = NonNullable<ReturnType<typeof personOf>>
 
+// Google told to forget this app's access for these Googles -- every renewal
+// kept for them here, and any the browser's grant holds -- and none kept.
+async function giveBack(env: Env, key: CryptoKey, googleIds: Iterable<string>, held: string[]): Promise<void> {
+  const renewals = new Set(held)
+  for (const googleId of googleIds) {
+    const kept = await googleGrantFor(env, googleId)
+    const refresh = kept ? await openFor(key, googleId, kept) : null
+    if (refresh) renewals.add(refresh)
+    await forgetGoogleGrant(env, googleId)
+  }
+  await Promise.all([...renewals].map(refresh => fetch(env.GOOGLE_REVOKE_URL || 'https://oauth2.googleapis.com/revoke', { method: 'POST', body: new URLSearchParams({ token: refresh }) })))
+}
+
+// A sign-in that confirms something (a deletion): this recent, at most.
+const CONFIRM_WITHIN_MS = 10 * 60 * 1000
+
 /** Google's ID token, checked here: signed by Google, given to this app, not
- *  run out. Its person (the address only if Google verified it), or null. */
-async function idTokenPerson(env: Env, idToken: string): Promise<Person | null> {
+ *  run out -- and, `within`, issued no longer ago than that. Its person (the
+ *  address only if Google verified it), or null. */
+async function idTokenPerson(env: Env, idToken: string, within?: number): Promise<Person | null> {
   const [head, body, signature] = idToken.split('.')
   if (!head || !body || !signature) return null
   try {
@@ -201,9 +228,10 @@ async function idTokenPerson(env: Env, idToken: string): Promise<Person | null> 
     if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null
     const key = await googleKey(env, header.kid)
     if (!key || !await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, fromUrl(signature), new TextEncoder().encode(`${head}.${body}`))) return null
-    const claims = JSON.parse(new TextDecoder().decode(fromUrl(body))) as { iss?: unknown; aud?: unknown; exp?: unknown }
+    const claims = JSON.parse(new TextDecoder().decode(fromUrl(body))) as { iss?: unknown; aud?: unknown; exp?: unknown; iat?: unknown }
     if (claims.iss !== 'https://accounts.google.com' && claims.iss !== 'accounts.google.com') return null
     if (claims.aud !== env.GOOGLE_CLIENT_ID || typeof claims.exp !== 'number' || claims.exp * 1000 < Date.now()) return null
+    if (within && (typeof claims.iat !== 'number' || Date.now() - claims.iat * 1000 > within)) return null
     return personOf(idToken)
   } catch {
     return null
