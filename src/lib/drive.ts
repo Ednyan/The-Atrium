@@ -83,9 +83,10 @@ let renewFailed = false
 let codeFailed = false
 const grantServer = workerUrl
 
-/** Google accounts are being tried (phase 6), with Drive atriums: testers
- *  only, by localStorage['atrium.drivespike'] = 'on'. */
-export const driveTesting = !isDesktop && (() => { try { return localStorage.getItem('atrium.drivespike') === 'on' } catch { return false } })()
+/** Google accounts and Drive atriums: open to everyone on the web, wherever
+ *  this build has Google sign-in set up (phase 9; testers only before). The
+ *  desktop has no Google sign-in of its own yet. */
+export const googleOpen = !isDesktop && !!GOOGLE_CLIENT_ID
 
 /** A Drive access token: renewed by the worker when this browser has a
  *  grant that reaches Drive, else Google's window (a click's), once. */

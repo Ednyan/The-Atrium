@@ -3,7 +3,7 @@ import { friendlyAuthError } from '../lib/authErrors'
 import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
-import { driveTesting } from '../lib/drive'
+import { googleOpen } from '../lib/drive'
 import GoogleButton from './GoogleButton'
 import { usernameAvailable } from '../lib/people'
 
@@ -213,7 +213,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
   }
 
-  // Signing in with Google (phase 6, testers for now): Google's own button,
+  // Signing in with Google: Google's own button,
   // one click, asking only who one is -- Drive is asked for where it's used, a
   // Drive atrium made or joined. Then a Google account (the app takes it from
   // there: App, ACCOUNT_EVENT), or the existing account this Google is:
@@ -630,7 +630,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
                 <span className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase">or</span>
                 <div className="flex-1 h-[1px] bg-nier-border/20" />
               </div>
-              {driveTesting ? <GoogleButton busy={loading} onCredential={idToken => void handleGoogleCredential(idToken)} /> : <button
+              {googleOpen ? <GoogleButton busy={loading} onCredential={idToken => void handleGoogleCredential(idToken)} /> : <button
                 type="button"
                 disabled={loading}
                 onClick={handleGoogleSignIn}

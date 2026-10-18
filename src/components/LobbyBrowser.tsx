@@ -7,7 +7,7 @@ import { showToast } from '../lib/toast'
 import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
-import { GOOGLE_CLIENT_ID, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
+import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
@@ -27,17 +27,15 @@ import { useTranslation } from '../lib/i18n'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
-// Phase 4's Drive test (components/DriveSpike): the platform operator's alone,
-// with Drive turned on.
+// Phase 4's Drive test (components/DriveSpike): the platform operator's alone.
 const DriveSpike = lazy(() => import('./DriveSpike'))
-const driveSpikeOn = driveTesting
 import type { Lobby } from '../types/database'
 import { sortByLastVisited, mergeRemoteVisits } from '../lib/recentAtriums'
 import { browserAtriumIds, browserEngine, clientFor, forgetBrowserAtrium, leaveBrowserAtrium, rememberBrowserAtrium, vaultProblem } from '../lib/browserAtriums'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
-import { driveTesting } from '../lib/drive'
+import { googleOpen } from '../lib/drive'
 import { googleAccount } from '../lib/signedIn'
 
 // An atrium in the browser's lists, the same in each: a card -- its picture
@@ -148,8 +146,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // Where the new atrium is kept: the cloud, or this browser -- and Drive too.
   const [newWhere, setNewWhere] = useState<Where>('cloud')
   const browserChoice = !isDesktop && newWhere !== 'cloud'
-  // Drive atriums: testers, signed in, where Google sign-in is set up.
-  const canDrive = driveSpikeOn && !guest && !!GOOGLE_CLIENT_ID
+  // Drive atriums: for anyone signed in, where Google sign-in is set up.
+  const canDrive = googleOpen && !guest
+  // Signed in with Google -- a Google account, or an existing account with
+  // its Google -- whose new atriums are kept in Drive by default (phase 9).
+  const [withGoogle, setWithGoogle] = useState(() => !!googleAccount())
   // A guest, or a Google account (phase 6): no atriums in the cloud --
   // those are an existing account's.
   const noCloud = guest || !!googleAccount()
@@ -360,7 +361,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // Sharing a Drive atrium, on its card: components/DriveMembers.
   const [sharingId, setSharingId] = useState<string | null>(null)
   const [myId, setMyId] = useState('')
-  useEffect(() => { void supabase?.auth.getUser().then(({ data }: any) => setMyId(data?.user?.id ?? '')) }, [])
+  useEffect(() => {
+    void supabase?.auth.getUser().then(({ data }: any) => {
+      setMyId(data?.user?.id ?? '')
+      setWithGoogle(!!googleAccount() || (data?.user?.app_metadata?.providers ?? []).includes('google'))
+    })
+  }, [])
 
   // Invitations to Drive atriums: shown here, no link needed (lib/driveSync).
   const [invitations, setInvitations] = useState<Invitation[]>([])
@@ -1299,10 +1305,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               // inverts with the theme rather than sitting in it. Outlined,
               // it was the quietest thing on a screen whose whole purpose is
               // getting you into an atrium -- including a new one.
-              // Never out of room: past the cloud's three, it's kept in the browser.
+              // A new atrium is kept in Drive by default for whoever's signed
+              // in with Google, in the browser otherwise (phase 9) -- the
+              // cloud, within its three, by choice.
               <button
                 onClick={() => {
-                  setNewWhere(noCloud || !canCreateMore ? 'browser' : 'cloud')
+                  setNewWhere(canDrive && withGoogle ? 'drive' : 'browser')
                   setShowCreateLobby(true)
                 }}
                 className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
@@ -1641,7 +1649,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           </section>
           )}
 
-          {driveSpikeOn && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
+          {googleOpen && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
       </div>
 

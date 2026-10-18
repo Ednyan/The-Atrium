@@ -4,8 +4,8 @@ import {
 } from '../lib/drive'
 
 // Phase 4's spike (docs/DECENTRALIZING.md): what Drive does for atriums, step
-// by step, timed, with a log to send back. A developer's tool, behind
-// localStorage['atrium.drivespike'] = 'on', so in English only.
+// by step, timed, with a log to send back. A developer's tool, the platform
+// operator's alone (LobbyBrowser), so in English only.
 const FOLDER_KEY = 'atrium.drivespike.folder'
 const json = (value: unknown) => new Blob([JSON.stringify(value)], { type: 'application/json' })
 const at = () => performance.now()
