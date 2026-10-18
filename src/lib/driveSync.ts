@@ -41,6 +41,7 @@ import {
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { onRoomEvent, sayToRoom, sendThroughRoom } from './rooms'
+import { useGameStore } from '../store/gameStore'
 
 /** What the sync needs of Drive: lib/drive, or a stand-in (the harness). */
 export interface DriveStore {
@@ -157,25 +158,60 @@ export async function myIdentity(me: { id: string }): Promise<Mine> {
 
 // ---------------------------------------------------------------- which atriums
 
-// This browser's Drive atriums: the roster's file, one's own folder in it,
-// and the generations of its key one has opened.
+// This browser's Drive atriums -- each account's own, as an atrium's
+// membership is an account's: the roster's file, one's own folder in it, and
+// the generations of its key one has opened. Two accounts on one browser see
+// their own; one's invitation to an atrium another holds here isn't taken for
+// one kept.
 interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean }
-const KEPT = 'atrium.driveAtriums'
-function allKept(): Record<string, Kept> {
-  try {
-    const all = JSON.parse(localStorage.getItem(KEPT) || '{}') ?? {}
-    // Drive atriums from before members (a head and a shared key) aren't these.
-    return Object.fromEntries(Object.entries(all).filter(([, kept]) => typeof (kept as Kept)?.roster === 'string')) as Record<string, Kept>
-  } catch {
-    return {}
+const KEPT = 'atrium.driveAtriums.byAccount'
+// Before (2026-10-18): one list for the whole browser. Each entry is claimed
+// by the account its roster, as last read here, has in it, as that account
+// looks -- or by the first to look, where no roster was read.
+const LEGACY = 'atrium.driveAtriums'
+// Drive atriums from before members (a head and a shared key) aren't these.
+const isKept = (kept: unknown): kept is Kept => typeof (kept as Kept)?.roster === 'string'
+const signedInHere = () => useGameStore.getState().userId ?? ''
+function stored<T>(key: string): Record<string, T> {
+  try { return JSON.parse(localStorage.getItem(key) || '{}') ?? {} } catch { return {} }
+}
+function store_(key: string, value: object | null) {
+  try { if (value && Object.keys(value).length) localStorage.setItem(key, JSON.stringify(value)); else localStorage.removeItem(key) } catch { /* this visit only */ }
+}
+function allKept(user = signedInHere()): Record<string, Kept> {
+  if (!user) return {}
+  const byAccount = stored<Record<string, Kept>>(KEPT)
+  const legacy = stored<unknown>(LEGACY)
+  const claimed = Object.entries(legacy).filter((entry): entry is [string, Kept] => isKept(entry[1]) && belongsTo(entry[1], user))
+  if (claimed.length) {
+    byAccount[user] = { ...byAccount[user], ...Object.fromEntries(claimed) }
+    for (const [lobbyId] of claimed) delete legacy[lobbyId]
+    store_(KEPT, byAccount)
+    store_(LEGACY, legacy)
   }
+  return Object.fromEntries(Object.entries(byAccount[user] ?? {}).filter(([, kept]) => isKept(kept)))
+}
+function belongsTo(kept: Kept, user: string): boolean {
+  const roster = rostersKept()[kept.roster]?.roster
+  return !roster || !!placeOf(roster, user) || roster.invited.some(invite => invite.user === user)
 }
 export const isDriveAtrium = (lobbyId: string) => lobbyId in allKept()
-function keep(lobbyId: string, kept: Kept | null) {
-  const all = allKept()
-  if (kept) all[lobbyId] = kept
-  else delete all[lobbyId]
-  try { localStorage.setItem(KEPT, JSON.stringify(all)) } catch { /* this visit only */ }
+/** Another account's Drive atrium, held on this browser -- and not this
+ *  account's: its working copy here is that account's to see and to keep. */
+export function anotherAccountsDriveAtrium(lobbyId: string): boolean {
+  const user = signedInHere()
+  if (lobbyId in allKept(user)) return false
+  return Object.entries(stored<Record<string, Kept>>(KEPT)).some(([account, kept]) => account !== user && isKept(kept?.[lobbyId]))
+    || isKept(stored<unknown>(LEGACY)[lobbyId])
+}
+function keep(lobbyId: string, kept: Kept | null, user = signedInHere()) {
+  if (!user) return
+  const byAccount = stored<Record<string, Kept>>(KEPT)
+  const mine = { ...byAccount[user] }
+  if (kept) mine[lobbyId] = kept
+  else delete mine[lobbyId]
+  byAccount[user] = mine
+  store_(KEPT, byAccount)
 }
 export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 /** Its owner's, here: Delete takes it out of Drive; anyone else's leaves. */
@@ -225,7 +261,7 @@ export async function createDriveAtrium(lobbyId: string, name: string, me: { id:
   const file = await store.write('atrium.roster', asJson(roster), { parent: folder })
   // Admins it's shared with to edit can't share it on: only the owner makes admins.
   await store.noResharing(file.id)
-  keep(lobbyId, { roster: file.id, folder, keys: await keysOf(new Map([[0, key]])), owner: true })
+  keep(lobbyId, { roster: file.id, folder, keys: await keysOf(new Map([[0, key]])), owner: true }, me.id)
   // A clean slate: what an earlier sync of this atrium kept (what it merged,
   // what it read) isn't this one's, and would stop its first save -- all of
   // it -- from ever going up.
@@ -285,7 +321,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
   if (member && sameKey(member.pub, own.identity.publicJwk)) {
     onStep('folder')
     const folder = await folderFor(own.root, lobbyId)
-    keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' })
+    keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' }, me.id)
     await clearSecret(rosterId)
     return { lobbyId, state: 'in' }
   }
@@ -299,7 +335,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     if (keyring) {
       onStep('folder')
       const folder = await folderFor(own.root, lobbyId)
-      keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false })
+      keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false }, me.id)
       return { lobbyId, state: 'in' }
     }
   }
@@ -537,7 +573,7 @@ const run = (s: Session, task: (s: Session) => Promise<void>) => {
 /** In step with Drive while `lobbyId` is open: up after writes, others' down every little while. */
 export async function startDriveSync(lobbyId: string, me: string): Promise<void> {
   await stopDriveSync()
-  const kept = allKept()[lobbyId]
+  const kept = allKept(me)[lobbyId]
   if (!kept) return
   const local = await import('./localDb')
   const state = await local.readVaultJson<State>(statePath(lobbyId), { merged: [], seen: [], last: null })
@@ -694,7 +730,7 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {
       const own = mine?.user === s.me ? mine : await myIdentity({ id: s.me })
       s.keyring = await keyringOf(roster, s.me, own.identity.privateJwk)
-      keep(s.lobbyId, { ...s.kept, keys: await keysOf(s.keyring) })
+      keep(s.lobbyId, { ...s.kept, keys: await keysOf(s.keyring) }, s.me)
     }
   }
   // Whom to let in -- looked for at every look, not only when the roster

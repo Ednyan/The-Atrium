@@ -6,7 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { GOOGLE_CLIENT_ID, loadGoogleSignIn } from '../lib/drive'
-import { askToJoin, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, forgetDriveAtrium, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -438,7 +438,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // Atriums kept in this browser, from its engine -- not opened at all while
   // there are none.
   const loadBrowserLobbies = async () => {
-    const ids = isDesktop ? [] : browserAtriumIds()
+    // Another account's Drive atriums on this browser aren't this one's.
+    const ids = isDesktop ? [] : browserAtriumIds().filter(id => !anotherAccountsDriveAtrium(id))
     if (ids.length === 0) { setBrowserLobbies([]); return }
     try {
       const { localClient } = await browserEngine()
@@ -648,13 +649,20 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }
   }
 
+  // One atrium per press: a second press while the first is still being made
+  // -- Google's window, Drive's folders, some seconds -- does nothing (the
+  // ref, as two presses can come before the button greys), and the button
+  // says what's under way.
+  const [creating, setCreating] = useState(false)
+  const creatingNow = useRef(false)
   const createLobby = async () => {
-    if (!supabase) return
+    if (!supabase || creatingNow.current) return
     if (newLobbyName.length < 3) {
       setError(t('browser.errNameLength'))
       return
     }
-
+    creatingNow.current = true
+    setCreating(true)
     try {
       // Google's window first, while the click that asked still counts.
       if (canDrive && newWhere === 'drive') await ensureSignedIn()
@@ -720,6 +728,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       console.error('Error creating lobby:', err)
       const problem = vaultProblem(err)
       setError(problem ? t(problem) : err.message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : err.message || t('browser.errCreateLobby'))
+    } finally {
+      creatingNow.current = false
+      setCreating(false)
     }
   }
 
@@ -880,14 +891,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         await ensureSignedIn()
         await deleteDriveAtrium(lobbyId)
       }
-      const { error } = await (await clientFor(lobbyId))
-        .from('lobbies')
-        .delete()
-        .eq('id', lobbyId)
-
-      if (error) throw error
-      forgetBrowserAtrium(lobbyId)
       forgetDriveAtrium(lobbyId)
+      // Its working copy here, unless another account on this browser still
+      // holds it in Drive: that copy is theirs too.
+      if (!anotherAccountsDriveAtrium(lobbyId)) {
+        const { error } = await (await clientFor(lobbyId))
+          .from('lobbies')
+          .delete()
+          .eq('id', lobbyId)
+        if (error) throw error
+        forgetBrowserAtrium(lobbyId)
+      }
       // Left, it's under "Shared with you" again.
       lookForInvitations()
 
@@ -1229,14 +1243,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   {/* The cut corner every committing action wears. */}
                   <button
                     onClick={createLobby}
-                    className="flex-1 py-2.5 text-xs tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
+                    disabled={creating}
+                    aria-busy={creating}
+                    className="flex-1 py-2.5 text-xs tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait disabled:hover:scale-100"
                     style={{ background: 'rgb(var(--c-accent))', color: 'rgb(var(--c-ground))', clipPath: DONATE_CUT }}
                   >
-                    {t('browser.createCommit')}
+                    {creating ? `◇ ${t(newWhere === 'drive' ? 'browser.drive.converting' : 'transfer.import.creating')}` : t('browser.createCommit')}
                   </button>
                   <button
                     onClick={() => setShowCreateLobby(false)}
-                    className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+                    disabled={creating}
+                    className="px-4 py-2 disabled:opacity-40 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
                   >
                     {t('common.cancel')}
                   </button>
