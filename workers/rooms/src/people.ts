@@ -26,6 +26,10 @@ const TABLES = [
   // Each Google account's grant (its refresh token, sealed -- src/google.ts):
   // so it consents once, not at each sign-in on each browser.
   'create table if not exists google_grants (google_id text primary key, sealed text not null, updated_at integer not null)',
+  // Accounts banned by the platform's operator: refused everything the
+  // worker runs (who.ts, whoIs; google.ts, signing in and renewing). Its
+  // username and kind as they were, for the operator's list.
+  'create table if not exists bans (account text primary key, username text, kind text not null, reason text, by_account text not null, at integer not null)',
   // A Google account's Pinterest connection (src/pinterest.ts): its tokens, sealed.
   'create table if not exists pinterest (account text primary key, sealed text not null, username text, updated_at integer not null)',
   'create index if not exists links_account on links (account)',
@@ -85,39 +89,31 @@ export async function link(env: Env, googleId: string, account: string): Promise
     .bind(googleId, account, Date.now()).run()
 }
 
-/** The existing account a Google account belongs to -- known whichever way
- *  that account was made: it connected Drive with this Google (linked here),
- *  it signed up with it (Supabase's identities, by Google's id for the
- *  person -- add_account_for_google.sql), or it has the address Google has
- *  verified as this person's (by email and password, say --
- *  add_account_for_email.sql). Linked from then on, where Google's id is
- *  known. */
+/** The existing account a Google sign-in is -- the same person by Google's
+ *  own word, and only so: it signed up with this Google (Supabase's
+ *  identities, by Google's id for the person -- add_account_for_google.sql),
+ *  or it has the address Google verified as this person's (made with email
+ *  and a password, say -- add_account_for_email.sql); Supabase signs this
+ *  Google in to it either way. A Google under another address is another
+ *  account (the user's rule, 2026-10-18) -- even one an existing account
+ *  connected its Drive with: that link is the Drive's (resume), not who's
+ *  who. Linked from then on, where Google's id is known. */
 export async function linkedTo(env: Env, googleId: string | null, email: string | null): Promise<Existing | null> {
   if (!env.PEOPLE) return null
   await tablesIn(env.PEOPLE)
   const signedUpWithGoogle = googleId ? await supabaseAnswer(env, 'account_for_google', { p_google_id: googleId }) : null
-  const seen = googleId
-    ? (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account ?? null
-    : null
   const byAddress = email && env.SUPABASE_WORKER_KEY ? await supabaseAnswer(env, 'account_for_email', { p_email: email, p_key: env.SUPABASE_WORKER_KEY }) : null
-  const account = seen ?? signedUpWithGoogle ?? byAddress
+  const account = signedUpWithGoogle ?? byAddress
   if (!account) return null
-  if (googleId && !seen) await link(env, googleId, account)
-  return {
-    account,
-    // How it signs in now: with this Google, through Supabase -- or with
-    // its email and a password.
-    how: account === signedUpWithGoogle ? 'google' : 'password',
-    // Whether Supabase itself will take this Google for that account: it
-    // has this Google already, or this address Google verified (Supabase
-    // links an identity with the same confirmed address by itself). Not so
-    // for an account known only by its Drive, under another address.
-    joinable: account === signedUpWithGoogle || account === byAddress,
-  }
+  // Written only when it's new: reads are far cheaper than writes here.
+  const seen = googleId ? (await env.PEOPLE.prepare('select account from links where google_id = ?').bind(googleId).first<{ account: string }>())?.account : null
+  if (googleId && seen !== account) await link(env, googleId, account)
+  // How it signs in now: with this Google, through Supabase -- or with its
+  // email and a password (and this Google too, once Supabase has linked it).
+  return { account, how: account === signedUpWithGoogle ? 'google' : 'password' }
 }
-/** An existing account, how its person signs in to it, and whether
- *  Supabase will sign this Google in to it. */
-export interface Existing { account: string; how: 'google' | 'password'; joinable: boolean }
+/** An existing account, and how its person signs in to it. */
+export interface Existing { account: string; how: 'google' | 'password' }
 
 /** A Google account made for someone whose Google is an existing account's
  *  -- made before the worker asked, or by an existing account signing up
@@ -147,6 +143,39 @@ export async function forgetAccount(db: D1Database, id: string, unfinished = fal
     db.prepare('delete from pinterest where account = ?').bind(id),
     db.prepare(`delete from accounts where id = ?${unfinished ? ' and username is null' : ''}`).bind(id),
   ])
+}
+
+// Whether an account is banned, as the directory said a minute ago at most:
+// every request asks, and most would otherwise read it. (Another instance of
+// the worker sees a ban within the minute.)
+const BAN_FRESH_MS = 60_000
+const bansSeen = new Map<string, { banned: boolean; at: number }>()
+export async function isBanned(env: Env, id: string): Promise<boolean> {
+  if (!env.PEOPLE) return false
+  const seen = bansSeen.get(id)
+  if (seen && Date.now() - seen.at < BAN_FRESH_MS) return seen.banned
+  await tablesIn(env.PEOPLE)
+  const banned = !!(await env.PEOPLE.prepare('select 1 from bans where account = ?').bind(id).first())
+  // ponytail: one map per instance, emptied whole past 10,000 -- an LRU if instances ever live long with many people.
+  if (bansSeen.size > 10_000) bansSeen.clear()
+  bansSeen.set(id, { banned, at: Date.now() })
+  return banned
+}
+
+// The platform's operator (add_platform_admin.sql), as Supabase says --
+// asked with their own sign-in.
+async function isOperator(env: Env, who: Who, token: string): Promise<boolean> {
+  if (who.kind !== 'supabase') return false
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_platform_admin`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    return response.ok && (await response.json()) === true
+  } catch {
+    return false
+  }
 }
 
 /** Whether an account's row is here (a Google account deleted, or taken for
@@ -308,6 +337,45 @@ export async function people(request: Request, env: Env, what: string): Promise<
     }
 
     // One's invitations, the newest first, with who sent each.
+    // The platform's operator's: bans. An account banned by its username --
+    // a Google account's, or an existing account's (in the directory, or
+    // else as Supabase knows it); its Supabase half is the operator's app's
+    // to ask for (supabase/functions/ban-account). Unbanned; and the list.
+    case 'ban':
+    case 'unban':
+    case 'bans': {
+      if (!(await isOperator(env, who, asked.token as string))) return answer(403, { error: 'Not allowed' })
+      if (what === 'bans') {
+        const { results } = await db.prepare('select account, username, kind, reason, at from bans order by at desc').all()
+        return answer(200, results)
+      }
+      if (what === 'unban') {
+        const account = text('account', 64)
+        if (!account) return answer(400, { error: 'body' })
+        const row = await db.prepare('select kind from bans where account = ?').bind(account).first<{ kind: string }>()
+        await db.prepare('delete from bans where account = ?').bind(account).run()
+        bansSeen.delete(account)
+        return answer(200, { account, kind: row?.kind ?? null })
+      }
+      const username = text('username', 40)?.trim().replace(/^@/, '')
+      if (!username) return answer(400, { error: 'body' })
+      let found = await db.prepare('select id, kind, username from accounts where username = ? collate nocase').bind(username).first<{ id: string; kind: string; username: string }>()
+      if (!found) {
+        const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?username=eq.${encodeURIComponent(username)}&select=id,username`, {
+          headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${asked.token as string}` },
+        }).catch(() => null)
+        const rows = response?.ok ? await response.json() as { id: string; username: string }[] : []
+        if (rows[0]) found = { id: rows[0].id, kind: 'supabase', username: rows[0].username }
+      }
+      if (!found) return answer(404, { error: 'No such account' })
+      if (found.id === who.id) return answer(400, { error: 'Not oneself' })
+      await db.prepare(`insert into bans (account, username, kind, reason, by_account, at) values (?, ?, ?, ?, ?, ?)
+        on conflict (account) do update set reason = excluded.reason, by_account = excluded.by_account, at = excluded.at`)
+        .bind(found.id, found.username, found.kind, text('reason', 500) || null, who.id, Date.now()).run()
+      bansSeen.delete(found.id)
+      return answer(200, { account: found.id, kind: found.kind, username: found.username })
+    }
+
     case 'invites': {
       const { results } = await db.prepare(`select i.id, i.from_user, i.roster, i.lobby_id, i.name, i.secret, i.created_at,
         coalesce(a.display_name, a.username) as from_name from invites i left join accounts a on a.id = i.from_user

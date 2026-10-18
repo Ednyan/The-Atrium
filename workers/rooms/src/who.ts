@@ -3,6 +3,7 @@
 // worker's parts share besides: what it's given, and how it answers pages.
 
 import type { Room } from './index'
+import { isBanned } from './people'
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>
@@ -51,7 +52,14 @@ export interface Who { id: string; kind: 'google' | 'supabase'; email?: string }
  *  to its stand-in, by the same address under it. */
 export const outbound = (env: Env, url: string) => (env.TEST_UPSTREAM ? `${env.TEST_UPSTREAM}/${url.replace(/^https:\/\//, '')}` : url)
 
+/** Who's asking, by their token -- or null: none, not one this worker or
+ *  Supabase knows, or an account banned (people.ts), as good as signed out
+ *  for everything the worker runs. */
 export async function whoIs(token: string | null | undefined, env: Env): Promise<Who | null> {
+  const who = await identify(token, env)
+  return who && !(await isBanned(env, who.id)) ? who : null
+}
+async function identify(token: string | null | undefined, env: Env): Promise<Who | null> {
   if (!token) return null
   if (token.startsWith(SESSION)) {
     const id = await sessionUser(env, token)

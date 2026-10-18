@@ -925,6 +925,23 @@ public list. Contributions already need no account.
   - **Secrets on the worker:** CF_TURN_KEY_ID, CF_TURN_KEY_TOKEN,
     CF_ACCOUNT_ID, CF_ANALYTICS_TOKEN, RELAY_BUDGET_GB (optional),
     RESEND_API_KEY, PINTEREST_CLIENT_ID, PINTEREST_CLIENT_SECRET.
+- **Step 7, linking and bans (2026-10-19).**
+  - **Linking is by Google's own word only** (the user's rule): the Google
+    an account signed up with, or the address Google verified. Supabase
+    links either by itself. A Google under another address is another
+    account, even one an existing account connected its Drive with. That
+    link is kept only to give the existing account its Drive on a new
+    browser (`resume`).
+  - **Bans are the platform operator's**, from the Developers page (Bans):
+    by username, with a reason, listed, and lifted.
+    - The worker's D1 `bans` is the authority, and `whoIs` refuses a banned
+      account (cached a minute per instance). So: no directory, rooms or
+      functions.
+    - Google sign-in and renewal answer `banned`: the browser signs out, and
+      the sign-in page says why.
+    - An existing account is also banned in Supabase Auth
+      (`supabase/functions/ban-account`, operator-only), so it can't sign in
+      there either.
   - Usernames for Google accounts need `add_username_taken.sql` run.
 
 ## Phase 7: local atriums in the browser, for everyone else

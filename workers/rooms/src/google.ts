@@ -17,7 +17,7 @@
 // (src/who.ts), which is how they're known to the rooms and the directory.
 
 import { goodbye } from './mail'
-import { accountKept, forgetAccount, forgetGoogleGrant, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
+import { accountKept, forgetAccount, forgetGoogleGrant, isBanned, googleGrantFor, keepGoogleGrant, link, linkedGoogleIds, linkedTo, meet, supersededBy } from './people'
 import { accountIdFor, fromBase64, fromUrl, keyFrom, personOf, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
 // A grant: Google's refresh token (none for a Google account signed in
@@ -155,6 +155,8 @@ export async function google(request: Request, env: Env, what: string): Promise<
     // gone, and its person pointed to the account they already have.
     const superseded = grant.k === 'google' ? await supersededBy(env, grant.a, googleId ?? null) : null
     if (superseded) return answer(409, { error: 'existing account', how: superseded.how })
+    // Banned, since: said, and its browser signs out.
+    if (await isBanned(env, grant.a)) return answer(403, { error: 'banned' })
     // A Google account deleted: its grant renews nothing (the browser signs out).
     if (grant.k === 'google' && env.PEOPLE && !await accountKept(env.PEOPLE, grant.a)) return answer(401, { error: 'grant' })
     return answer(200, {
@@ -185,6 +187,8 @@ async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, 
   }
   if (!person) return [400, { error: 'identity' }]
   const existing = who ? null : await linkedTo(env, person.sub, person.email ?? null)
+  // Banned: told so, and nothing given (who.ts refuses its sessions too).
+  if (existing && await isBanned(env, existing.account)) return [403, { error: 'banned' }]
   if (existing) {
     return [200, {
       ...passOf(got),
@@ -193,6 +197,7 @@ async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, 
     }]
   }
   const account: Who = { id: await accountIdFor(person.sub), kind: 'google' }
+  if (await isBanned(env, account.id)) return [403, { error: 'banned' }]
   // A Google account is that Google account's alone.
   if (who && who.id !== account.id) return [409, { error: 'another google account' }]
   await meet(env, account.id, person)
