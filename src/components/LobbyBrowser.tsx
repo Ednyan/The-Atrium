@@ -8,7 +8,7 @@ import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
 import KeptWhere, { type Where } from './KeptWhere'
 import { GOOGLE_CLIENT_ID, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
-import { anotherAccountsDriveAtrium, askToJoin, driveStanding, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -27,7 +27,8 @@ import { useTranslation } from '../lib/i18n'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
-// Phase 4's Drive test (components/DriveSpike), for whoever turned it on.
+// Phase 4's Drive test (components/DriveSpike): the platform operator's alone,
+// with Drive turned on.
 const DriveSpike = lazy(() => import('./DriveSpike'))
 const driveSpikeOn = driveTesting
 import type { Lobby } from '../types/database'
@@ -454,12 +455,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // Drive atriums one's out of -- removed, blocked, or deleted by their owner,
   // as each one's roster says -- let go of: off the list, the copy here gone
-  // (lib/driveSync, leaveDriveAtrium), and said.
+  // (lib/driveSync, leaveDriveAtrium), and said. Those one's in, their
+  // owner's latest picture taken along the way.
   const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     for (const lobby of lobbies) {
-      const standing = await driveStanding(lobby.id, user.id)
+      const standing = await lookAtDriveAtrium(lobby.id, user.id)
       if (!standing || standing === 'in') continue
       await leaveDriveAtrium(lobby.id).catch(error => console.warn('[drive] letting go of', lobby.id, error))
       setBrowserLobbies(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
@@ -1639,7 +1641,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           </section>
           )}
 
-          {driveSpikeOn && <Suspense fallback={null}><DriveSpike /></Suspense>}
+          {driveSpikeOn && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
       </div>
 

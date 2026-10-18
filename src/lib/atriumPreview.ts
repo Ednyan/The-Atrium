@@ -9,11 +9,15 @@
 // after leaving, once the browser is idle. Everything it needs is taken as the
 // atrium is left, since the canvas and the store are gone straight after.
 //
+// Made by the atrium's owner alone, and the same for everyone: a cloud
+// atrium's in its row; a Drive atrium's sent to Drive too, and taken from
+// there by everyone else's copy (lib/driveSync, sharePreview).
+//
 // On the web each picture is a new file, <id>/preview-<time>.webp -- the CDN
 // keeps a file an hour whatever its query string, so a file written over
 // would go on showing the old picture -- and the one it replaces is removed
-// (by the atrium's owner or an admin, whoever uploaded it: add_lobby_preview.sql),
-// so none is left behind. In a vault, one file an atrium, rewritten.
+// (add_lobby_preview.sql), so none is left behind. In a vault, one file an
+// atrium, rewritten.
 
 import { supabase, isLocalData } from './supabase'
 import { exportImage, loadPicture } from './exportImage'
@@ -108,32 +112,42 @@ async function makePreview(client: any, local: boolean, lobbyId: string, traces:
         underlay: await roomPicture(room),
       }),
     })
-    const path = local ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
-    const { error } = await client.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: local })
-    if (error) { console.warn('[preview] not uploaded:', error); return }
-    const url: string = client.storage.from('traces').getPublicUrl(path).data.publicUrl
-    // The vault's file was rewritten in place: what it's read as, read again.
-    if (local) await (await import('./localDb')).refreshLocalUrl(url)
-    const { data: before } = await (client.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
-    const at = new Date().toISOString()
-    const { error: saved } = await (client.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
-    // Not kept: the file goes too.
-    if (saved) {
-      console.warn('[preview] not kept:', saved)
-      if (!local) void client.storage.from('traces').remove([path])
-      return
-    }
+    if (!await keepPreview(client, local, lobbyId, blob)) return
     try { localStorage.setItem(memoryKey(lobbyId), JSON.stringify({ print, at: Date.now() })) } catch { /* the next leave tries again */ }
-    // The one it replaces, gone (its address, less any query an earlier
-    // version gave it).
-    const previous = !local && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
-    if (previous && previous !== path) {
-      void client.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
-    }
-    window.dispatchEvent(new CustomEvent<PreviewDetail>('atrium:preview', { detail: { lobbyId, url, at } }))
+    // A Drive atrium's is everyone's: sent there too.
+    if (local) await (await import('./driveSync')).sharePreview(lobbyId, blob).catch(error => console.warn('[preview] not shared:', error))
   } catch (error) {
     console.warn('[preview] not made:', error)
   }
+}
+
+/** A picture kept as an atrium's (`client`'s, `local` if a vault's): its file,
+ *  its row, the one it replaces removed, and the atrium browser told. False
+ *  if it couldn't be. */
+export async function keepPreview(client: any, local: boolean, lobbyId: string, blob: Blob): Promise<boolean> {
+  const path = local ? `${lobbyId}/preview.webp` : `${lobbyId}/preview-${Date.now()}.webp`
+  const { error } = await client.storage.from('traces').upload(path, blob, { contentType: 'image/webp', upsert: local })
+  if (error) { console.warn('[preview] not uploaded:', error); return false }
+  const url: string = client.storage.from('traces').getPublicUrl(path).data.publicUrl
+  // The vault's file was rewritten in place: what it's read as, read again.
+  if (local) await (await import('./localDb')).refreshLocalUrl(url)
+  const { data: before } = await (client.from('lobbies') as any).select('preview_url').eq('id', lobbyId).maybeSingle()
+  const at = new Date().toISOString()
+  const { error: saved } = await (client.from('lobbies') as any).update({ preview_url: url, preview_at: at }).eq('id', lobbyId)
+  // Not kept: the file goes too.
+  if (saved) {
+    console.warn('[preview] not kept:', saved)
+    if (!local) void client.storage.from('traces').remove([path])
+    return false
+  }
+  // The one it replaces, gone (its address, less any query an earlier
+  // version gave it).
+  const previous = !local && typeof before?.preview_url === 'string' ? before.preview_url.split('/object/public/traces/')[1]?.split('?')[0] : null
+  if (previous && previous !== path) {
+    void client.storage.from('traces').remove([decodeURIComponent(previous)]).then(({ error: kept }: { error: unknown }) => { if (kept) console.warn('[preview] old one not removed:', kept) })
+  }
+  window.dispatchEvent(new CustomEvent<PreviewDetail>('atrium:preview', { detail: { lobbyId, url, at } }))
+  return true
 }
 
 // The room under the traces, as it was seen: its colour; its picture as

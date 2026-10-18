@@ -624,6 +624,12 @@ media, because it changes the file format.
     sent that up: a rejoining editor once wiped an atrium's traces.
   - For the same reason, a save's changes reach the sync's memory only after
     the working copy has them.
+- **The card's picture is the owner's, the same for everyone (2026-10-18).**
+  - Only the owner's app makes it, for every kind of atrium.
+  - A Drive atrium's is also sent sealed into the owner's folder
+    (`atrium.preview`, one file written over, its id in the roster).
+  - Everyone else's atrium browser takes it when its version moves, along
+    with the roster check, and keeps it as that copy's picture.
 - **Deleted traces can be brought back** by the owner or an admin, under
   Atrium Settings → Deleted (`findDeletions`, `restoreDeletions`).
   - Looking reads every save in Drive once. It lists each save that deleted

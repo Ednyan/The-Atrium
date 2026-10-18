@@ -163,7 +163,8 @@ export async function myIdentity(me: { id: string }): Promise<Mine> {
 // the generations of its key one has opened. Two accounts on one browser see
 // their own; one's invitation to an atrium another holds here isn't taken for
 // one kept.
-interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean }
+// The atrium's picture as this copy last took it: its file (the owner's) and version.
+interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean; preview?: string; previewVersion?: string }
 const KEPT = 'atrium.driveAtriums.byAccount'
 // Before (2026-10-18): one list for the whole browser. Each entry is claimed
 // by the account its roster, as last read here, has in it, as that account
@@ -245,17 +246,59 @@ export const endedFor = (lobbyId: string, user = signedInHere()) => ended.get(`$
 
 /** Where `me` stands in a Drive atrium held here, by its roster (read with
  *  the app's key alone, no sign-in): in, or out and why. Null if Drive can't
- *  say just now -- nothing's let go on a guess. */
-export async function driveStanding(lobbyId: string, me: string): Promise<'in' | DriveEnd | null> {
+ *  say just now -- nothing's let go on a guess. In, its card's picture is
+ *  brought up to its owner's along the way. */
+export async function lookAtDriveAtrium(lobbyId: string, me: string): Promise<'in' | DriveEnd | null> {
   const known = ended.get(`${me}/${lobbyId}`)
   if (known) return known
   const kept = allKept(me)[lobbyId]
   if (!kept) return null
+  let roster: Roster
   try {
-    return outOf(await readRoster(kept.roster), me) ?? 'in'
+    roster = await readRoster(kept.roster)
   } catch (error) {
     return /Drive 404/.test(String(error)) ? 'deleted' : null
   }
+  const out = outOf(roster, me)
+  if (out) return out
+  await takePreview(lobbyId, kept, roster, me).catch(error => console.warn('[drive] the atrium’s picture:', error))
+  return 'in'
+}
+
+// ---------------------------------------------------------------- the atrium's picture
+
+// The picture on a Drive atrium's card (lib/atriumPreview) is its owner's,
+// the same for everyone: the owner's app sends it sealed into its folder --
+// one file, written over, named in the roster -- and everyone else's takes it
+// from there when its version moves. Each copy keeps it as its own.
+const PREVIEW = 'atrium.preview'
+
+/** The owner's: its copy's new picture, sent to Drive for everyone. Quietly
+ *  not without Drive just now (its window needs a click): the next one goes. */
+export async function sharePreview(lobbyId: string, picture: Blob): Promise<void> {
+  const kept = allKept()[lobbyId]
+  if (!kept?.owner || !store.canWrite()) return
+  const sealed = await seal(await keyringFrom(kept), await bytesOf(picture))
+  const write = (place: { id: string } | { parent: string }) => store.write(PREVIEW, sealed, place)
+  // Written over -- or anew, if it's gone (removed by hand).
+  const file = kept.preview
+    ? await write({ id: kept.preview }).catch(error => { if (/Drive 404/.test(String(error))) return write({ parent: kept.folder }); throw error })
+    : await write({ parent: kept.folder })
+  keep(lobbyId, { ...kept, preview: file.id, previewVersion: await store.version(file.id) })
+  if (file.id !== kept.preview) await changeRoster(lobbyId, signedInHere(), async roster => ({ roster: { ...roster, preview: file.id } }))
+}
+
+// The owner's picture, if it's moved since this copy took it -- opened with
+// the keys this account holds (a generation made since waits for its next
+// visit to the atrium).
+async function takePreview(lobbyId: string, kept: Kept, roster: Roster, me: string): Promise<void> {
+  if (!roster.preview) return
+  const version = await store.version(roster.preview)
+  if (version === kept.previewVersion) return
+  const picture = await unseal(await keyringFrom(kept), await store.readByLink(roster.preview))
+  const [{ browserEngine }, { keepPreview }] = await Promise.all([import('./browserAtriums'), import('./atriumPreview')])
+  if (!await keepPreview((await browserEngine()).localClient, true, lobbyId, new Blob([picture as BlobPart], { type: 'image/webp' }))) return
+  keep(lobbyId, { ...kept, previewVersion: version }, me)
 }
 /** Its owner's, here: Delete takes it out of Drive; anyone else's leaves. */
 export const isDriveOwner = (lobbyId: string) => !!allKept()[lobbyId]?.owner

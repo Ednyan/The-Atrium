@@ -978,9 +978,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   }
   const leaveWithTransition = useCallback(() => {
     setLeaving(true)
-    // Its picture for the atrium browser, from what's on screen now -- by
-    // whoever may change the atrium (lib/atriumPreview), made after leaving.
-    if (isLobbyOwner || currentLobby?.adminUserIds?.includes(userId)) {
+    // Its picture for the atrium browser, from what's on screen now -- by its
+    // owner alone, the same for everyone (lib/atriumPreview), made after leaving.
+    if (isLobbyOwner) {
       const { traces, links, layers } = useGameStore.getState()
       captureAtriumPreview(lobbyId, {
         traces, links, layers,

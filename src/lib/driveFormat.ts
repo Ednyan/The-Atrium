@@ -301,6 +301,9 @@ export interface Roster {
   blocked: string[]
   // Each generation of the atrium's key, encrypted for each member.
   keys: { n: number; for: Record<string, Wrapped> }[]
+  // The picture on its card, its owner's (lib/driveSync, sharePreview): the
+  // sealed file in the owner's folder, written over each time.
+  preview?: string
 }
 
 export const memberOf = (roster: Roster, user: string) => roster.members.find(member => member.user === user) ?? null
