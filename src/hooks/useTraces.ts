@@ -252,7 +252,8 @@ export function useTraces(lobbyId: string | null) {
                 // Already resolved above, so this hits the cache.
                 if (resolveLocalDisplayUrl) {
                   const resolved = await resolveLocalDisplayUrl(raw)
-                  if (resolved) imageUrls.push(resolved)
+                  // Still local://: the file isn't here (yet) -- nothing to load.
+                  if (resolved && !resolved.startsWith('local://')) imageUrls.push(resolved)
                 }
               } else {
                 imageUrls.push(raw)

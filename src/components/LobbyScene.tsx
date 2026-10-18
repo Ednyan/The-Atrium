@@ -500,6 +500,8 @@ function refreshBackdrop(theme: ThemeSettings | null | undefined, app: Applicati
   backdrop.src = ''
   paintBackdrop(el, theme)
   void resolveLocalStreamUrl(url).then(src => {
+    // Still local://: its file isn't here -- the theme's colours alone.
+    if (src.startsWith('local://')) return
     const img = new Image()
     img.onload = () => {
       if (backdrop.url !== url) return

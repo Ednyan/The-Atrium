@@ -1701,6 +1701,13 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         // the export and PDF paths still use the blob resolver.
         if (url.startsWith('local://')) {
           resolveLocalStreamUrl(url).then(resolvedUrl => {
+            // Still local://: the file isn't here -- marked so (the render
+            // says it's missing, and looks again when it arrives), with no
+            // load the site's policy would refuse.
+            if (resolvedUrl.startsWith('local://')) {
+              setImageProxySources(prev => ({ ...prev, [trace.id]: resolvedUrl }))
+              return
+            }
             const img = new Image()
             img.onload = () => {
               if (img.naturalWidth && img.naturalHeight) {

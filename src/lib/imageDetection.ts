@@ -14,6 +14,8 @@ export async function isUrlAnImage(url: string | undefined | null): Promise<bool
   if (url.startsWith('local://')) {
     const mod = await import('./localDb')
     testUrl = await mod.resolveLocalUrl(url)
+    // Still local://: the file isn't here to look at.
+    if (testUrl.startsWith('local://')) return false
   }
 
   return new Promise((resolve) => {
