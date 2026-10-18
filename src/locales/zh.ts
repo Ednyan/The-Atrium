@@ -1071,6 +1071,8 @@ const zh: Catalogue = {
   'auth.error.existingAccount': '这个 Google 账号属于你之前创建的账号。请在下方登录该账号。',
   'auth.error.usernameLookup': '无法查询用户名',
   'auth.error.usernameNotFound': '找不到这个用户名',
+  'auth.error.usernameOrPassword': '用户名或密码错误。',
+  'auth.error.tooManyTries': '此用户名的尝试次数过多。请等待 15 分钟，或使用电子邮箱登录。',
   'auth.error.logInFailed': '登录失败',
   'auth.error.resetEmailFailed': '无法发送重置邮件',
   'welcome.clickToRename': '点击可重命名',

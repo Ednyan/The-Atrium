@@ -1078,6 +1078,8 @@ const ptBR: Catalogue = {
   'auth.error.existingAccount': 'Esta conta Google pertence a uma conta que você criou antes. Entre nela abaixo.',
   'auth.error.usernameLookup': 'Não foi possível buscar o nome de usuário',
   'auth.error.usernameNotFound': 'Nome de usuário não encontrado',
+  'auth.error.usernameOrPassword': 'Usuário ou senha incorretos.',
+  'auth.error.tooManyTries': 'Tentativas demais com este usuário. Espere 15 minutos ou entre com seu e-mail.',
   'auth.error.logInFailed': 'Não foi possível entrar',
   'auth.error.resetEmailFailed': 'Não foi possível enviar o e-mail de redefinição',
   'welcome.clickToRename': 'Clique para renomear',

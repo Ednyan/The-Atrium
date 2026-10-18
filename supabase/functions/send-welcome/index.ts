@@ -112,14 +112,11 @@ Deno.serve(async (req: Request) => {
     //
     // So the address is checked too. What a person remembers is being written
     // to twice, not how many rows we kept.
-    const { data: greetedAlready } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('email', user.email.toLowerCase())
-      .not('welcome_email_sent_at', 'is', null)
-      .limit(1)
+    // Asked of Auth's own emails (address_already_welcomed, hide_emails_1.sql):
+    // profiles no longer keeps a copy, which everyone could read.
+    const { data: greetedAlready } = await admin.rpc('address_already_welcomed', { p_email: user.email })
 
-    if (greetedAlready && greetedAlready.length > 0) {
+    if (greetedAlready === true) {
       // Stamped here as well, so this is settled once instead of re-asked on
       // every sign-in for the rest of the account's life.
       await admin

@@ -1081,6 +1081,8 @@ const ptPT: Catalogue = {
   'auth.error.existingAccount': 'Esta conta Google pertence a uma conta que criou antes. Inicie sessão nela abaixo.',
   'auth.error.usernameLookup': 'Não foi possível procurar o nome de utilizador',
   'auth.error.usernameNotFound': 'Nome de utilizador não encontrado',
+  'auth.error.usernameOrPassword': 'Nome de utilizador ou palavra-passe incorretos.',
+  'auth.error.tooManyTries': 'Demasiadas tentativas com este nome de utilizador. Aguarde 15 minutos ou inicie sessão com o seu e-mail.',
   'auth.error.logInFailed': 'Não foi possível iniciar sessão',
   'auth.error.resetEmailFailed': 'Não foi possível enviar o e-mail de reposição',
   'welcome.clickToRename': 'Clique para mudar o nome',

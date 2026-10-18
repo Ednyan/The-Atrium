@@ -1077,6 +1077,8 @@ const de: Catalogue = {
   'auth.error.existingAccount': 'Dieses Google-Konto gehört zu einem Konto, das du schon vorher erstellt hast. Melde dich unten damit an.',
   'auth.error.usernameLookup': 'Benutzername konnte nicht gesucht werden',
   'auth.error.usernameNotFound': 'Benutzername nicht gefunden',
+  'auth.error.usernameOrPassword': 'Falscher Benutzername oder falsches Passwort.',
+  'auth.error.tooManyTries': 'Zu viele Versuche für diesen Benutzernamen. Warte 15 Minuten oder melde dich mit deiner E-Mail an.',
   'auth.error.logInFailed': 'Anmeldung fehlgeschlagen',
   'auth.error.resetEmailFailed': 'Zurücksetzungs-E-Mail konnte nicht gesendet werden',
   'welcome.clickToRename': 'Zum Umbenennen klicken',

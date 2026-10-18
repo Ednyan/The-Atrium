@@ -18,7 +18,10 @@ async function ask<T>(what: string, body: object = {}): Promise<T> {
   // A plain request (a string body, no headers of its own): no preflight.
   const response = await fetch(`${workerUrl()}/people/${what}`, { method: 'POST', body: JSON.stringify({ ...body, token }) })
   const answer = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(answer?.error === 'taken' ? 'USERNAME_TAKEN' : `The directory said ${answer?.error ?? response.status}`)
+  if (answer?.error === 'taken') throw new Error('USERNAME_TAKEN')
+  // A username's availability that couldn't be checked: never taken for free.
+  if (answer?.error === 'check') throw new Error('USERNAME_CHECK')
+  if (!response.ok) throw new Error(`The directory said ${answer?.error ?? response.status}`)
   return answer as T
 }
 
@@ -27,6 +30,20 @@ type Settable = Partial<Pick<Person, 'username' | 'display_name' | 'drive_key' |
 export const myEntry = (set?: Settable) => ask<Person & { kind: string; email: string | null }>('me', set ? { set } : {})
 export const personNamed = async (username: string): Promise<Person | null> => (await ask<Person[]>('find', { username }))[0] ?? null
 export const peopleByIds = (ids: string[]): Promise<Person[]> => (ids.length ? ask<Person[]>('find', { ids }) : Promise.resolve([]))
+
+/** Whether a username is free across every account -- the directory's and
+ *  existing accounts', compared ignoring case -- asked without signing in (a
+ *  sign-up has no account yet). `mine`: one's own account, whose own name is
+ *  free to it. Null when it couldn't be asked: never taken for free. */
+export async function usernameAvailable(username: string, mine?: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${workerUrl()}/people/available`, { method: 'POST', body: JSON.stringify({ username, ...(mine ? { mine } : {}) }) })
+    const answer = response.ok ? await response.json() : null
+    return typeof answer?.available === 'boolean' ? answer.available : null
+  } catch {
+    return null
+  }
+}
 
 export const sendInvitation = (invitation: { to: string; roster: string; lobby_id: string; name: string; secret: string | null }) => ask('invite', invitation)
 export const invitationsToMe = () => ask<InvitationRow[]>('invites')

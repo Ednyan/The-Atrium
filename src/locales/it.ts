@@ -1078,6 +1078,8 @@ const it: Catalogue = {
   'auth.error.existingAccount': 'Questo account Google appartiene a un account che hai creato prima. Accedi con quello qui sotto.',
   'auth.error.usernameLookup': 'Impossibile cercare il nome utente',
   'auth.error.usernameNotFound': 'Nome utente non trovato',
+  'auth.error.usernameOrPassword': 'Nome utente o password errati.',
+  'auth.error.tooManyTries': 'Troppi tentativi per questo nome utente. Attendi 15 minuti o accedi con la tua email.',
   'auth.error.logInFailed': 'Accesso non riuscito',
   'auth.error.resetEmailFailed': 'Impossibile inviare l’e-mail di reimpostazione',
   'welcome.clickToRename': 'Clicca per rinominare',

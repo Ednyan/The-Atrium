@@ -147,7 +147,7 @@ export function LobbyManagement({ lobby, isOwner, onClose, onUpdate }: LobbyMana
     try {
       const { data, error } = await (supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, player_color')
         .ilike('username', `%${searchQuery}%`)
         .limit(10) as any)
 

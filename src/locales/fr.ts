@@ -1076,6 +1076,8 @@ const fr: Catalogue = {
   'auth.error.existingAccount': 'Ce compte Google appartient à un compte que vous avez créé auparavant. Connectez-vous à celui-ci ci-dessous.',
   'auth.error.usernameLookup': 'Impossible de rechercher le nom d’utilisateur',
   'auth.error.usernameNotFound': 'Nom d’utilisateur introuvable',
+  'auth.error.usernameOrPassword': 'Nom d’utilisateur ou mot de passe incorrect.',
+  'auth.error.tooManyTries': 'Trop d’essais pour ce nom d’utilisateur. Attendez 15 minutes, ou connectez-vous avec votre e-mail.',
   'auth.error.logInFailed': 'Échec de la connexion',
   'auth.error.resetEmailFailed': 'Impossible d’envoyer l’e-mail de réinitialisation',
   'welcome.clickToRename': 'Cliquez pour renommer',

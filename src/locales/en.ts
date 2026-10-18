@@ -1028,6 +1028,8 @@ export const en = {
   'auth.error.existingAccount': 'This Google account belongs to an account you made before. Sign in to it below.',
   'auth.error.usernameLookup': 'Failed to look up username',
   'auth.error.usernameNotFound': 'Username not found',
+  'auth.error.usernameOrPassword': 'Wrong username or password.',
+  'auth.error.tooManyTries': 'Too many tries for this username. Wait 15 minutes, or sign in with your email.',
   'auth.error.logInFailed': 'Failed to log in',
   'auth.error.resetEmailFailed': 'Failed to send reset email',
   'welcome.clickToRename': 'Click to rename',

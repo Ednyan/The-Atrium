@@ -1072,6 +1072,8 @@ const ko: Catalogue = {
   'auth.error.existingAccount': '이 Google 계정은 예전에 만든 계정의 것이에요. 아래에서 그 계정으로 로그인하세요.',
   'auth.error.usernameLookup': '사용자 이름을 조회하지 못했어요',
   'auth.error.usernameNotFound': '그 사용자 이름을 찾을 수 없어요',
+  'auth.error.usernameOrPassword': '사용자 이름 또는 비밀번호가 틀렸어요.',
+  'auth.error.tooManyTries': '이 사용자 이름으로 너무 많이 시도했어요. 15분 기다리거나 이메일로 로그인하세요.',
   'auth.error.logInFailed': '로그인하지 못했어요',
   'auth.error.resetEmailFailed': '재설정 메일을 보내지 못했어요',
   'welcome.clickToRename': '클릭하면 이름을 바꿔요',

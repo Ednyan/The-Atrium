@@ -106,6 +106,21 @@ export async function people(request: Request, env: Env, what: string): Promise<
   } catch {
     return answer(400, { error: 'body' })
   }
+  // Whether a username is free, asked before there's an account to ask with
+  // (a sign-up): here, or an existing account's. `mine`: whose own name it
+  // may be. Usernames are shown to everyone anyway.
+  if (what === 'available') {
+    const username = typeof asked.username === 'string' ? asked.username.trim() : ''
+    if (!USERNAME.test(username)) return answer(200, { available: false })
+    await tablesIn(db)
+    const here = await db.prepare('select id from accounts where username = ? collate nocase').bind(username).first<{ id: string }>()
+    const mine = typeof asked.mine === 'string' ? asked.mine : null
+    if (here && here.id !== mine) return answer(200, { available: false })
+    const elsewhere = await takenInSupabase(env, username, mine)
+    // Not answered: said so, never taken for free.
+    if (elsewhere === null) return answer(503, { error: 'check' })
+    return answer(200, { available: !elsewhere })
+  }
   const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
   if (!who) return answer(401, { error: 'sign-in' })
   await tablesIn(db)
@@ -122,7 +137,12 @@ export async function people(request: Request, env: Env, what: string): Promise<
         // An existing account's is the one its Supabase profile has, no other.
         if (who.kind === 'supabase' && (await supabaseUsername(env, who, asked.token as string))?.toLowerCase() !== username.toLowerCase()) return answer(403, { error: 'not yours' })
         const here = await db.prepare('select id from accounts where username = ? collate nocase and id <> ?').bind(username, who.id).first()
-        if (here || (who.kind === 'google' && await takenInSupabase(env, username))) return answer(409, { error: 'taken' })
+        if (here) return answer(409, { error: 'taken' })
+        if (who.kind === 'google') {
+          const elsewhere = await takenInSupabase(env, username, null)
+          if (elsewhere === null) return answer(503, { error: 'check' })
+          if (elsewhere) return answer(409, { error: 'taken' })
+        }
         await db.prepare('update accounts set username = ? where id = ?').bind(username, who.id).run()
       }
       if ('display_name' in set) {
@@ -201,18 +221,19 @@ function shown(row: Record<string, unknown> | null) {
 }
 
 /** Whether an existing account has that username (Supabase says yes or no,
- *  add_username_taken.sql). Unknown counts as taken: a username can't be
- *  given twice. */
-async function takenInSupabase(env: Env, username: string): Promise<boolean> {
+ *  add_username_taken.sql) -- `except` that account's own. Null when it
+ *  couldn't be asked: the caller says so, and never gives the name. */
+async function takenInSupabase(env: Env, username: string, except: string | null): Promise<boolean | null> {
   try {
     const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/username_taken`, {
       method: 'POST',
       headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_username: username }),
+      body: JSON.stringify({ p_username: username, ...(except && /^[0-9a-f-]{36}$/i.test(except) ? { p_except: except } : {}) }),
     })
-    return !response.ok || (await response.json()) !== false
+    const answer = response.ok ? await response.json() : null
+    return typeof answer === 'boolean' ? answer : null
   } catch {
-    return true
+    return null
   }
 }
 

@@ -1068,6 +1068,8 @@ const ja: Catalogue = {
   'auth.error.existingAccount': 'この Google アカウントは、以前に作成したアカウントのものです。下からそちらにログインしてください。',
   'auth.error.usernameLookup': 'ユーザー名を照会できませんでした',
   'auth.error.usernameNotFound': 'そのユーザー名は見つかりません',
+  'auth.error.usernameOrPassword': 'ユーザー名またはパスワードが違います。',
+  'auth.error.tooManyTries': 'このユーザー名での試行が多すぎます。15分待つか、メールアドレスでログインしてください。',
   'auth.error.logInFailed': 'ログインできませんでした',
   'auth.error.resetEmailFailed': '再設定メールを送れませんでした',
   'welcome.clickToRename': 'クリックで名前を変更',

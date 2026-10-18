@@ -1080,6 +1080,8 @@ const ru: Catalogue = {
   'auth.error.existingAccount': 'Этот аккаунт Google принадлежит аккаунту, созданному вами раньше. Войдите в него ниже.',
   'auth.error.usernameLookup': 'Не удалось найти имя пользователя',
   'auth.error.usernameNotFound': 'Имя пользователя не найдено',
+  'auth.error.usernameOrPassword': 'Неверное имя пользователя или пароль.',
+  'auth.error.tooManyTries': 'Слишком много попыток для этого имени. Подождите 15 минут или войдите по электронной почте.',
   'auth.error.logInFailed': 'Не удалось войти',
   'auth.error.resetEmailFailed': 'Не удалось отправить письмо для сброса',
   'welcome.clickToRename': 'Нажмите, чтобы переименовать',

@@ -1074,6 +1074,8 @@ const es: Catalogue = {
   'auth.error.existingAccount': 'Esta cuenta de Google pertenece a una cuenta que creaste antes. Inicia sesión en ella abajo.',
   'auth.error.usernameLookup': 'No se pudo buscar el nombre de usuario',
   'auth.error.usernameNotFound': 'Nombre de usuario no encontrado',
+  'auth.error.usernameOrPassword': 'Usuario o contraseña incorrectos.',
+  'auth.error.tooManyTries': 'Demasiados intentos con este usuario. Espera 15 minutos o inicia sesión con tu correo.',
   'auth.error.logInFailed': 'No se pudo iniciar sesión',
   'auth.error.resetEmailFailed': 'No se pudo enviar el correo de restablecimiento',
   'welcome.clickToRename': 'Haz clic para renombrar',

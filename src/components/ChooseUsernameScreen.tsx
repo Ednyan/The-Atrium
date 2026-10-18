@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import RichText from './RichText'
 import { supabase } from '../lib/supabase'
-import { myEntry, personNamed, publishAccount } from '../lib/people'
+import { myEntry, publishAccount, usernameAvailable } from '../lib/people'
 
 interface ChooseUsernameScreenProps {
   userId: string
@@ -57,29 +57,17 @@ export default function ChooseUsernameScreen({ userId, email, google = false, on
         await myEntry({ username: trimmed, display_name: trimmed })
         onComplete(trimmed)
       } catch (err: any) {
-        setError(err?.message === 'USERNAME_TAKEN' ? t('auth.errUsernameTaken') : err?.message || t('chooseName.errSave'))
+        setError(err?.message === 'USERNAME_TAKEN' ? t('auth.errUsernameTaken') : err?.message === 'USERNAME_CHECK' ? t('auth.error.usernameLookup') : err?.message || t('chooseName.errSave'))
         setLoading(false)
       }
       return
     }
     try {
-      // A Google account's, in the directory, is taken too.
-      const elsewhere = await personNamed(trimmed).catch(() => null)
-      if (elsewhere && elsewhere.id !== userId) {
-        setError(t('auth.errUsernameTaken'))
-        setLoading(false)
-        return
-      }
-      const { data: taken } = await (supabase
-        .from('profiles') as any)
-        .select('id')
-        .ilike('username', trimmed)
-        .maybeSingle()
-
-      // A row belonging to this same user is fine -- that's just re-running
-      // the step. Anyone else's is a genuine clash.
-      if (taken && taken.id !== userId) {
-        setError(t('auth.errUsernameTaken'))
+      // Free across every account, existing and Google ones alike -- one's
+      // own is fine: that's just re-running this step.
+      const available = await usernameAvailable(trimmed, userId)
+      if (available !== true) {
+        setError(t(available === false ? 'auth.errUsernameTaken' : 'auth.error.usernameLookup'))
         setLoading(false)
         return
       }
@@ -92,7 +80,6 @@ export default function ChooseUsernameScreen({ userId, email, google = false, on
           id: userId,
           username: trimmed,
           display_name: trimmed,
-          email,
           // Marks the name as deliberately picked, so this screen doesn't
           // reappear on the next sign-in.
           username_chosen: true,

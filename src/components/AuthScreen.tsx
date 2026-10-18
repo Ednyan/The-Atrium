@@ -4,6 +4,7 @@ import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { driveTesting } from '../lib/drive'
+import { usernameAvailable } from '../lib/people'
 
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
@@ -151,15 +152,11 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
 
     try {
-      // Check if username is already taken
-      const { data: existingUser } = await (supabase
-        .from('profiles') as any)
-        .select('username')
-        .eq('username', username)
-        .maybeSingle()
-
-      if (existingUser) {
-        setError(t('auth.errUsernameTaken'))
+      // Free across every account, existing and Google ones alike
+      // (lib/people) -- or, not answered, said so rather than called taken.
+      const available = await usernameAvailable(username)
+      if (available !== true) {
+        setError(t(available === false ? 'auth.errUsernameTaken' : 'auth.error.usernameLookup'))
         setLoading(false)
         return
       }
@@ -273,25 +270,18 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     try {
       let loginEmail = emailOrUsername
 
-      // Check if input is a username (not an email)
+      // A username: the account's email, given only for its password
+      // (email_for_sign_in, hide_emails_1.sql) -- emails are nobody else's to
+      // read -- then signed in with it, through Auth as ever.
       if (!emailOrUsername.includes('@')) {
-        // Look up email by username
-        const { data: profile, error: profileError } = await (supabase
-          .from('profiles') as any)
-          .select('email')
-          .eq('username', emailOrUsername)
-          .maybeSingle()
-
-        if (profileError) {
-          console.error('Profile lookup error:', profileError)
+        const { data: email, error: lookupError } = await (supabase as any).rpc('email_for_sign_in', { p_username: emailOrUsername, p_password: password })
+        if (lookupError) {
+          if (/too_many_attempts/.test(lookupError.message ?? '')) throw new Error(t('auth.error.tooManyTries'))
+          console.error('Username sign-in:', lookupError)
           throw new Error(t('auth.error.usernameLookup'))
         }
-
-        if (!profile) {
-          throw new Error(t('auth.error.usernameNotFound'))
-        }
-
-        loginEmail = profile.email
+        if (typeof email !== 'string') throw new Error(t('auth.error.usernameOrPassword'))
+        loginEmail = email
       }
 
       markSignInStarted()
