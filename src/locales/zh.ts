@@ -293,7 +293,7 @@ const zh: Catalogue = {
   'auth.sendResetLink': '发送重置链接',
   'auth.or': '或',
   'auth.continueWithGoogle': '使用 Google 继续',
-  'auth.googleConsent': '仅首次需要多一步：再次点击“使用 Google 继续”，并允许 Atrium 将你的 Atrium 保存在你的 Google 云端硬盘中。',
+  'auth.googleConsent': '仅首次需要多一步：再次点击“使用 Google 继续”并确认，即可登录你已有的账号。',
   'auth.withoutAccount': '不使用账号继续',
   'auth.withoutAccountHint': '你的 Atrium 会保存在此浏览器中。分享需要账号。',
   'auth.forgotPassword': '忘记密码？',

@@ -250,7 +250,7 @@ const de: Catalogue = {
   'auth.sendResetLink': 'Link zum Zurücksetzen senden',
   'auth.or': 'oder',
   'auth.continueWithGoogle': 'Mit Google fortfahren',
-  'auth.googleConsent': 'Noch ein Schritt, nur beim ersten Mal: Drücke erneut „Weiter mit Google“ und erlaube dem Atrium, deine Atrien in deinem Google Drive aufzubewahren.',
+  'auth.googleConsent': 'Noch ein Schritt, nur beim ersten Mal: Drücke erneut „Weiter mit Google“ und bestätige, um dich bei deinem bestehenden Konto anzumelden.',
   'auth.withoutAccount': 'Ohne Konto fortfahren',
   'auth.withoutAccountHint': 'Deine Atrien bleiben in diesem Browser. Zum Teilen brauchst du ein Konto.',
   'auth.forgotPassword': 'Passwort vergessen?',

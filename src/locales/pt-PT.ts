@@ -254,7 +254,7 @@ const ptPT: Catalogue = {
   'auth.sendResetLink': 'Enviar link de reposição',
   'auth.or': 'ou',
   'auth.continueWithGoogle': 'Continuar com o Google',
-  'auth.googleConsent': 'Mais um passo, só desta primeira vez: prima Continuar com a Google novamente e permita que o Atrium guarde os seus atriums no seu Google Drive.',
+  'auth.googleConsent': 'Mais um passo, só desta primeira vez: prima Continuar com a Google novamente e confirme, para entrar na conta que já tem.',
   'auth.withoutAccount': 'Continuar sem conta',
   'auth.withoutAccountHint': 'Os seus atriums ficam neste browser. Para os partilhar, é preciso uma conta.',
   'auth.forgotPassword': 'Esqueceu-se da palavra-passe?',

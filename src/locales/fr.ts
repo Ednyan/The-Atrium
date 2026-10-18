@@ -249,7 +249,7 @@ const fr: Catalogue = {
   'auth.sendResetLink': 'Envoyer le lien de réinitialisation',
   'auth.or': 'ou',
   'auth.continueWithGoogle': 'Continuer avec Google',
-  'auth.googleConsent': 'Encore une étape, cette première fois seulement : appuyez de nouveau sur Continuer avec Google et autorisez l’Atrium à garder vos atriums dans votre Google Drive.',
+  'auth.googleConsent': 'Encore une étape, cette première fois seulement : appuyez de nouveau sur Continuer avec Google et confirmez, pour vous connecter au compte que vous avez déjà.',
   'auth.withoutAccount': 'Continuer sans compte',
   'auth.withoutAccountHint': 'Vos atriums restent dans ce navigateur. Pour les partager, il faut un compte.',
   'auth.forgotPassword': 'Mot de passe oublié ?',

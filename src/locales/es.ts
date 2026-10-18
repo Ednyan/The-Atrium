@@ -247,7 +247,7 @@ const es: Catalogue = {
   'auth.sendResetLink': 'Enviar enlace de restablecimiento',
   'auth.or': 'o',
   'auth.continueWithGoogle': 'Continuar con Google',
-  'auth.googleConsent': 'Un paso más, solo esta primera vez: pulsa de nuevo Continuar con Google y permite que el Atrium guarde tus atriums en tu Google Drive.',
+  'auth.googleConsent': 'Un paso más, solo esta primera vez: pulsa de nuevo Continuar con Google y confirma, para iniciar sesión en la cuenta que ya tienes.',
   'auth.withoutAccount': 'Continuar sin cuenta',
   'auth.withoutAccountHint': 'Tus atriums se quedan en este navegador. Para compartirlos necesitas una cuenta.',
   'auth.forgotPassword': '¿Olvidaste tu contraseña?',

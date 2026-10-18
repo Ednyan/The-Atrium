@@ -215,11 +215,13 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   // Hands off to Google and returns to the app via redirect, so there's no
   // success path to handle here -- the page navigates away. Only a failure to
   // even start the handoff surfaces as an error.
-  // Signing in with Google (phase 6, testers for now). Google's window
-  // without its consent screen; the first time for this Google account, a
-  // second click for the one that asks (`needsConsent`) -- the worker keeps
-  // the grant, so never again. Then a Google account (the app takes it from
-  // there: App, ACCOUNT_EVENT), or the existing account this Google is:
+  // Signing in with Google (phase 6, testers for now). Google's window,
+  // asking only who one is -- Drive is asked for where it's used, a Drive
+  // atrium made or joined. Then a Google account (the app takes it from
+  // there: App, ACCOUNT_EVENT), or the existing account this Google is --
+  // the first time, a second click for Google's consent (`needsConsent`),
+  // whose ID token signs in to it; the worker keeps the grant, so never
+  // again:
   // signed in to it by Supabase with Google's own token where Supabase will
   // (it has this Google, or this verified address -- and links it), on to
   // its own Google sign-in if it was made with Google, else told to sign in

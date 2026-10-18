@@ -294,7 +294,7 @@ const ko: Catalogue = {
   'auth.sendResetLink': '재설정 링크 보내기',
   'auth.or': '또는',
   'auth.continueWithGoogle': 'Google로 계속하기',
-  'auth.googleConsent': '처음 한 번만 한 단계 더: Google로 계속하기를 다시 누르고 Atrium이 Google 드라이브에 Atrium을 보관하도록 허용하세요.',
+  'auth.googleConsent': '처음 한 번만 한 단계 더: Google로 계속하기를 다시 누르고 확인하면 이미 있는 계정으로 로그인합니다.',
   'auth.withoutAccount': '계정 없이 계속하기',
   'auth.withoutAccountHint': 'Atrium은 이 브라우저에 보관돼요. 공유하려면 계정이 필요해요.',
   'auth.forgotPassword': '비밀번호를 잊으셨나요?',

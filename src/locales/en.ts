@@ -284,7 +284,7 @@ export const en = {
   'auth.sendResetLink': 'Send Reset Link',
   'auth.or': 'or',
   'auth.continueWithGoogle': 'Continue with Google',
-  'auth.googleConsent': 'One more step, this first time only: press Continue with Google again and allow the Atrium to keep your atriums in your Google Drive.',
+  'auth.googleConsent': 'One more step, this first time only: press Continue with Google again and confirm, to sign in to the account you already have.',
   'auth.withoutAccount': 'Continue without an account',
   'auth.withoutAccountHint': 'Your atriums stay in this browser. Sharing them needs an account.',
   'auth.forgotPassword': 'Forgot your password?',

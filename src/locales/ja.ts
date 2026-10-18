@@ -290,7 +290,7 @@ const ja: Catalogue = {
   'auth.sendResetLink': '再設定リンクを送る',
   'auth.or': 'または',
   'auth.continueWithGoogle': 'Google で続ける',
-  'auth.googleConsent': 'もう一歩だけ（初回のみ）：もう一度「Google で続行」を押して、Atrium が Google ドライブに Atrium を保存することを許可してください。',
+  'auth.googleConsent': 'もう一歩だけ（初回のみ）：もう一度「Google で続行」を押して確認すると、お持ちのアカウントにログインします。',
   'auth.withoutAccount': 'アカウントなしで続ける',
   'auth.withoutAccountHint': 'Atrium はこのブラウザに保存されます。共有するにはアカウントが必要です。',
   'auth.forgotPassword': 'パスワードをお忘れですか？',
