@@ -66,6 +66,8 @@ export interface DriveStore {
   unshare(id: string, permission: string): Promise<void>
   noResharing(id: string): Promise<void>
   trash(id: string): Promise<void>
+  /** Deleted for good: the space is the account's again. */
+  remove(id: string): Promise<void>
 }
 // A file as a folder's listing has it: its version, to tell it's changed.
 interface Listed { id: string; name: string; version?: string }
@@ -86,6 +88,7 @@ const googleDrive: DriveStore = {
   unshare: drive.unshare,
   noResharing: drive.noResharing,
   trash: drive.trash,
+  remove: drive.removeFile,
 }
 let store: DriveStore = googleDrive
 export const useDriveStore = (next: DriveStore) => { store = next }
@@ -224,6 +227,7 @@ export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
  *  list, and its working copy gone -- unless another account here still
  *  holds it, whose copy it is too. The copy's sync state goes with it. */
 export async function leaveDriveAtrium(lobbyId: string): Promise<void> {
+  await settled()
   forgetDriveAtrium(lobbyId)
   if (anotherAccountsDriveAtrium(lobbyId)) return
   const { browserEngine, forgetBrowserAtrium } = await import('./browserAtriums')
@@ -340,6 +344,7 @@ async function folderFor(root: string, lobbyId: string): Promise<string> {
  *  owner's folder, its first key, its roster. Its first save, all of it, goes
  *  up when it's opened (startDriveSync). Signed in to Google already. */
 export async function createDriveAtrium(lobbyId: string, name: string, me: { id: string; name: string }): Promise<void> {
+  await settled()
   const own = await myIdentity(me)
   const key = await newAtriumKey()
   const folder = await folderFor(own.root, lobbyId)
@@ -360,6 +365,7 @@ export async function createDriveAtrium(lobbyId: string, name: string, me: { id:
  *  state left by an earlier copy here would take every save as read and,
  *  against the empty copy, every row as deleted, sending that up. */
 export async function makeWorkingCopy(lobbyId: string, row: Record<string, unknown>): Promise<void> {
+  await settled()
   const local = await import('./localDb')
   const { data: had } = await local.localClient.from('lobbies').select('id').eq('id', lobbyId)
   if (had?.length) return
@@ -627,6 +633,7 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
 /** The owner's: its folder in Drive gone -- the roster and the owner's saves
  *  -- and with it the atrium, for everyone. */
 export async function deleteDriveAtrium(lobbyId: string): Promise<void> {
+  await settled()
   const kept = allKept()[lobbyId]
   if (kept) await store.trash(kept.folder)
   forgetDriveAtrium(lobbyId)
@@ -740,17 +747,31 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   s.looking = window.setInterval(() => { if (session === s) void run(s, both) }, LOOK_MS)
 }
 
-/** Out of step: what was left to go up goes, then nothing more. */
-export async function stopDriveSync(): Promise<void> {
+/** Out of step: what was left to go up goes, then nothing more. Leaving an
+ *  atrium doesn't wait for it (lib/browserAtriums): what does is the next
+ *  session, and whatever starts an atrium's sync state again or removes it
+ *  (`settled`) -- and the page, if it's closed meanwhile, asks first. With
+ *  no session, the stop still under way. */
+export function stopDriveSync(): Promise<void> {
   const s = session
-  if (!s) return
+  if (!s) return stopping
   session = null
   window.clearTimeout(s.quiet)
   window.clearInterval(s.looking)
   s.stopHearing()
   s.local.listenToLocalWrites(null)
-  await run(s, up)
-  setStatus({ signInNeeded: false, catchingUp: false, asking: status.asking.length ? [] : status.asking })
+  window.addEventListener('beforeunload', holdPage)
+  stopping = run(s, up).then(() => {
+    window.removeEventListener('beforeunload', holdPage)
+    setStatus({ signInNeeded: false, catchingUp: false, asking: status.asking.length ? [] : status.asking })
+  })
+  return stopping
+}
+let stopping: Promise<void> = Promise.resolve()
+const settled = () => stopping
+function holdPage(event: BeforeUnloadEvent) {
+  event.preventDefault()
+  event.returnValue = ''
 }
 
 // What the open Drive atrium is doing that someone should see
@@ -793,11 +814,14 @@ async function up(s: Session): Promise<void> {
   // to change: anyone else's change to it isn't sent (nor taken, see take).
   const changes = changesSince(s.merged, current, at).filter(change => change.table !== 'lobbies' || manages(role))
   const unsent = await unsentFiles(s, current.traces)
-  if (!changes.length && !unsent.length) return
+  const unused = unusedFiles(s, current.traces)
+  if (!changes.length && !unsent.length && !unused.length) return
   // Kept for later: the next diff still has them.
   if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
   // Its files first: whoever takes the save finds them there.
   for (const row of await sendFiles(s, unsent)) changes.push({ table: 'media', id: row.id, at, row })
+  for (const url of await removeFiles(unused)) changes.push({ table: 'media', id: url, at, row: null })
+  if (unsent.length || unused.length) void drive.lookAtDriveSpace().catch(() => {})
   if (!changes.length) return
   const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
   const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
@@ -1122,6 +1146,33 @@ async function unsentFiles(s: Session, traces: Record<string, unknown>[]): Promi
     if (await s.local.hasLocalFile(url)) unsent.push(url)
   }
   return unsent
+}
+
+/** One's own files in Drive that no trace of the working copy has now: its
+ *  deletion saved -- and the working copy is what's saved, others' changes
+ *  in it too. */
+function unusedFiles(s: Session, traces: Record<string, unknown>[]): { url: string; file: string }[] {
+  const used = new Set(traces.flatMap(filesOf))
+  return [...s.merged.values()]
+    .filter(change => change.table === 'media' && typeof change.row?.file === 'string' && clockWho(change.at) === s.me && !used.has(change.id))
+    .map(change => ({ url: change.id, file: change.row!.file as string }))
+}
+
+/** Deleted from Drive for good, the space one's own again; each gone is a
+ *  `media` deletion in the save. A trace brought back after (undo, the
+ *  restore tool) has its file sent again from a browser that still has it,
+ *  and shows it missing elsewhere. One that fails is tried at the next save. */
+async function removeFiles(unused: { url: string; file: string }[]): Promise<string[]> {
+  const removed = await Promise.all(unused.map(({ url, file }) => inTurn(async () => {
+    try {
+      await store.remove(file)
+    } catch (error) {
+      // Gone already: a save that said so was lost.
+      if (!/Drive 404/.test(String(error))) { console.warn('[drive] removing a file no trace has:', url, error); return null }
+    }
+    return url
+  })))
+  return removed.filter((url): url is string => url !== null)
 }
 
 /** Each sealed into one's folder `files`; where each went, as `media` rows.

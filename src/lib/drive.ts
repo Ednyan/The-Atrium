@@ -486,6 +486,36 @@ export async function noResharing(id: string): Promise<void> {
 export async function trash(id: string): Promise<void> {
   await drive(`files/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) })
 }
+/** Deleted for good, not to the trash -- where it would count against the
+ *  account's space for a month more. */
+export async function removeFile(id: string): Promise<void> {
+  await drive(`files/${id}`, { method: 'DELETE' })
+}
+
+/** The signed-in account's Drive: bytes used, and its limit (null: none). */
+export interface DriveSpace { usage: number; limit: number | null }
+let space: (DriveSpace & { user: string }) | null = null
+export const DRIVE_SPACE_EVENT = 'atrium:drive-space'
+function keepSpace(next: DriveSpace & { user: string }) {
+  space = next
+  window.dispatchEvent(new CustomEvent(DRIVE_SPACE_EVENT))
+}
+/** As last looked at, if it's this account's. */
+export const knownDriveSpace = (): DriveSpace | null => (space && space.user === grantKept()?.user ? space : null)
+/** Looked at again -- only with Drive given already: never Google's window. */
+export async function lookAtDriveSpace(): Promise<DriveSpace | null> {
+  const user = grantKept()?.user
+  if (!user || !hasDriveToken()) return null
+  const { storageQuota: quota } = await (await drive('about?fields=storageQuota')).json()
+  keepSpace({ user, usage: Number(quota.usage ?? 0), limit: quota.limit ? Number(quota.limit) : null })
+  return space
+}
+/** Counted as used as soon as a file is let in, before it reaches Drive: two
+ *  dropped one after the other aren't both measured against the same space.
+ *  The next look says what's really used. */
+export function reserveDriveSpace(bytes: number) {
+  if (space) keepSpace({ ...space, usage: space.usage + bytes })
+}
 
 /** A file in the app's hidden folder of the signed-in account's Drive, by
  *  name; null if there's none. Signed in, so no robot check. */

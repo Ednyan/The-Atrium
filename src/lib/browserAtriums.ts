@@ -117,7 +117,9 @@ export async function enterBrowserAtrium(lobbyId: string, guest: Maker | null) {
 
 /** Out of the browser atrium, if in one: once what it started writing is
  *  written, the cloud's client again. Whoever reads the cloud next waits for
- *  this (the leave, the atrium browser), and they all wait for the one. */
+ *  this (the leave, the atrium browser), and they all wait for the one. A
+ *  Drive atrium's last send to Drive isn't waited for here: it goes on, and
+ *  what needs it done waits for it (lib/driveSync, stopDriveSync). */
 export function leaveBrowserAtrium(): Promise<void> {
   if (!inside) return Promise.resolve()
   return leaving ??= (async () => {
@@ -127,8 +129,8 @@ export function leaveBrowserAtrium(): Promise<void> {
     await whenTracesWritten()
     await whenLayerChangesDone()
     await whenSaveDone()
-    // What a Drive atrium had left to send, sent.
-    await (await import('./driveSync')).stopDriveSync()
+    // What a Drive atrium had left to send, on its way.
+    void (await import('./driveSync')).stopDriveSync()
     switchDataClient(null)
     inside = null
   })().finally(() => { leaving = null })

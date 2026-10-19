@@ -677,17 +677,6 @@ async function getVaultLobbyDirectory(lobbyId: string, lobbyName: string): Promi
   return join(basePath, buildVaultLobbyFolderName(lobbyName, lobbyId))
 }
 
-async function getVaultMirrorMediaFilePath(localUrl: string, lobbyId: string, lobbyName?: string): Promise<string | null> {
-  const parsed = parseLocalUrl(localUrl)
-  if (!parsed) return null
-
-  const resolvedLobbyName = lobbyName ?? await getLobbyNameById(lobbyId)
-  if (!resolvedLobbyName) return null
-
-  const lobbyDir = await getVaultLobbyDirectory(lobbyId, resolvedLobbyName)
-  return joinPathSegments(lobbyDir, ['media', parsed.bucket, ...parsed.pathSegments])
-}
-
 async function renameVaultLobbyDirectory(lobbyId: string, previousName: string, nextName: string): Promise<void> {
   const trimmedNextName = nextName.trim()
   if (!trimmedNextName || previousName.trim() === trimmedNextName) {
@@ -739,69 +728,6 @@ async function copyLocalAssetToVault(localUrl: string, lobbyId: string, lobbyNam
   }
 
   return ['media', bucket, ...pathSegments].join('/')
-}
-
-async function getLocalMediaReferenceCount(localUrl: string): Promise<number> {
-  if (!db) return 0
-
-  const rows = await db.select<any[]>(
-    'SELECT COUNT(*) as count FROM traces WHERE media_url = ? OR image_url = ?',
-    [localUrl, localUrl],
-  )
-
-  return Number(rows[0]?.count ?? 0)
-}
-
-function clearResolvedLocalUrlCache(localUrl: string) {
-  const cachedUrl = resolvedUrlCache.get(localUrl)
-  if (cachedUrl && cachedUrl.startsWith('blob:')) {
-    URL.revokeObjectURL(cachedUrl)
-  }
-
-  resolvedUrlCache.delete(localUrl)
-  pendingResolutions.delete(localUrl)
-}
-
-async function cleanupDeletedTraceMedia(previousRows: any[]): Promise<void> {
-  if (!db) return
-
-  const lobbyIdsByUrl = new Map<string, Set<string>>()
-
-  for (const row of previousRows) {
-    const lobbyId = typeof row.lobby_id === 'string' ? row.lobby_id : null
-    if (!lobbyId) continue
-
-    for (const value of [row.media_url, row.image_url]) {
-      if (typeof value !== 'string' || !value.startsWith('local://')) {
-        continue
-      }
-
-      const lobbyIds = lobbyIdsByUrl.get(value) ?? new Set<string>()
-      lobbyIds.add(lobbyId)
-      lobbyIdsByUrl.set(value, lobbyIds)
-    }
-  }
-
-  for (const [localUrl, lobbyIds] of lobbyIdsByUrl.entries()) {
-    const remainingReferences = await getLocalMediaReferenceCount(localUrl)
-    if (remainingReferences > 0) {
-      continue
-    }
-
-    const runtimeMediaPath = await resolveLocalMediaFilePath(localUrl)
-    if (runtimeMediaPath && await vaultPathExists(runtimeMediaPath)) {
-      await removePath(runtimeMediaPath)
-    }
-
-    for (const lobbyId of lobbyIds) {
-      const mirrorPath = await getVaultMirrorMediaFilePath(localUrl, lobbyId)
-      if (mirrorPath && await vaultPathExists(mirrorPath)) {
-        await removePath(mirrorPath)
-      }
-    }
-
-    clearResolvedLocalUrlCache(localUrl)
-  }
 }
 
 async function writeLobbyVaultSnapshot(lobbyId: string): Promise<void> {
@@ -944,10 +870,6 @@ async function handleVaultSyncAfterMutation(opts: QueryOptions, previousRows: an
     // A thread's rows carry their atrium like a trace's, and its mirror holds them.
     case 'traces':
     case 'trace_links': {
-      if (opts.table === 'traces' && opts.operation === 'delete') {
-        await cleanupDeletedTraceMedia(previousRows)
-      }
-
       const nextLobbyIds = typeof opts.data?.lobby_id === 'string' ? [opts.data.lobby_id] : []
       if (insertedRow?.lobby_id) {
         nextLobbyIds.push(insertedRow.lobby_id)
@@ -2525,7 +2447,14 @@ export async function takeAtriumRows(lobbyId: string, table: string, rows: Recor
   if (!db) throw new Error('no database')
   const known = await columnsOf(table)
   for (const row of rows) await putRow(table, Object.fromEntries(Object.entries(row).filter(([column]) => known.has(column))))
-  if (gone.length) await db.execute(`DELETE FROM ${table} WHERE id IN (${gone.map(() => '?').join(', ')})`, gone)
+  if (gone.length) {
+    const marks = gone.map(() => '?').join(', ')
+    // A trace's files held as one deleted here is (holdTraceMedia): removed
+    // once the atrium's left, unless it's come back by then.
+    const traces = table === 'traces' ? await db.select<any[]>(`SELECT * FROM traces WHERE id IN (${marks})`, gone) : []
+    await db.execute(`DELETE FROM ${table} WHERE id IN (${marks})`, gone)
+    await holdTraceMedia(traces)
+  }
   scheduleLobbyVaultSync(lobbyId)
 }
 

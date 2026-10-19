@@ -65,6 +65,7 @@ import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type Q
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
+import { DRIVE_SPACE_EVENT, knownDriveSpace, lookAtDriveSpace, reserveDriveSpace } from '../lib/drive'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar, type MenuItem } from './AtriumMenu'
 import { useNarrow } from '../lib/useNarrow'
 import { useLinked } from '../lib/peers'
@@ -1111,12 +1112,36 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  const ensureLobbyHasSpace = () => {
-    if (!useGameStore.getState().isLobbyFull()) return true
-
-    showToast(lobbyFullMessage())
-    return false
+  // Room for what's added: a cloud atrium below its limit; a Drive atrium's
+  // `files` within what's free in the Drive of whoever adds them -- theirs
+  // is where they go (lib/driveSync).
+  const ensureLobbyHasSpace = (files: Blob[] = []) => {
+    if (useGameStore.getState().isLobbyFull()) {
+      showToast(lobbyFullMessage())
+      return false
+    }
+    const bytes = files.reduce((total, file) => total + file.size, 0)
+    const space = bytes && isDriveAtrium(lobbyId) ? knownDriveSpace() : null
+    if (!space) return true
+    if (space.limit !== null && bytes > space.limit - space.usage) {
+      showToast(t('atrium.error.driveFull', { size: formatSize(bytes, language), free: formatSize(Math.max(0, space.limit - space.usage), language) }))
+      return false
+    }
+    reserveDriveSpace(bytes)
+    return true
   }
+  // A Drive atrium's Drive space, as last looked at: when it's opened, each
+  // minute, and after files go to Drive or leave it.
+  const [driveSpace, setDriveSpace] = useState(knownDriveSpace)
+  useEffect(() => {
+    if (!isDriveAtrium(lobbyId)) return
+    const shown = () => setDriveSpace(knownDriveSpace())
+    const look = () => void lookAtDriveSpace().catch(error => console.warn('[drive] its space:', error))
+    window.addEventListener(DRIVE_SPACE_EVENT, shown)
+    look()
+    const every = window.setInterval(look, 60_000)
+    return () => { window.removeEventListener(DRIVE_SPACE_EVENT, shown); window.clearInterval(every) }
+  }, [lobbyId])
 
   const getWorldPositionFromScreen = (screenX: number, screenY: number) => {
     if (!worldContainerRef.current) {
@@ -2911,7 +2936,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       showToast(t('atrium.error.noImageClipboard'))
       return
     }
-    if (!ensureLobbyHasSpace()) return
+    if (!ensureLobbyHasSpace(offer.images)) return
     await placeFilesAsTraces(offer.images, worldX, worldY)
   }
 
@@ -2925,7 +2950,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     const at = { x: positionRef.current.x, y: positionRef.current.y }
     const pictures = isLocalData ? [...data.files].filter(file => file.type.startsWith('image/')) : []
     if (pictures.length > 0) {
-      if (ensureLobbyHasSpace()) void placeFilesAsTraces(pictures, at.x, at.y)
+      if (ensureLobbyHasSpace(pictures)) void placeFilesAsTraces(pictures, at.x, at.y)
       return true
     }
     const text = data.getData('text/plain').trim()
@@ -4359,11 +4384,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     if (!canEditRef.current) return
     if (!worldContainerRef.current) return
 
-    if (!ensureLobbyHasSpace()) return
-
     const { x: worldX, y: worldY } = getWorldPositionFromScreen(e.clientX, e.clientY)
 
     const droppedFiles = Array.from(e.dataTransfer.files)
+    if (!ensureLobbyHasSpace(droppedFiles)) return
 
     // An .atrium file's traces, added to this atrium where it's dropped.
     const project = droppedFiles.find(f => /\.atrium$/i.test(f.name))
@@ -4508,7 +4532,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
       e.preventDefault()
 
-      if (!ensureLobbyHasSpace()) return
+      if (!ensureLobbyHasSpace(imageFiles)) return
 
       const pasteAnchor = lastMouseScreenPositionRef.current ?? {
         x: window.innerWidth / 2,
@@ -5033,21 +5057,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             button, its words the size of theirs. */}
         {(() => {
           const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-          const pct = isLocalData ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
+          // A Drive atrium's limit is its Drive's: what's used of it all.
+          const drive = isDriveAtrium(lobbyId) ? driveSpace : null
+          const free = drive?.limit != null ? formatSize(Math.max(0, drive.limit - drive.usage), language) : null
+          const pct = drive?.limit ? Math.min((drive.usage / drive.limit) * 100, 100) : isLocalData ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
           const used = formatSize(sizeBytes, language)
           const tone = pct >= 100 ? 'text-red-400' : pct >= 80 ? 'text-yellow-400' : 'text-nier-strong'
+          const said = isLocalData ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })
           return (
             <div
               data-hud="true"
               data-usage=""
               tabIndex={0}
-              title={isLocalData ? t('atrium.hud.usageUsed', { size: used }) : t('atrium.hud.usageOf', { size: used, limit: formatSize(LOBBY_SIZE_LIMIT, language) })}
+              title={!drive ? said : `${said} · ${free !== null
+                ? t('atrium.hud.driveOf', { used: formatSize(drive.usage, language), limit: formatSize(drive.limit!, language), free })
+                : t('atrium.hud.driveUsed', { used: formatSize(drive.usage, language) })}`}
               className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
               style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
               <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
-              {!isLocalData && (
+              {free !== null && <span data-drive-free="" className="text-nier-bg/60 tabular-nums tracking-wider">{t('atrium.hud.driveFree', { free })}</span>}
+              {(!isLocalData || free !== null) && (
                 <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
                   <span
                     className={`block h-full transition-[width] duration-500 ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-yellow-500' : 'bg-nier-bg/50'}`}
@@ -5892,7 +5923,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         onChange={e => {
           const files = Array.from(e.target.files ?? [])
           e.target.value = ''
-          if (files.length === 0 || !ensureLobbyHasSpace()) return
+          if (files.length === 0 || !ensureLobbyHasSpace(files)) return
           const decks = files.filter(f => DECK_FILE.test(f.name)), rest = files.filter(f => !DECK_FILE.test(f.name))
           if (decks.length > 0) void placeDecks(decks, importAnchorRef.current)
           if (rest.length > 0) void placeFilesAsTraces(rest, importAnchorRef.current.x, importAnchorRef.current.y)
