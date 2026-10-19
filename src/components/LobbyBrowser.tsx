@@ -6,6 +6,7 @@ import { useGamePick } from '../store/gameStore'
 import { showToast } from '../lib/toast'
 import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
+import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
@@ -124,8 +125,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // too, without needing to enter the atrium first.
   const [adminLobbies, setAdminLobbies] = useState<LobbyWithOwner[]>([])
   const [browserLobbies, setBrowserLobbies] = useState<LobbyWithOwner[]>([])
-  // Yours, wherever they're kept: last opened first.
-  const yours = useMemo(() => sortByLastVisited([...browserLobbies, ...userLobbies], lobby => lobby.id), [browserLobbies, userLobbies])
+  // Yours, wherever they're kept: last opened first. One in both is a move to
+  // Drive not finished (lib/moveToDrive): shown as the cloud's, to finish.
+  const yours = useMemo(() => {
+    const inCloud = new Set(userLobbies.map(lobby => lobby.id))
+    return sortByLastVisited([...browserLobbies.filter(lobby => !inCloud.has(lobby.id)), ...userLobbies], lobby => lobby.id)
+  }, [browserLobbies, userLobbies])
   useEffect(() => {
     const landed = (e: Event) => {
       const { lobbyId, url, at } = (e as CustomEvent<PreviewDetail>).detail
@@ -180,6 +185,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // first frame and works offline, like the one on the welcome screen.
   const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  // A cloud atrium moved to its owner's Drive (lib/moveToDrive): asked first,
+  // as a deletion is -- it ends with one.
+  const [moveConfirmId, setMoveConfirmId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vaultPath, setVaultPath] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -339,24 +347,38 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }
   }
 
-  // An atrium kept in this browser, kept in Google Drive too, at any time.
+  // An atrium into Google Drive, from its card: one kept in this browser, kept
+  // there too; a cloud one moved there (lib/moveToDrive), the original
+  // deleted once Drive has all of it. Google's window first, while the click
+  // counts.
   const [converting, setConverting] = useState<string | null>(null)
-  const toDrive = async (lobby: LobbyWithOwner) => {
+  const intoDrive = async (lobby: { id: string; name: string }, how: (me: { id: string; name: string }) => Promise<void>) => {
     setConverting(lobby.id)
     try {
-      // Google's window first, while the click counts.
       await ensureSignedIn()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      await keepInDrive(lobby.id, lobby.name, { id: user.id, name: username || 'You' })
-      await loadBrowserLobbies()
+      await how({ id: user.id, name: username || 'You' })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setError(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : message)
+      setError(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate')
+        : message === 'MOVE_INCOMPLETE' ? t('browser.drive.moveIncomplete')
+          : message === 'MOVE_FILES_FAILED' ? t('browser.drive.moveFilesFailed', { count: (err as { count?: number }).count ?? 0 })
+            : message)
     } finally {
       setConverting(null)
     }
   }
+  const toDrive = (lobby: LobbyWithOwner) => intoDrive(lobby, async me => {
+    await keepInDrive(lobby.id, lobby.name, me)
+    await loadBrowserLobbies()
+  })
+  const moveLobby = (lobby: LobbyWithOwner) => intoDrive(lobby, async me => {
+    await (await import('../lib/moveToDrive')).moveToDrive(lobby.id, me)
+    showToast(t('browser.drive.moved', { name: lobby.name }))
+    loadLobbies()
+    checkCanCreateLobby()
+  })
 
   // Sharing a Drive atrium, on its card: components/DriveMembers.
   const [sharingId, setSharingId] = useState<string | null>(null)
@@ -1423,6 +1445,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                           </button>
                         )}
                         {/* Nobody to give an id to, nor to let in, for one kept in the browser. */}
+                        {!lobby.inBrowser && canDrive && lobby.ownerUserId === myId && (
+                          <button disabled={converting !== null} onClick={() => setMoveConfirmId(lobby.id)} className={`${ROW_BUTTON} disabled:opacity-40`}>
+                            {converting === lobby.id ? t('browser.drive.moving') : t('browser.drive.move')}
+                          </button>
+                        )}
                         {!lobby.inBrowser && (
                           <>
                             <button
@@ -1763,36 +1790,27 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmId && (
-        <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]">
-          <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
-            <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-            
-            <h3 className="text-nier-bg tracking-[0.15em] uppercase mb-4">◇ {isDriveAtrium(deleteConfirmId) && !isDriveOwner(deleteConfirmId) ? t('browser.drive.leave') : t('browser.deleteAtrium')}</h3>
+      {/* A deletion asked first -- and a move to Drive, which ends in one */}
+      {moveConfirmId && (() => {
+        const lobby = userLobbies.find(shown => shown.id === moveConfirmId)
+        return lobby && (
+          <ConfirmBox title={t('browser.drive.moveTitle')} onCancel={() => setMoveConfirmId(null)}>
+            <p className="text-nier-bg/75 text-xs tracking-wider mb-6">{t('browser.drive.moveConfirm', { name: lobby.name })}</p>
+            <ConfirmButtons cancel={t('common.cancel')} confirm={t('browser.drive.move')} onCancel={() => setMoveConfirmId(null)} onConfirm={() => { setMoveConfirmId(null); void moveLobby(lobby) }} />
+          </ConfirmBox>
+        )
+      })()}
+      {deleteConfirmId && (() => {
+        const leaving = isDriveAtrium(deleteConfirmId) && !isDriveOwner(deleteConfirmId)
+        return (
+          <ConfirmBox title={leaving ? t('browser.drive.leave') : t('browser.deleteAtrium')} onCancel={() => setDeleteConfirmId(null)}>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-6">
-              {!isDriveAtrium(deleteConfirmId) ? t('browser.deleteConfirm') : isDriveOwner(deleteConfirmId) ? t('browser.drive.deleteConfirm') : t('browser.drive.leaveConfirm')}
+              {!isDriveAtrium(deleteConfirmId) ? t('browser.deleteConfirm') : leaving ? t('browser.drive.leaveConfirm') : t('browser.drive.deleteConfirm')}
             </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => deleteLobby(deleteConfirmId)}
-                className="flex-1 py-2 bg-red-500/80 text-nier-strong text-xs tracking-[0.15em] uppercase hover:bg-red-500 transition-colors"
-              >
-                {isDriveAtrium(deleteConfirmId) && !isDriveOwner(deleteConfirmId) ? t('browser.drive.leave') : t('common.delete')}
-              </button>
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <ConfirmButtons cancel={t('common.cancel')} confirm={leaving ? t('browser.drive.leave') : t('common.delete')} onCancel={() => setDeleteConfirmId(null)} onConfirm={() => void deleteLobby(deleteConfirmId)} />
+          </ConfirmBox>
+        )
+      })()}
 
       {/* Import Atrium Modal */}
       {showImport && (

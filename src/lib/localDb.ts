@@ -2505,11 +2505,26 @@ export async function atriumRows(lobbyId: string): Promise<Record<string, any[]>
   }
 }
 
-/** Rows brought in by the sync: each replacing any with its id, or (null)
- *  removed. Not told to listenToLocalWrites -- they're the sync's own. */
+// Each table's columns, as this database has them, read once.
+const tableColumns = new Map<string, Promise<Set<string>>>()
+function columnsOf(table: string): Promise<Set<string>> {
+  let known = tableColumns.get(table)
+  if (!known) {
+    known = db!.select<any[]>(`PRAGMA table_info(${table})`).then(rows => new Set(rows.map(row => String(row.name))))
+    tableColumns.set(table, known)
+  }
+  return known
+}
+
+/** Rows brought in from elsewhere -- another copy of a Drive atrium, the
+ *  cloud's (lib/moveToDrive): each replacing any with its id, or (null)
+ *  removed, with only the columns this database has (a newer app's, or the
+ *  cloud's, may have more). Not told to listenToLocalWrites -- they're the
+ *  sync's own. */
 export async function takeAtriumRows(lobbyId: string, table: string, rows: Record<string, any>[], gone: string[]): Promise<void> {
   if (!db) throw new Error('no database')
-  for (const row of rows) await putRow(table, row)
+  const known = await columnsOf(table)
+  for (const row of rows) await putRow(table, Object.fromEntries(Object.entries(row).filter(([column]) => known.has(column))))
   if (gone.length) await db.execute(`DELETE FROM ${table} WHERE id IN (${gone.map(() => '?').join(', ')})`, gone)
   scheduleLobbyVaultSync(lobbyId)
 }

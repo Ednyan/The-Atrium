@@ -1292,6 +1292,18 @@ export async function restoreDeletions(lobbyId: string, me: string, ats: Clock[]
   })
 }
 
+/** Whether Drive has all of a Drive atrium this browser holds: nothing of its
+ *  working copy, rows or files, still to go up -- after a look that sends
+ *  whatever can be. lib/moveToDrive's word before it deletes a cloud
+ *  original. */
+export async function driveHasEverything(lobbyId: string, me: string): Promise<boolean> {
+  return withSession(lobbyId, me, async s => {
+    const current = await s.local.atriumRows(s.lobbyId)
+    const pending = changesSince(s.merged, current, tick(s.last, Date.now(), s.me))
+    return pending.length === 0 && (await unsentFiles(s, current.traces)).length === 0
+  })
+}
+
 // The roster, for its owner or an admin only.
 async function managed(s: Session): Promise<Roster> {
   const roster = await lookAtRoster(s)
