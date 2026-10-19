@@ -34,7 +34,7 @@ import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
 import { LOBBY_CHANGED_EVENT, liveTable } from '../lib/liveChanges'
 import { endedFor, isDriveAtrium, isDriveViewer, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
-import DriveMembers from './DriveMembers'
+import DriveSettings from './DriveSettings'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
 import { isCanvasTarget, isEditableTarget } from '../lib/editableTarget'
@@ -6083,19 +6083,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         />
       )}
 
-      {/* Lobby Management Modal -- or, for an atrium kept in Google Drive, its
-          members and their roles: its roster says who's in and who manages
-          it, not the settings a cloud atrium has. */}
+      {/* Atrium settings: the same window for an atrium kept in Google Drive
+          (its roster's say) as for a cloud one. */}
       {showLobbyManagement && currentLobby && (isLocalData && isDriveAtrium(currentLobby.id) ? (
-        <div data-ui-element="true" className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] p-4" onClick={() => setShowLobbyManagement(false)}>
-          <div className="bg-nier-blackLight border border-nier-border/40 max-w-md w-full max-h-[90vh] overflow-y-auto p-5 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('atrium.hud.manage')}</h3>
-              <button type="button" onClick={() => setShowLobbyManagement(false)} className="atrium-btn" aria-label={t('common.cancel')}>×</button>
-            </div>
-            <DriveMembers lobbyId={currentLobby.id} me={userId} buttonClass="px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-40" />
-          </div>
-        </div>
+        <DriveSettings lobbyId={currentLobby.id} me={userId} onClose={() => setShowLobbyManagement(false)} />
       ) : (
         <LobbyManagement
           lobby={currentLobby}

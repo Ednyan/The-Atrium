@@ -11,7 +11,7 @@ import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
-import DriveMembers from './DriveMembers'
+import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
@@ -86,10 +86,9 @@ interface CardAction { label: string; onClick: () => void; danger?: boolean; dis
 const TAG = 'px-1.5 py-0.5 border text-[10px] tracking-[0.12em] uppercase'
 
 // An atrium on the browser's lists, the same card in each: its picture, its
-// name, what it is as tags, Enter and at most one other thing in sight, the
-// rest under ⋯ -- and under it, what one of those opens (a Drive atrium's
-// sharing).
-function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, enterDisabled, side, menu, moreLabel, children }: {
+// name, what it is as tags, Enter and at most one other thing in sight (its
+// settings), the rest under ⋯.
+function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, enterDisabled, side, menu, moreLabel }: {
   name: string
   renaming?: ReactNode
   preview?: string | null
@@ -101,7 +100,6 @@ function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, 
   side?: CardAction
   menu: CardAction[]
   moreLabel: string
-  children?: ReactNode
 }) {
   return (
     <div className={`${ROW} group`}>
@@ -128,7 +126,6 @@ function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, 
           <div className="flex-1" />
           <CardMenu items={menu} label={moreLabel} />
         </div>
-        {children}
       </div>
     </div>
   )
@@ -471,8 +468,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     checkCanCreateLobby()
   })
 
-  // Sharing a Drive atrium, on its card: components/DriveMembers.
-  const [sharingId, setSharingId] = useState<string | null>(null)
+  // A Drive atrium's settings, from its card (components/DriveSettings).
+  const [driveSettingsId, setDriveSettingsId] = useState<string | null>(null)
   const [myId, setMyId] = useState('')
   useEffect(() => {
     void supabase?.auth.getUser().then(({ data }: any) => {
@@ -600,14 +597,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     })))
   }
   // While the browser's open: Drive atriums looked at again each minute --
-  // their owners' latest pictures taken, those one's out of let go -- and
-  // the public list read again. Not while the page is hidden.
+  // their owners' latest pictures taken, those one's out of let go (Google's
+  // quota, a few metadata reads each) -- and the public list every fifth:
+  // that's the Atrium's own server, whose free day is 100,000 requests for
+  // everyone together. Not while the page is hidden.
   useEffect(() => {
     if (isDesktop) return
+    let minutes = 0
     const every = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadBrowserLobbies()
-      void loadPublicDrive()
+      if (++minutes % 5 === 0) void loadPublicDrive()
     }, 60_000)
     return () => window.clearInterval(every)
   }, [])
@@ -1151,9 +1151,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (lobby.passwordHash) tags.push({ label: t('browser.secured') })
       tags.push({ label: t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers }) })
     }
-    // In sight beside Enter: a Drive atrium's sharing; a cloud one's settings.
+    // In sight beside Enter: its settings, one window whichever kind it is
+    // (components/AtriumSettingsParts) -- a Drive atrium's for anyone in it,
+    // a cloud one's for its owner and admins.
     const side: CardAction | undefined = lobby.inDrive && !lobby.publicRoster && !viewer
-      ? { label: t('browser.drive.share'), onClick: () => setSharingId(sharingId === lobby.id ? null : lobby.id), pressed: sharingId === lobby.id }
+      ? { label: t('browser.manage'), onClick: () => setDriveSettingsId(lobby.id) }
       : cloud && list !== 'public' ? { label: t('browser.manage'), onClick: () => setManagingLobbyId(lobby.id) } : undefined
     const menu: CardAction[] = [
       ...(mine && !viewer ? [{ label: t('browser.rename'), onClick: () => { setEditingLobbyId(lobby.id); setEditingLobbyName(lobby.name) } }] : []),
@@ -1195,9 +1197,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         side={side}
         menu={menu}
         moreLabel={t('browser.more')}
-      >
-        {sharingId === lobby.id && <DriveMembers lobbyId={lobby.id} me={myId} buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
-      </AtriumCard>
+      />
     )
   }
 
@@ -1718,7 +1718,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         </div>
       </div>
 
-      {/* Atrium settings, without going in */}
+      {/* Atrium settings, without going in: a Drive atrium's, or a cloud one's -- the same window. */}
+      {driveSettingsId && <DriveSettings lobbyId={driveSettingsId} me={myId} onClose={() => { setDriveSettingsId(null); void loadBrowserLobbies() }} />}
       {managingLobbyId && (() => {
         const ownedMatch = userLobbies.find(l => l.id === managingLobbyId)
         const managedLobby = ownedMatch ?? adminLobbies.find(l => l.id === managingLobbyId)

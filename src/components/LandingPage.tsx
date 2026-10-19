@@ -664,7 +664,14 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
                   <div className="landing-cell p-8 md:p-12 flex flex-col">
                     <h3 className="text-2xl md:text-4xl font-extralight tracking-[0.08em] uppercase text-nier-strong">{t('landing.ways.web')}</h3>
                     <p className="mt-5 text-nier-bg/85 leading-relaxed text-pretty">{t('landing.ways.webDesc')}</p>
-                    <p className="mt-3 text-sm text-nier-bg/70 leading-relaxed text-pretty">{t('landing.ways.webLimits')}</p>
+                    {/* Where each atrium is kept, the one making it chooses (phases 7 and 9). */}
+                    <ul className="mt-4 space-y-2 text-sm text-nier-bg/70 leading-relaxed text-pretty">
+                      {(['drive', 'browser', 'cloud'] as const).map(where => (
+                        <li key={where}>
+                          <span className="text-nier-strong tracking-[0.06em]">◇ {t(`landing.ways.${where}`)}</span> — {t(`landing.ways.${where}Text`)}
+                        </li>
+                      ))}
+                    </ul>
                     <div className="mt-auto pt-10">
                       <button type="button" onClick={onGetStarted} className="landing-link text-sm tracking-[0.18em] uppercase">
                         {enter} <span aria-hidden="true">→</span>
