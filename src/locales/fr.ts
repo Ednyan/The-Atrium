@@ -198,6 +198,7 @@ const fr: Catalogue = {
   'browser.drive.notConnected': 'Google Drive non connecté',
   'browser.drive.connect': 'Connecter',
   'browser.drive.disconnect': 'Déconnecter',
+  'browser.drive.bothPermissions': 'Google Drive a besoin des deux autorisations cochées : les fichiers que crée l’Atrium, et son propre dossier dans votre Drive, où sont gardées les clés de vos atriums. Réessayez en laissant les deux cochées.',
   'browser.drive.group.adminsHint': 'Le propriétaire et les admins le gèrent : qui en fait partie, et avec quel rôle. Seul le propriétaire nomme des admins.',
   'browser.drive.group.editorsHint': 'Ils modifient ce qu’il contient.',
   'browser.drive.group.viewers': 'Lecteurs',

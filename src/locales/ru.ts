@@ -202,6 +202,7 @@ const ru: Catalogue = {
   'browser.drive.notConnected': 'Google Диск не подключён',
   'browser.drive.connect': 'Подключить',
   'browser.drive.disconnect': 'Отключить',
+  'browser.drive.bothPermissions': 'Google Диску нужны оба разрешения: файлы, которые создаёт Атриум, и его собственная папка в вашем Диске, где хранятся ключи ваших атриумов. Попробуйте ещё раз и оставьте обе галочки.',
   'browser.drive.group.adminsHint': 'Владелец и админы управляют им: кто в нём участвует и в какой роли. Назначать админов может только владелец.',
   'browser.drive.group.editorsHint': 'Они меняют его содержимое.',
   'browser.drive.group.viewers': 'Зрители',

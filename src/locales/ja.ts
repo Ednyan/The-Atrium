@@ -239,6 +239,7 @@ const ja: Catalogue = {
   'browser.drive.notConnected': 'Google ドライブ未接続',
   'browser.drive.connect': '接続',
   'browser.drive.disconnect': '接続を解除',
+  'browser.drive.bothPermissions': 'Google ドライブには両方の権限へのチェックが必要です：アトリウムが作成するファイルと、アトリウムのキーを保管するドライブ内の専用フォルダ。両方にチェックを入れたままもう一度お試しください。',
   'browser.drive.group.adminsHint': 'オーナーと管理者が管理します：誰が参加し、どの役割か。管理者を指名できるのはオーナーだけです。',
   'browser.drive.group.editorsHint': '中身を変更できます。',
   'browser.drive.group.viewers': '閲覧者',

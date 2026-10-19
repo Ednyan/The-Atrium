@@ -199,6 +199,7 @@ const de: Catalogue = {
   'browser.drive.notConnected': 'Google Drive nicht verbunden',
   'browser.drive.connect': 'Verbinden',
   'browser.drive.disconnect': 'Trennen',
+  'browser.drive.bothPermissions': 'Google Drive braucht beide Berechtigungen angehakt: die Dateien, die das Atrium anlegt, und seinen eigenen Ordner in deinem Drive, in dem die Schlüssel deiner Atrien liegen. Versuche es erneut und lass beide angehakt.',
   'browser.drive.group.adminsHint': 'Der Besitzer und die Admins verwalten es: wer dabei ist und in welcher Rolle. Nur der Besitzer ernennt Admins.',
   'browser.drive.group.editorsHint': 'Sie ändern, was darin ist.',
   'browser.drive.group.viewers': 'Betrachter',

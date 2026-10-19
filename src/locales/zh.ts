@@ -242,6 +242,7 @@ const zh: Catalogue = {
   'browser.drive.notConnected': '未连接 Google 云端硬盘',
   'browser.drive.connect': '连接',
   'browser.drive.disconnect': '断开连接',
+  'browser.drive.bothPermissions': 'Google 云端硬盘需要勾选两项权限：中庭创建的文件，以及它在你云端硬盘中的专属文件夹（用于保存中庭的密钥）。请重试并保持两项都勾选。',
   'browser.drive.group.adminsHint': '所有者和管理员负责管理：谁在其中、担任什么角色。只有所有者可以任命管理员。',
   'browser.drive.group.editorsHint': '他们修改其中的内容。',
   'browser.drive.group.viewers': '查看者',

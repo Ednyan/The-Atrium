@@ -203,6 +203,7 @@ const ptPT: Catalogue = {
   'browser.drive.notConnected': 'Google Drive não ligado',
   'browser.drive.connect': 'Ligar',
   'browser.drive.disconnect': 'Desligar',
+  'browser.drive.bothPermissions': 'O Google Drive precisa das duas permissões assinaladas: os ficheiros que o Atrium cria e a pasta própria dele no seu Drive, onde ficam as chaves dos seus átrios. Tente novamente e deixe as duas assinaladas.',
   'browser.drive.group.adminsHint': 'O dono e os admins gerem-no: quem participa e com que papel. Só o dono nomeia admins.',
   'browser.drive.group.editorsHint': 'Alteram o que tem dentro.',
   'browser.drive.group.viewers': 'Leitores',

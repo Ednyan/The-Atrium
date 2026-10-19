@@ -243,6 +243,7 @@ const ko: Catalogue = {
   'browser.drive.notConnected': 'Google 드라이브 연결 안 됨',
   'browser.drive.connect': '연결',
   'browser.drive.disconnect': '연결 해제',
+  'browser.drive.bothPermissions': 'Google 드라이브에는 두 권한이 모두 체크되어 있어야 합니다: 아트리움이 만드는 파일, 그리고 아트리움 키를 보관하는 드라이브 안의 전용 폴더. 둘 다 체크한 채로 다시 시도하세요.',
   'browser.drive.group.adminsHint': '소유자와 관리자가 관리합니다: 누가 참여하고 어떤 역할인지. 관리자는 소유자만 지정합니다.',
   'browser.drive.group.editorsHint': '안의 내용을 바꿉니다.',
   'browser.drive.group.viewers': '보기 전용',

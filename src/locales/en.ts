@@ -233,6 +233,7 @@ export const en = {
   'browser.drive.notConnected': 'Google Drive not connected',
   'browser.drive.connect': 'Connect',
   'browser.drive.disconnect': 'Disconnect',
+  'browser.drive.bothPermissions': 'Google Drive needs both permissions left ticked: the files the Atrium makes, and its own folder in your Drive, where your atriums’ keys are kept. Try again and leave both ticked.',
   'browser.drive.group.adminsHint': 'The owner and the admins manage it: who’s in, and as what. Only the owner makes admins.',
   'browser.drive.group.editorsHint': 'They change what’s in it.',
   'browser.drive.group.viewers': 'Viewers',

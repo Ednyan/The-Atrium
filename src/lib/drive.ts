@@ -12,7 +12,7 @@
 import { workerUrl } from './rooms'
 import { cloudClient, isDesktop } from './supabase'
 import { googleAccount, keepGoogleAccount, type GoogleAccount, type SignedOutReason } from './signedIn'
-import { currentLanguage } from './i18n'
+import { currentLanguage, t } from './i18n'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
 // The Picker's key (APIs & Services > Credentials).
@@ -22,7 +22,8 @@ export const GOOGLE_API_KEY = (import.meta.env.VITE_GOOGLE_API_KEY as string | u
 export const GOOGLE_PROJECT_NUMBER = GOOGLE_CLIENT_ID.split('-')[0]
 
 const DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file'
-const SCOPES = `openid email profile ${DRIVE_FILE} https://www.googleapis.com/auth/drive.appdata`
+const DRIVE_APPDATA = 'https://www.googleapis.com/auth/drive.appdata'
+const SCOPES = `openid email profile ${DRIVE_FILE} ${DRIVE_APPDATA}`
 export const FOLDER = 'application/vnd.google-apps.folder'
 
 const loaded = new Map<string, Promise<void>>()
@@ -151,6 +152,10 @@ async function renew(me: Asker): Promise<boolean> {
     const answer = await askWorker('renew', { grant: kept.grant, ...(me.token && !me.google ? { token: me.token } : {}) })
     // Drive taken back on Google's side: a grant without it, in its place.
     if (answer.grant) keepGrant({ user: kept.user, grant: answer.grant, drive: false })
+    // A grant kept as Drive's whose pass lacks one of its permissions (a box
+    // unticked, before both were required): Drive not given, asked for again
+    // at the next click that needs it.
+    else if (answer.access_token && !allowed(answer.scope) && kept.drive !== false) keepGrant({ ...kept, drive: false })
     took(answer)
     return true
   } catch (error) {
@@ -280,9 +285,13 @@ function keep(answer: Answer) {
   took(answer)
 }
 
-// Drive's permission, as granted: each can be unticked on Google's screen.
+// Drive's permission, as granted: each can be unticked on Google's screen,
+// and both are needed -- the files the Atrium makes, and its own folder, where
+// one's key pair is kept (lib/driveSync, myIdentity). One without the other is
+// Drive not given: asked for again at the next click that needs it.
 function allowed(scope: unknown): boolean {
-  return typeof scope === 'string' && scope.split(' ').includes(DRIVE_FILE)
+  const granted = typeof scope === 'string' ? scope.split(' ') : []
+  return granted.includes(DRIVE_FILE) && granted.includes(DRIVE_APPDATA)
 }
 const closed = (reject: (error: Error) => void) => (error: any) => reject(new Error(error?.message || error?.type || 'sign-in closed'))
 async function googleAccounts() {
@@ -318,7 +327,8 @@ async function googleCode(): Promise<string> {
       ux_mode: 'popup',
       callback: (answer: any) => {
         if (answer.error) return reject(new Error(answer.error_description || answer.error))
-        if (!allowed(answer.scope)) return reject(new Error('Drive access was not allowed'))
+        // A box unticked: said why both are needed, wherever it's shown.
+        if (!allowed(answer.scope)) return reject(new Error(t('browser.drive.bothPermissions')))
         resolve(answer.code)
       },
       error_callback: closed(reject),

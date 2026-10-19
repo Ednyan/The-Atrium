@@ -200,6 +200,7 @@ const it: Catalogue = {
   'browser.drive.notConnected': 'Google Drive non connesso',
   'browser.drive.connect': 'Connetti',
   'browser.drive.disconnect': 'Disconnetti',
+  'browser.drive.bothPermissions': 'Google Drive ha bisogno di entrambe le autorizzazioni spuntate: i file che crea l’Atrium e la sua cartella nel tuo Drive, dove sono conservate le chiavi dei tuoi atri. Riprova lasciandole spuntate entrambe.',
   'browser.drive.group.adminsHint': 'Il proprietario e gli admin lo gestiscono: chi ne fa parte e con quale ruolo. Solo il proprietario nomina gli admin.',
   'browser.drive.group.editorsHint': 'Modificano ciò che contiene.',
   'browser.drive.group.viewers': 'Spettatori',
