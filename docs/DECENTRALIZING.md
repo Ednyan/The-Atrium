@@ -1000,6 +1000,16 @@ public list. Contributions already need no account.
   local otherwise.
 - **Supabase atriums keep their limits,** with "Move to my Drive" offered.
 
+**Built (2026-10-19).** Google sign-in and Drive atriums are open to everyone
+on the web once the OAuth app (`digitalatriumdrive`) was published
+(`googleOpen` in `lib/drive`; 00006b1). "Move to my Drive" on an owner's cloud
+card (`lib/moveToDrive`, 2e196a2) copies the atrium with the same ids, its
+files from cloud storage, keeps it in Drive, and deletes the cloud original
+only once `driveHasEverything` says Drive has every row and file. Then
+(4c89f2e): leaving a Drive atrium no longer waits for its last send; the
+Usage box shows the Drive's free space and refuses files bigger than it; files
+no trace uses are deleted from Drive for good.
+
 ## Risks
 
 | Risk | What we know | Mitigation |
