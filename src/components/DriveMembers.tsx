@@ -117,7 +117,7 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
                 {canChange(member.role, member.user) ? (
                   <>
                     <select
-                      value={member.role}
+                      value={adminFor === member.user ? 'admin' : member.role}
                       disabled={busy}
                       onChange={e => {
                         const role = e.target.value as Assignable
@@ -137,9 +137,22 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
                 ) : (
                   <span className="text-nier-bg/60 uppercase tracking-wider text-[10px]">{t(`browser.drive.role.${member.role}`)}</span>
                 )}
+                {/* Admin, a step more: the Google address they use here, which
+                    Drive shares the member list with -- the directory never
+                    gives anyone's address away. */}
                 {adminFor === member.user && (
-                  <div className="w-full flex gap-2">
-                    <input value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder={t('browser.drive.adminEmail')} className={`flex-1 min-w-0 ${FIELD}`} />
+                  <div className="w-full border border-nier-border/30 p-2 space-y-2">
+                    <p className="text-nier-bg/80 text-[11px] leading-relaxed">{t('browser.drive.adminWhy', { name: member.name })}</p>
+                    <div className="flex flex-wrap gap-2">
+                    <input
+                      autoFocus
+                      type="email"
+                      value={adminEmail}
+                      onChange={e => setAdminEmail(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Escape') setAdminFor(null) }}
+                      placeholder={t('browser.drive.adminEmail')}
+                      className={`flex-1 min-w-[10rem] ${FIELD}`}
+                    />
                     <button
                       disabled={busy || !adminEmail.includes('@')}
                       onClick={() => void act(async () => { await setRole(lobbyId, me, member.user, 'admin', adminEmail.trim()); setAdminFor(null) })}
@@ -148,6 +161,7 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
                       {t('browser.drive.makeAdmin')}
                     </button>
                     <button onClick={() => setAdminFor(null)} className={buttonClass}>{t('common.cancel')}</button>
+                    </div>
                   </div>
                 )}
               </li>

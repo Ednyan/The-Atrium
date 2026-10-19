@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react'
+import { useEffect, useState, useMemo, useRef, lazy, Suspense, type ReactNode } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
@@ -9,7 +9,7 @@ import ImportAtrium from './ImportAtrium'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
-import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, isDriveViewer, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
@@ -40,14 +40,10 @@ import type { PreviewDetail } from '../lib/atriumPreview'
 import { googleOpen } from '../lib/drive'
 import { googleAccount } from '../lib/signedIn'
 
-// An atrium in the browser's lists, the same in each: a card -- its picture
-// (AtriumPreview), its name and what's known of it, and what can be done with
-// it, under it, wrapping -- two to a row where there's room.
+// An atrium in the browser's lists, the same in each (AtriumCard), two to a
+// row where there's room.
 const ROW_GRID = 'grid gap-3 sm:grid-cols-2'
-const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors overflow-hidden'
-const ROW_LAYOUT = 'flex flex-col gap-3'
-const ROW_META = 'flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-nier-bg/75 tracking-wider uppercase'
-const ROW_ACTIONS = 'flex flex-wrap gap-2 sm:shrink-0'
+const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors'
 const ROW_BUTTON = 'px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors'
 
@@ -77,6 +73,96 @@ function AtriumPreview({ url }: { url?: string | null }) {
             className="w-10 h-10 bg-nier-bg/20"
             style={{ WebkitMaskImage: 'url(/atrium-mark.png)', maskImage: 'url(/atrium-mark.png)', WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center' }}
           />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// What an atrium is, as its card says: where it's kept (`where`), one's part
+// in it (`strong`), and the rest.
+interface CardTag { label: string; where?: boolean; strong?: boolean }
+interface CardAction { label: string; onClick: () => void; danger?: boolean; disabled?: boolean; pressed?: boolean }
+const TAG = 'px-1.5 py-0.5 border text-[10px] tracking-[0.12em] uppercase'
+
+// An atrium on the browser's lists, the same card in each: its picture, its
+// name, what it is as tags, Enter and at most one other thing in sight, the
+// rest under ⋯ -- and under it, what one of those opens (a Drive atrium's
+// sharing).
+function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, enterDisabled, side, menu, moreLabel, children }: {
+  name: string
+  renaming?: ReactNode
+  preview?: string | null
+  tags: CardTag[]
+  busy?: string | null
+  onEnter: () => void
+  enterLabel: string
+  enterDisabled?: boolean
+  side?: CardAction
+  menu: CardAction[]
+  moreLabel: string
+  children?: ReactNode
+}) {
+  return (
+    <div className={`${ROW} group`}>
+      <AtriumPreview url={preview} />
+      <div className="flex flex-col gap-3">
+        <div className="min-w-0">
+          {renaming ?? <h4 className="text-nier-bg text-sm tracking-wide break-words">{name}</h4>}
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {tags.map((tag, i) => (
+              <span key={i} className={`${TAG} ${tag.where ? 'border-nier-border/40 text-nier-bg/85' : tag.strong ? 'border-nier-bg/60 text-nier-strong' : 'border-nier-border/25 text-nier-bg/65'}`}>
+                {tag.where && '◇ '}{tag.label}
+              </span>
+            ))}
+          </div>
+          {busy && <p role="status" className="mt-2 text-nier-bg text-[11px] tracking-[0.12em] uppercase">◇ {busy}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onEnter} disabled={enterDisabled} className={`${ROW_ENTER} disabled:opacity-40`}>{enterLabel}</button>
+          {side && (
+            <button onClick={side.onClick} disabled={side.disabled} aria-pressed={side.pressed} className={`${ROW_BUTTON} disabled:opacity-40 ${side.pressed ? 'border-nier-border/70 text-nier-bg' : ''}`}>
+              {side.label}
+            </button>
+          )}
+          <div className="flex-1" />
+          <CardMenu items={menu} label={moreLabel} />
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// A card's other actions, under ⋯: closed by a choice, a click elsewhere, or Escape.
+function CardMenu({ items, label }: { items: CardAction[]; label: string }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false) }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', key) }
+  }, [open])
+  if (!items.length) return null
+  return (
+    <div ref={box} className="relative">
+      <button onClick={() => setOpen(!open)} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} className={`${ROW_BUTTON} px-3 tracking-normal`}>⋯</button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full mt-1 z-20 min-w-[12rem] bg-nier-blackLight border border-nier-border/40 py-1 shadow-lg">
+          {items.map(item => (
+            <button
+              key={item.label}
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => { setOpen(false); item.onClick() }}
+              className={`block w-full text-left px-3 py-2 text-xs tracking-[0.1em] uppercase disabled:opacity-40 transition-colors ${item.danger ? 'text-red-400 hover:bg-nier-red/20' : 'text-nier-bg/85 hover:bg-nier-bg/10 hover:text-nier-bg'}`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -171,9 +257,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [editingLobbyId, setEditingLobbyId] = useState<string | null>(null)
   const [editingLobbyName, setEditingLobbyName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  // The public list: the cloud's, with an account that has it, and Drive's,
-  // for anyone -- the search applied.
-  const shownPublic = [...(noCloud ? [] : lobbies), ...publicDrive].filter(lobby => lobby.name.toLowerCase().includes(searchQuery.toLowerCase()))
   const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
   const [joinByIdLoading, setJoinByIdLoading] = useState(false)
   // Resolved once per browser load (see loadLobbies) and reused by both join
@@ -516,6 +599,18 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       ownerUsername: atrium.owner_name ?? '', inDrive: true, publicRoster: atrium.roster, previewUrl: publicPreviewUrl(atrium),
     })))
   }
+  // While the browser's open: Drive atriums looked at again each minute --
+  // their owners' latest pictures taken, those one's out of let go -- and
+  // the public list read again. Not while the page is hidden.
+  useEffect(() => {
+    if (isDesktop) return
+    const every = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void loadBrowserLobbies()
+      void loadPublicDrive()
+    }, 60_000)
+    return () => window.clearInterval(every)
+  }, [])
   // Into one to look at it: already one's own, or read already, as any of
   // one's own; else read as its viewer (lib/driveSync), its working copy made here.
   const [openingPublic, setOpeningPublic] = useState<string | null>(null)
@@ -1019,6 +1114,93 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }
   }
 
+  // The public list: the cloud's, with an account that has it, and Drive's,
+  // for anyone -- the search applied, and none of one's own: those are under
+  // Your Atriums.
+  const shownPublic = [...(noCloud ? [] : lobbies), ...publicDrive].filter(lobby =>
+    lobby.ownerUserId !== myId && !yours.some(own => own.id === lobby.id) && lobby.name.toLowerCase().includes(searchQuery.toLowerCase()))
+
+  // An atrium's card (AtriumCard) in `list`: what it is, and what can be done
+  // with it there.
+  const cardFor = (lobby: LobbyWithOwner, list: 'yours' | 'admin' | 'public') => {
+    const drive = lobby.inDrive && !lobby.publicRoster ? driveCard(lobby.id) : null
+    const viewer = !!drive?.viewer
+    const cloud = !lobby.inBrowser && !lobby.publicRoster
+    const mine = list === 'yours'
+    const tags: CardTag[] = []
+    if (lobby.publicRoster) {
+      tags.push({ label: t('browser.inDrive'), where: true })
+      if (lobby.ownerUsername) tags.push({ label: t('browser.tag.by', { name: lobby.ownerUsername }) })
+    } else if (lobby.inDrive) {
+      tags.push({ label: t('browser.inDrive'), where: true })
+      if (viewer) {
+        tags.push({ label: t('browser.public') }, { label: t('browser.tag.viewOnly'), strong: true })
+        if (drive?.owner) tags.push({ label: t('browser.tag.by', { name: drive.owner }) })
+      } else {
+        if (drive?.role) tags.push({ label: t(`browser.drive.role.${drive.role}`), strong: true })
+        if (drive?.role !== 'owner' && drive?.owner) tags.push({ label: t('browser.tag.sharedBy', { name: drive.owner }) })
+        if (drive?.isPublic) tags.push({ label: t('browser.public') })
+      }
+    } else if (lobby.inBrowser) {
+      tags.push({ label: t('browser.inBrowser'), where: true })
+    } else {
+      if (!isDesktop) tags.push({ label: t('browser.tag.cloud'), where: true })
+      if (list === 'admin') tags.push({ label: t('browser.admin'), strong: true })
+      if (list === 'public' && lobby.ownerUsername) tags.push({ label: t('browser.tag.by', { name: lobby.ownerUsername }) })
+      tags.push({ label: lobby.isPublic ? t(isDesktop ? 'browser.localPublic' : 'browser.public') : t(isDesktop ? 'browser.localPrivate' : list === 'public' ? 'browser.whitelisted' : 'browser.private') })
+      if (lobby.passwordHash) tags.push({ label: t('browser.secured') })
+      tags.push({ label: t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers }) })
+    }
+    // In sight beside Enter: a Drive atrium's sharing; a cloud one's settings.
+    const side: CardAction | undefined = lobby.inDrive && !lobby.publicRoster && !viewer
+      ? { label: t('browser.drive.share'), onClick: () => setSharingId(sharingId === lobby.id ? null : lobby.id), pressed: sharingId === lobby.id }
+      : cloud && list !== 'public' ? { label: t('browser.manage'), onClick: () => setManagingLobbyId(lobby.id) } : undefined
+    const menu: CardAction[] = [
+      ...(mine && !viewer ? [{ label: t('browser.rename'), onClick: () => { setEditingLobbyId(lobby.id); setEditingLobbyName(lobby.name) } }] : []),
+      ...(mine && lobby.inBrowser && !lobby.inDrive && canDrive ? [{ label: t('browser.drive.convert'), disabled: converting !== null, onClick: () => void toDrive(lobby) }] : []),
+      ...(mine && cloud && canDrive && lobby.ownerUserId === myId ? [{ label: t('browser.drive.move'), disabled: converting !== null, onClick: () => setMoveConfirmId(lobby.id) }] : []),
+      ...(cloud ? [{ label: t('browser.copyId'), onClick: () => copyLobbyId(lobby.id) }] : []),
+      // Someone else's Drive atrium is left, not deleted: it isn't theirs to delete.
+      ...(mine ? [{ label: lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete'), danger: true, onClick: () => setDeleteConfirmId(lobby.id) }] : []),
+    ]
+    const renaming = editingLobbyId === lobby.id ? (
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={editingLobbyName}
+          onChange={(e) => setEditingLobbyName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') renameLobby(lobby.id, editingLobbyName)
+            else if (e.key === 'Escape') { setEditingLobbyId(null); setEditingLobbyName('') }
+          }}
+          className="min-w-0 flex-1 bg-nier-blackLight border border-nier-border/40 text-nier-bg px-2 py-1 text-sm tracking-wide focus:border-nier-border/60 transition-colors"
+          autoFocus
+          maxLength={50}
+        />
+        <button onClick={() => renameLobby(lobby.id, editingLobbyName)} className="text-nier-bg/75 hover:text-nier-bg text-xs">✓</button>
+        <button onClick={() => { setEditingLobbyId(null); setEditingLobbyName('') }} className="text-nier-bg/75 hover:text-nier-bg text-xs">✕</button>
+      </div>
+    ) : undefined
+    return (
+      <AtriumCard
+        key={lobby.id}
+        name={lobby.name}
+        renaming={renaming}
+        preview={lobby.previewUrl}
+        tags={tags}
+        busy={converting === lobby.id ? t(lobby.inBrowser ? 'browser.drive.converting' : 'browser.drive.moving') : null}
+        onEnter={() => (lobby.publicRoster ? void viewPublic(lobby) : lobby.inBrowser ? void enterBrowserLobby(lobby) : handleJoinClick(lobby))}
+        enterLabel={openingPublic === lobby.id ? t('browser.drive.opening') : t('browser.enter')}
+        enterDisabled={!!lobby.publicRoster && openingPublic !== null}
+        side={side}
+        menu={menu}
+        moreLabel={t('browser.more')}
+      >
+        {sharingId === lobby.id && <DriveMembers lobbyId={lobby.id} me={myId} buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
+      </AtriumCard>
+    )
+  }
+
   const chooseVaultFolder = async () => {
     if (!isDesktop) return
 
@@ -1405,132 +1587,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                 </span>
               </div>
               <div className={ROW_GRID}>
-                {yours.map(lobby => (
-                  <div key={lobby.id} className={`${ROW} group`}>
-                    <AtriumPreview url={lobby.previewUrl} />
-                    <div className={ROW_LAYOUT}>
-                      <div className="flex-1 min-w-0">
-                        {editingLobbyId === lobby.id ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={editingLobbyName}
-                              onChange={(e) => setEditingLobbyName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  renameLobby(lobby.id, editingLobbyName)
-                                } else if (e.key === 'Escape') {
-                                  setEditingLobbyId(null)
-                                  setEditingLobbyName('')
-                                }
-                              }}
-                              className="bg-nier-blackLight border border-nier-border/40 text-nier-bg px-2 py-1 text-sm tracking-wide focus:border-nier-border/60 transition-colors"
-                              autoFocus
-                              maxLength={50}
-                            />
-                            <button
-                              onClick={() => renameLobby(lobby.id, editingLobbyName)}
-                              className="text-nier-bg/75 hover:text-nier-bg text-xs"
-                            >
-                              ✓
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingLobbyId(null)
-                                setEditingLobbyName('')
-                              }}
-                              className="text-nier-bg/75 hover:text-nier-bg text-xs"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
-                            {/* Not a public atrium one only looks at: its name is its owner's. */}
-                            {!isDriveViewer(lobby.id) && (
-                              <button
-                                onClick={() => {
-                                  setEditingLobbyId(lobby.id)
-                                  setEditingLobbyName(lobby.name)
-                                }}
-                                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-                                title={t('browser.rename')}
-                              >
-                                ✎
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        <div className={ROW_META}>
-                          {lobby.inBrowser ? (
-                            <span>◇ {t(!lobby.inDrive ? 'browser.inBrowser' : isDriveViewer(lobby.id) ? 'browser.drive.viewing' : 'browser.inDrive')}</span>
-                          ) : (
-                            <>
-                              <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
-                              <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
-                              {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className={ROW_ACTIONS}>
-                        <button
-                          onClick={() => void enterBrowserLobby(lobby)}
-                          className={ROW_ENTER}
-                        >
-                          {t('browser.enter')}
-                        </button>
-                        {lobby.inDrive && !isDriveViewer(lobby.id) && (
-                          <button onClick={() => setSharingId(sharingId === lobby.id ? null : lobby.id)} className={ROW_BUTTON}>
-                            {t('browser.drive.share')}
-                          </button>
-                        )}
-                        {lobby.inBrowser && !lobby.inDrive && canDrive && (
-                          <button disabled={converting !== null} onClick={() => void toDrive(lobby)} className={`${ROW_BUTTON} disabled:opacity-40`}>
-                            {converting === lobby.id ? t('browser.drive.converting') : t('browser.drive.convert')}
-                          </button>
-                        )}
-                        {/* Nobody to give an id to, nor to let in, for one kept in the browser. */}
-                        {!lobby.inBrowser && canDrive && lobby.ownerUserId === myId && (
-                          <button disabled={converting !== null} onClick={() => setMoveConfirmId(lobby.id)} className={`${ROW_BUTTON} disabled:opacity-40`}>
-                            {converting === lobby.id ? t('browser.drive.moving') : t('browser.drive.move')}
-                          </button>
-                        )}
-                        {!lobby.inBrowser && (
-                          <>
-                            <button
-                              onClick={() => copyLobbyId(lobby.id)}
-                              className={ROW_BUTTON}
-                              title={t('browser.copyIdTitle')}
-                            >
-                              {t('browser.copyId')}
-                            </button>
-                            <button
-                              onClick={() => setManagingLobbyId(lobby.id)}
-                              className={ROW_BUTTON}
-                              title={t('browser.manageTitle')}
-                            >
-                              {t('browser.manage')}
-                            </button>
-                          </>
-                        )}
-                        {/* A word rather than a cross, matching Manage
-                            beside it. The glyph was the only control here that
-                            had to be guessed at, and it sat next to the one
-                            action in this list that cannot be undone. */}
-                        <button
-                          onClick={() => setDeleteConfirmId(lobby.id)}
-                          className="px-3 py-2 border border-nier-red/40 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:bg-nier-red/20 hover:text-nier-bg transition-colors"
-                        >
-                          {/* Someone else's Drive atrium is left, not deleted: it isn't theirs to delete. */}
-                          {lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete')}
-                        </button>
-                      </div>
-                      {sharingId === lobby.id && <DriveMembers lobbyId={lobby.id} me={myId} buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
-                    </div>
-                  </div>
-                ))}
+                {yours.map(lobby => cardFor(lobby, 'yours'))}
               </div>
             </section>
           )}
@@ -1544,44 +1601,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                 <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
               </div>
               <div className={ROW_GRID}>
-                {adminLobbies.map(lobby => (
-                  <div key={lobby.id} className={`${ROW} group`}>
-                    <AtriumPreview url={lobby.previewUrl} />
-                    <div className={ROW_LAYOUT}>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
-                        <div className={ROW_META}>
-                          <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
-                          <span>{lobby.isPublic ? (isDesktop ? `◦ ${t('browser.localPublic')}` : `◦ ${t('browser.public')}`) : (isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.private')}`)}</span>
-                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
-                          <span className="text-nier-bg/70">◦ {t('browser.admin')}</span>
-                        </div>
-                      </div>
-                      <div className={ROW_ACTIONS}>
-                        <button
-                          onClick={() => handleJoinClick(lobby)}
-                          className={ROW_ENTER}
-                        >
-                          {t('browser.enter')}
-                        </button>
-                        <button
-                          onClick={() => copyLobbyId(lobby.id)}
-                          className={ROW_BUTTON}
-                          title={t('browser.copyIdTitle')}
-                        >
-                          {t('browser.copyId')}
-                        </button>
-                        <button
-                          onClick={() => setManagingLobbyId(lobby.id)}
-                          className={ROW_BUTTON}
-                          title={t('browser.manageTitle')}
-                        >
-                          {t('browser.manage')}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                {adminLobbies.map(lobby => cardFor(lobby, 'admin'))}
               </div>
             </section>
           )}
@@ -1688,43 +1708,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   {searchQuery ? t('browser.noMatch') : t('browser.noneAvailable')}
                 </div>
               ) : (
-                shownPublic.map(lobby => (
-                  <div key={lobby.id} className={ROW}>
-                    <AtriumPreview url={lobby.previewUrl} />
-                    <div className={ROW_LAYOUT}>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-nier-bg text-sm tracking-wide">
-                          {lobby.name}
-                          {!lobby.isPublic && <span className="ml-2 text-nier-bg/70 text-xs">{isDesktop ? '[Local Private]' : '[Private]'}</span>}
-                        </h4>
-                        <div className={ROW_META}>
-                          <span>{t('browser.atriumBy')} ◇ {lobby.ownerUsername}</span>
-                          {lobby.publicRoster ? <span>◦ {t('browser.inDrive')}</span> : <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>}
-                          {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
-                          {!lobby.isPublic && <span>{isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.whitelisted')}`}</span>}
-                        </div>
-                      </div>
-                      <div className={ROW_ACTIONS}>
-                        {!lobby.publicRoster && (
-                          <button
-                            onClick={() => copyLobbyId(lobby.id)}
-                            className={ROW_BUTTON}
-                            title={t('browser.copyIdTitle')}
-                          >
-                            {t('browser.copyId')}
-                          </button>
-                        )}
-                        <button
-                          disabled={openingPublic !== null}
-                          onClick={() => (lobby.publicRoster ? void viewPublic(lobby) : handleJoinClick(lobby))}
-                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors disabled:opacity-40"
-                        >
-                          {openingPublic === lobby.id ? t('browser.drive.opening') : t('browser.enter')}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                shownPublic.map(lobby => cardFor(lobby, 'public'))
               )}
             </div>
           </section>

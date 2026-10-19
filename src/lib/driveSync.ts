@@ -296,13 +296,15 @@ export async function sharePreview(lobbyId: string, picture: Blob): Promise<void
   if (isPublicAtrium(lobbyId)) await list(lobbyId, await bytesOf(picture)).catch(error => console.warn('[drive] its public listing:', error))
 }
 
-// The owner's picture, if it's moved since this copy took it -- opened with
-// the keys this account holds (a generation made since waits for its next
-// visit to the atrium).
+// The owner's picture, if it's moved since this copy took it -- without going
+// in: opened with the keys this account holds, and a generation made since
+// (someone removed) taken from the roster, as a look inside would.
 async function takePreview(lobbyId: string, kept: Kept, roster: Roster, me: string): Promise<void> {
   if (!roster.preview) return
   const version = await store.version(roster.preview)
   if (version === kept.previewVersion) return
+  const keys = await newKeys(roster, me, !!kept.viewer, kept.keys)
+  if (keys) kept = { ...kept, keys }
   const picture = await unseal(await keyringFrom(kept), await store.readByLink(roster.preview))
   const [{ browserEngine }, { keepPreview }] = await Promise.all([import('./browserAtriums'), import('./atriumPreview')])
   if (!await keepPreview((await browserEngine()).localClient, true, lobbyId, new Blob([picture as BlobPart], { type: 'image/webp' }))) return
@@ -331,6 +333,18 @@ function rowOf(roster: Roster, me: string) {
 }
 /** Google's window, if need be, first thing on a click (it can't open later). */
 export const ensureSignedIn = () => store.signIn()
+
+/** The keys the roster gives `me` that `have` lacks -- every one, those had
+ *  kept: wrapped for one, opened with one's private key; a public atrium's
+ *  viewer, its public ones. Null if it gives none new. */
+async function newKeys(roster: Roster, me: string, viewer: boolean, have: Record<string, string>): Promise<Record<string, string> | null> {
+  if (roster.keys.some(generation => !(String(generation.n) in have) && generation.for[me])) {
+    const own = mine?.user === me ? mine : await myIdentity({ id: me })
+    return { ...have, ...await keysOf(await keyringOf(roster, me, own.identity.privateJwk)) }
+  }
+  if (viewer && roster.public && Object.keys(roster.public).some(n => !(n in have))) return { ...have, ...roster.public }
+  return null
+}
 
 async function keyringFrom(kept: Kept): Promise<Keyring> {
   return new Map(await Promise.all(Object.entries(kept.keys).map(async ([n, text]) => [Number(n), await keyFromText(text)] as [number, CryptoKey])))
@@ -666,6 +680,20 @@ export function isPublicAtrium(lobbyId: string): boolean {
 }
 /** Read here as a public atrium's viewer: no place in it. */
 export const isDriveViewer = (lobbyId: string) => !!allKept()[lobbyId]?.viewer
+/** What a Drive atrium's card says of it (components/LobbyBrowser), from its
+ *  roster as last read here: one's role in it, its owner's name, whether
+ *  it's public -- and whether one only looks at it, public. */
+export function driveCard(lobbyId: string): { role: Role | null; owner: string; isPublic: boolean; viewer: boolean } | null {
+  const kept = allKept()[lobbyId]
+  if (!kept) return null
+  const roster = rostersKept()[kept.roster]?.roster
+  return {
+    role: roster ? placeOf(roster, signedInHere())?.role ?? null : kept.owner ? 'owner' : null,
+    owner: roster?.members.find(member => member.role === 'owner')?.name ?? '',
+    isPublic: !!roster?.public,
+    viewer: !!kept.viewer,
+  }
+}
 
 /** The owner's: public -- its keys in its roster -- and listed, with its name
  *  and its picture. Done again, the listing's brought up to date. */
@@ -977,15 +1005,11 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
       s.inviteCleared = true
       await clearSecret(s.kept.roster)
     }
-    // Generations made since: opened with one's private key -- a viewer's,
-    // as the roster has them, public.
-    if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {
-      const own = mine?.user === s.me ? mine : await myIdentity({ id: s.me })
-      s.keyring = await keyringOf(roster, s.me, own.identity.privateJwk)
-      keep(s.lobbyId, { ...s.kept, keys: await keysOf(s.keyring) }, s.me)
-    } else if (s.kept.viewer && roster.public && Object.keys(roster.public).some(n => !s.keyring.has(Number(n)))) {
-      s.keyring = await keyringFrom({ ...s.kept, keys: roster.public })
-      keep(s.lobbyId, { ...s.kept, keys: roster.public }, s.me)
+    // Generations made since, as the roster gives them.
+    const keys = await newKeys(roster, s.me, !!s.kept.viewer, await keysOf(s.keyring))
+    if (keys) {
+      s.keyring = await keyringFrom({ ...s.kept, keys })
+      keep(s.lobbyId, { ...s.kept, keys }, s.me)
     }
   }
   // Whom to let in -- looked for at every look, not only when the roster
