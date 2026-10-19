@@ -817,13 +817,18 @@ function KickedNotice({ notice, onDismiss }: {
 }) {
   const { t } = useTranslation()
   if (!notice) return null
-  const title = notice.drive === 'deleted' ? t('atrium.dialog.deletedTitle') : notice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')
+  const title = notice.drive === 'deleted' ? t('atrium.dialog.deletedTitle') : notice.drive === 'private' ? t('atrium.dialog.privateTitle') : notice.blacklisted ? t('atrium.dialog.removedBlacklistedTitle') : t('atrium.dialog.removedTitle')
+  // Over, with nothing more to say of coming back: deleted, or -- read as a
+  // public atrium -- made private.
+  const over = notice.drive === 'deleted' || notice.drive === 'private'
   return (
     <NoticeCard title={title} warning={notice.blacklisted} onDismiss={onDismiss}>
       <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-2 leading-relaxed">
         {notice.drive === 'deleted'
           ? t('atrium.drive.deleted')
-          : notice.blacklisted
+          : notice.drive === 'private'
+            ? t('atrium.drive.private')
+            : notice.blacklisted
             ? t('atrium.dialog.removedBlacklistedBody')
             : t('atrium.dialog.removedBody')}
       </p>
@@ -831,7 +836,7 @@ function KickedNotice({ notice, onDismiss }: {
         <p className="text-red-400/70 text-xs font-mono tracking-wider text-center mb-6">
           {t('atrium.dialog.cannotRejoin')}
         </p>
-      ) : notice.drive === 'deleted' ? (
+      ) : over ? (
         <div className="mb-6" />
       ) : notice.drive ? (
         // A Drive atrium's roster is the way in: added again, or not at all.

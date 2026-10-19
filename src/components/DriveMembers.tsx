@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { addPerson, driveMembers, ensureSignedIn, findDeletions, inviteLink, removePerson, resendInvitation, restoreDeletions, setRole, type Deletion } from '../lib/driveSync'
+import { addPerson, driveMembers, ensureSignedIn, findDeletions, inviteLink, makePrivate, makePublic, removePerson, resendInvitation, restoreDeletions, setRole, type Deletion } from '../lib/driveSync'
 import type { Clock, Role, Roster } from '../lib/driveFormat'
 
 // A Drive atrium's sharing, on its card in the atrium browser: its invite link
 // -- which lets in only those added -- and its members. Its owner and admins
 // add people by username, set their roles, and remove or block them; only
 // the owner makes admins (lib/driveSync). They also bring back what was
-// deleted, while the atrium's saves in Drive still hold it.
+// deleted, while the atrium's saves in Drive still hold it. Its owner makes
+// it public, for anyone to look at -- asked first -- and private again.
 type Assignable = Exclude<Role, 'owner'>
 const FIELD = 'bg-nier-blackLight border border-nier-border/30 text-nier-bg px-2 py-1 text-xs'
 const LABEL = 'block text-nier-bg/70 text-[11px] tracking-[0.12em] uppercase mb-1'
@@ -26,6 +27,7 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
   // Making someone admin: their Google address, to share the member list with.
   const [adminFor, setAdminFor] = useState<string | null>(null)
   const [adminEmail, setAdminEmail] = useState('')
+  const [askingPublic, setAskingPublic] = useState(false)
 
   const load = () => driveMembers(lobbyId, me).then(found => { setRoster(found.roster); setMyRole(found.role) })
   useEffect(() => { load().catch(error => setNote(explain(error))) }, [lobbyId])
@@ -85,6 +87,25 @@ export default function DriveMembers({ lobbyId, me, buttonClass }: { lobbyId: st
           <button onClick={() => void navigator.clipboard.writeText(link).then(() => setNote(t('browser.drive.copied')))} className={buttonClass}>{t('browser.drive.copyLink')}</button>
         </div>
       </div>
+
+      {myRole === 'owner' && roster && (
+        <div>
+          <label className={LABEL}>{t('browser.drive.public.title')}</label>
+          <p className="text-nier-bg/70 text-[11px] leading-relaxed mb-1.5">{t(askingPublic ? 'browser.drive.public.confirm' : roster.public ? 'browser.drive.public.on' : 'browser.drive.public.off')}</p>
+          <div className="flex gap-2">
+            {roster.public ? (
+              <button disabled={busy} onClick={() => void act(async () => { await makePrivate(lobbyId, me); return t('browser.drive.public.madePrivate') })} className={buttonClass}>{t('browser.drive.public.makePrivate')}</button>
+            ) : askingPublic ? (
+              <>
+                <button disabled={busy} onClick={() => void act(async () => { setAskingPublic(false); await makePublic(lobbyId, me); return t('browser.drive.public.madePublic') })} className={buttonClass}>{t('browser.drive.public.makePublic')}</button>
+                <button disabled={busy} onClick={() => setAskingPublic(false)} className={buttonClass}>{t('common.cancel')}</button>
+              </>
+            ) : (
+              <button disabled={busy} onClick={() => setAskingPublic(true)} className={buttonClass}>{t('browser.drive.public.makePublic')}</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {roster && (
         <div>

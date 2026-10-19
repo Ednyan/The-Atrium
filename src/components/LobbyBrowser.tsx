@@ -2,14 +2,15 @@ import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
-import { useGamePick } from '../store/gameStore'
+import { useGameStore, useGamePick } from '../store/gameStore'
 import { showToast } from '../lib/toast'
 import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
-import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, isDriveAtrium, isDriveOwner, isDriveViewer, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveMembers from './DriveMembers'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -89,6 +90,8 @@ interface LobbyWithOwner extends Lobby {
   // Google Drive too (lib/driveSync).
   inBrowser?: boolean
   inDrive?: boolean
+  // A public Drive atrium, as the directory lists it (phase 8): its roster.
+  publicRoster?: string
 }
 
 // A lobbies row as the lists show it.
@@ -118,6 +121,8 @@ interface LobbyBrowserProps {
 export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: LobbyBrowserProps) {
   const { t } = useTranslation()
   const [lobbies, setLobbies] = useState<LobbyWithOwner[]>([])
+  // Everyone's public Drive atriums (phase 8), shown to anyone, a guest too.
+  const [publicDrive, setPublicDrive] = useState<LobbyWithOwner[]>([])
   const [userLobbies, setUserLobbies] = useState<LobbyWithOwner[]>([])
   // Lobbies the current user administers but doesn't own -- admins get the
   // same in-atrium management permissions (whitelist/blacklist/editors/
@@ -166,6 +171,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [editingLobbyId, setEditingLobbyId] = useState<string | null>(null)
   const [editingLobbyName, setEditingLobbyName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  // The public list: the cloud's, with an account that has it, and Drive's,
+  // for anyone -- the search applied.
+  const shownPublic = [...(noCloud ? [] : lobbies), ...publicDrive].filter(lobby => lobby.name.toLowerCase().includes(searchQuery.toLowerCase()))
   const [joinByIdError, setJoinByIdError] = useState<string | null>(null)
   const [joinByIdLoading, setJoinByIdLoading] = useState(false)
   // Resolved once per browser load (see loadLobbies) and reused by both join
@@ -470,7 +478,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // A Drive atrium opened without Drive connected: Drive asked for on this
   // click (Google's window, while the click counts) -- closed, not opened.
   const enterBrowserLobby = async (lobby: { id: string; inDrive?: boolean }) => {
-    if (lobby.inDrive && !hasDriveToken()) {
+    // Drive asked for, if need be -- not to read a public atrium, which needs none.
+    if (lobby.inDrive && !isDriveViewer(lobby.id) && !hasDriveToken()) {
       try {
         await ensureSignedIn()
       } catch (err) {
@@ -486,14 +495,48 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // (lib/driveSync, leaveDriveAtrium), and said. Those one's in, their
   // owner's latest picture taken along the way.
   const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    // The account, or this browser's guest (a public atrium's viewer).
+    const me = useGameStore.getState().userId
+    if (!me) return
     for (const lobby of lobbies) {
-      const standing = await lookAtDriveAtrium(lobby.id, user.id)
+      const standing = await lookAtDriveAtrium(lobby.id, me)
       if (!standing || standing === 'in') continue
       await leaveDriveAtrium(lobby.id).catch(error => console.warn('[drive] letting go of', lobby.id, error))
       setBrowserLobbies(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
-      showToast(t(standing === 'deleted' ? 'browser.drive.deletedBy' : 'browser.drive.removedFrom', { name: lobby.name }))
+      showToast(t(standing === 'deleted' ? 'browser.drive.deletedBy' : standing === 'private' ? 'browser.drive.notPublic' : 'browser.drive.removedFrom', { name: lobby.name }))
+    }
+  }
+
+  // Public Drive atriums (phase 8), as the directory lists them.
+  const loadPublicDrive = async () => {
+    if (isDesktop) return
+    const listed = await publicAtriums().catch(error => { console.warn('[drive] the public atriums:', error); return [] })
+    setPublicDrive(listed.map(atrium => ({
+      ...asLobby({ id: atrium.lobby_id, name: atrium.name, owner_user_id: atrium.owner, is_public: true, max_players: 50 }),
+      ownerUsername: atrium.owner_name ?? '', inDrive: true, publicRoster: atrium.roster, previewUrl: publicPreviewUrl(atrium),
+    })))
+  }
+  // Into one to look at it: already one's own, or read already, as any of
+  // one's own; else read as its viewer (lib/driveSync), its working copy made here.
+  const [openingPublic, setOpeningPublic] = useState<string | null>(null)
+  const viewPublic = async (lobby: LobbyWithOwner) => {
+    if (isDriveAtrium(lobby.id)) return enterBrowserLobby(lobby)
+    const me = useGameStore.getState().userId
+    if (!me || !lobby.publicRoster) return
+    setOpeningPublic(lobby.id)
+    try {
+      const lobbyId = await viewPublicAtrium(lobby.publicRoster, me)
+      rememberBrowserAtrium(lobbyId)
+      onJoinLobby(lobbyId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message === 'NOT_PUBLIC' || /Drive 404/.test(message)) setPublicDrive(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
+      setError(message === 'NOT_PUBLIC' ? t('browser.drive.notPublic', { name: lobby.name })
+        : /Drive 404/.test(message) ? t('browser.drive.deletedBy', { name: lobby.name })
+          : message === 'BLOCKED' ? t('browser.drive.blockedFrom', { name: lobby.name })
+            : /Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
+    } finally {
+      setOpeningPublic(null)
     }
   }
 
@@ -516,6 +559,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const loadLobbies = async () => {
     if (!supabase) return
     void loadBrowserLobbies()
+    void loadPublicDrive()
 
     setLoading(true)
     try {
@@ -1403,21 +1447,24 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         ) : (
                           <div className="flex items-center gap-2">
                             <h4 className="text-nier-bg text-sm tracking-wide">{lobby.name}</h4>
-                            <button
-                              onClick={() => {
-                                setEditingLobbyId(lobby.id)
-                                setEditingLobbyName(lobby.name)
-                              }}
-                              className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-                              title={t('browser.rename')}
-                            >
-                              ✎
-                            </button>
+                            {/* Not a public atrium one only looks at: its name is its owner's. */}
+                            {!isDriveViewer(lobby.id) && (
+                              <button
+                                onClick={() => {
+                                  setEditingLobbyId(lobby.id)
+                                  setEditingLobbyName(lobby.name)
+                                }}
+                                className="text-nier-bg/70 hover:text-nier-bg/80 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+                                title={t('browser.rename')}
+                              >
+                                ✎
+                              </button>
+                            )}
                           </div>
                         )}
                         <div className={ROW_META}>
                           {lobby.inBrowser ? (
-                            <span>◇ {t(lobby.inDrive ? 'browser.inDrive' : 'browser.inBrowser')}</span>
+                            <span>◇ {t(!lobby.inDrive ? 'browser.inBrowser' : isDriveViewer(lobby.id) ? 'browser.drive.viewing' : 'browser.inDrive')}</span>
                           ) : (
                             <>
                               <span>◇ {t('browser.usersCount', { count: lobby.playerCount ?? 0, max: lobby.maxPlayers })}</span>
@@ -1434,7 +1481,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         >
                           {t('browser.enter')}
                         </button>
-                        {lobby.inDrive && (
+                        {lobby.inDrive && !isDriveViewer(lobby.id) && (
                           <button onClick={() => setSharingId(sharingId === lobby.id ? null : lobby.id)} className={ROW_BUTTON}>
                             {t('browser.drive.share')}
                           </button>
@@ -1589,25 +1636,29 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             </section>
           )}
 
-          {/* Public Atriums -- for a guest, what an account adds. */}
-          {!guest && noCloud ? null : guest ? (
+          {/* Public Atriums -- for a guest, what an account adds, and the
+              public Drive atriums anyone may look at. */}
+          {guest && (
             <section className="border border-nier-border/20 p-5 flex flex-wrap items-center gap-4">
               <p className="flex-1 min-w-[14rem] text-nier-bg/80 text-xs tracking-wide leading-relaxed">{t('browser.guestNote')}</p>
               <button onClick={onSignIn} className={ROW_ENTER}>{t('auth.logIn')}</button>
             </section>
-          ) : (
+          )}
+          {noCloud && publicDrive.length === 0 ? null : (
           <section>
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
               <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.availableAtriums')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-bg/70 text-xs">{t('browser.found', { count: lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length })}</span>
-              <button
-                onClick={() => setShowJoinById(true)}
-                className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
-              >
-                {t('browser.joinById')}
-              </button>
+              <span className="text-nier-bg/70 text-xs">{t('browser.found', { count: shownPublic.length })}</span>
+              {!noCloud && (
+                <button
+                  onClick={() => setShowJoinById(true)}
+                  className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
+                >
+                  {t('browser.joinById')}
+                </button>
+              )}
             </div>
             
             {/* Search Bar */}
@@ -1632,12 +1683,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             </div>
             
             <div className={ROW_GRID}>
-              {lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+              {shownPublic.length === 0 ? (
                 <div className="sm:col-span-2 text-nier-bg/70 text-center py-12 text-xs tracking-wider uppercase">
                   {searchQuery ? t('browser.noMatch') : t('browser.noneAvailable')}
                 </div>
               ) : (
-                lobbies.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase())).map(lobby => (
+                shownPublic.map(lobby => (
                   <div key={lobby.id} className={ROW}>
                     <AtriumPreview url={lobby.previewUrl} />
                     <div className={ROW_LAYOUT}>
@@ -1648,24 +1699,27 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                         </h4>
                         <div className={ROW_META}>
                           <span>{t('browser.atriumBy')} ◇ {lobby.ownerUsername}</span>
-                          <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>
+                          {lobby.publicRoster ? <span>◦ {t('browser.inDrive')}</span> : <span>◦ {lobby.playerCount}/{lobby.maxPlayers}</span>}
                           {lobby.passwordHash && <span>◦ {t('browser.secured')}</span>}
                           {!lobby.isPublic && <span>{isDesktop ? `◦ ${t('browser.localPrivate')}` : `◦ ${t('browser.whitelisted')}`}</span>}
                         </div>
                       </div>
                       <div className={ROW_ACTIONS}>
+                        {!lobby.publicRoster && (
+                          <button
+                            onClick={() => copyLobbyId(lobby.id)}
+                            className={ROW_BUTTON}
+                            title={t('browser.copyIdTitle')}
+                          >
+                            {t('browser.copyId')}
+                          </button>
+                        )}
                         <button
-                          onClick={() => copyLobbyId(lobby.id)}
-                          className={ROW_BUTTON}
-                          title={t('browser.copyIdTitle')}
+                          disabled={openingPublic !== null}
+                          onClick={() => (lobby.publicRoster ? void viewPublic(lobby) : handleJoinClick(lobby))}
+                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors disabled:opacity-40"
                         >
-                          {t('browser.copyId')}
-                        </button>
-                        <button
-                          onClick={() => handleJoinClick(lobby)}
-                          className="px-4 py-2 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:bg-nier-bg hover:text-nier-black transition-colors"
-                        >
-                          {t('browser.enter')}
+                          {openingPublic === lobby.id ? t('browser.drive.opening') : t('browser.enter')}
                         </button>
                       </div>
                     </div>
@@ -1805,7 +1859,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         return (
           <ConfirmBox title={leaving ? t('browser.drive.leave') : t('browser.deleteAtrium')} onCancel={() => setDeleteConfirmId(null)}>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-6">
-              {!isDriveAtrium(deleteConfirmId) ? t('browser.deleteConfirm') : leaving ? t('browser.drive.leaveConfirm') : t('browser.drive.deleteConfirm')}
+              {!isDriveAtrium(deleteConfirmId) ? t('browser.deleteConfirm') : isDriveViewer(deleteConfirmId) ? t('browser.drive.viewerLeaveConfirm') : leaving ? t('browser.drive.leaveConfirm') : t('browser.drive.deleteConfirm')}
             </p>
             <ConfirmButtons cancel={t('common.cancel')} confirm={leaving ? t('browser.drive.leave') : t('common.delete')} onCancel={() => setDeleteConfirmId(null)} onConfirm={() => void deleteLobby(deleteConfirmId)} />
           </ConfirmBox>

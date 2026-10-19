@@ -11,7 +11,7 @@
 // account keeps them in its Supabase profile.
 
 import { welcome } from './mail'
-import { replies, whoIs, type Env, type Who } from './who'
+import { fromBase64, replies, whoIs, type Env, type Who } from './who'
 
 const TABLES = [
   `create table if not exists accounts (
@@ -32,6 +32,15 @@ const TABLES = [
   'create table if not exists bans (account text primary key, username text, kind text not null, reason text, by_account text not null, at integer not null)',
   // A Google account's Pinterest connection (src/pinterest.ts): its tokens, sealed.
   'create table if not exists pinterest (account text primary key, sealed text not null, username text, updated_at integer not null)',
+  // Drive atriums made public by their owners (phase 8): where to find each
+  // -- its roster in Drive, which says whether it's public and holds its
+  // keys if so -- its name, and its picture. Listed in everyone's atrium
+  // browser. A listing only points: an atrium whose roster isn't public
+  // opens for no one, whatever's listed.
+  `create table if not exists public_atriums (
+    lobby_id text primary key, roster text not null, name text not null, owner text not null,
+    preview blob, preview_at integer, listed_at integer not null, updated_at integer not null)`,
+  'create index if not exists public_atriums_owner on public_atriums (owner)',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -55,6 +64,12 @@ const NAME_EVERY_MS = 15 * 24 * 60 * 60 * 1000
 
 const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
 const MOST_IDS = 200
+// Public atriums: how many one account lists, how many the list gives, and
+// how big a picture may be (a card's, WebP).
+const MOST_PUBLIC_EACH = 50
+const MOST_PUBLIC_LISTED = 500
+const MOST_PREVIEW_BYTES = 300 * 1024
+const DRIVE_ID = /^[\w-]{10,128}$/
 
 /** A Google account's grant, kept (sealed), replaced, or forgotten (its
  *  access taken back). */
@@ -245,6 +260,15 @@ export async function people(request: Request, env: Env, what: string): Promise<
     if (elsewhere === null) return answer(503, { error: 'check' })
     return answer(200, { available: !elsewhere })
   }
+  // The public atriums, for anyone -- a guest too: the newest first, but
+  // those of banned accounts.
+  if (what === 'atriums') {
+    await tablesIn(db)
+    const { results } = await db.prepare(`select p.lobby_id, p.roster, p.name, p.owner, coalesce(a.display_name, a.username) as owner_name,
+      p.preview_at, p.updated_at from public_atriums p left join accounts a on a.id = p.owner
+      where p.owner not in (select account from bans) order by p.updated_at desc limit ?`).bind(MOST_PUBLIC_LISTED).all()
+    return answer(200, results)
+  }
   const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
   if (!who) return answer(401, { error: 'sign-in' })
   await tablesIn(db)
@@ -383,6 +407,41 @@ export async function people(request: Request, env: Env, what: string): Promise<
       return answer(200, results)
     }
 
+    // One's Drive atrium listed as public, or its listing brought up to date
+    // (its name, its picture): its owner's -- whoever listed it first. The
+    // roster it names says whether it really is (lib/driveSync).
+    case 'publish': {
+      const lobby = text('lobby_id', 64), roster = text('roster', 128), name = text('name', 100)?.trim()
+      if (!lobby || !roster || !DRIVE_ID.test(roster) || !name) return answer(400, { error: 'body' })
+      let preview: Uint8Array | null = null
+      if (typeof asked.preview === 'string') {
+        try { preview = fromBase64(asked.preview) } catch { return answer(400, { error: 'preview' }) }
+        const webp = preview.length >= 12 && String.fromCharCode(...preview.slice(0, 4)) === 'RIFF' && String.fromCharCode(...preview.slice(8, 12)) === 'WEBP'
+        if (!webp || preview.length > MOST_PREVIEW_BYTES) return answer(400, { error: 'preview' })
+      }
+      const had = await db.prepare('select owner from public_atriums where lobby_id = ?').bind(lobby).first<{ owner: string }>()
+      if (had && had.owner !== who.id) return answer(403, { error: 'not yours' })
+      if (!had) {
+        const listed = await db.prepare('select count(*) as n from public_atriums where owner = ?').bind(who.id).first<{ n: number }>()
+        if ((listed?.n ?? 0) >= MOST_PUBLIC_EACH) return answer(429, { error: 'too many' })
+      }
+      const now = Date.now()
+      await db.prepare(`insert into public_atriums (lobby_id, roster, name, owner, preview, preview_at, listed_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict (lobby_id) do update set roster = excluded.roster, name = excluded.name, updated_at = excluded.updated_at,
+        preview = coalesce(excluded.preview, public_atriums.preview), preview_at = coalesce(excluded.preview_at, public_atriums.preview_at)
+        where public_atriums.owner = excluded.owner`)
+        .bind(lobby, roster, name, who.id, preview, preview ? now : null, now, now).run()
+      return answer(200, { ok: true })
+    }
+    // Off the list: by its owner, or the platform's operator.
+    case 'unpublish': {
+      const lobby = text('lobby_id', 64)
+      if (!lobby) return answer(400, { error: 'body' })
+      const done = await db.prepare('delete from public_atriums where lobby_id = ? and owner = ?').bind(lobby, who.id).run()
+      if (!done.meta.changes && await isOperator(env, who, asked.token as string)) await db.prepare('delete from public_atriums where lobby_id = ?').bind(lobby).run()
+      return answer(200, { ok: true })
+    }
+
     // One's invitation's secret gone, once let in properly: the invitation
     // kept, to open the atrium again from another browser.
     case 'clear': {
@@ -402,6 +461,18 @@ export async function people(request: Request, env: Env, what: string): Promise<
     }
   }
   return answer(404, { error: 'what' })
+}
+
+/** A public atrium's picture, for anyone's <img>: addressed with its time
+ *  (`?v=`), so it's cached for good and a new one is a new address. */
+export async function publicPreview(env: Env, lobbyId: string): Promise<Response> {
+  if (!env.PEOPLE) return new Response('Not set up', { status: 503 })
+  await tablesIn(env.PEOPLE)
+  const row = await env.PEOPLE.prepare('select preview from public_atriums where lobby_id = ?').bind(lobbyId).first<{ preview: ArrayBuffer | number[] | null }>()
+  if (!row?.preview) return new Response('Not found', { status: 404 })
+  return new Response(new Uint8Array(row.preview), {
+    headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' },
+  })
 }
 
 // A row as it's given: the Drive key as itself, not its text.

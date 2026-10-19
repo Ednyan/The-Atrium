@@ -4,6 +4,7 @@
 // (docs/DECENTRALIZING.md, phase 6), reached with one's sign-in.
 
 import { toWorker } from './worker'
+import { workerUrl } from './rooms'
 
 /** What anyone may know of someone: never their email. */
 export interface Person { id: string; username: string | null; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null }
@@ -53,6 +54,22 @@ export const invitationsToMe = () => ask<InvitationRow[]>('invites')
 export const clearSecret = (roster: string) => ask('clear', { roster })
 /** By whom it's to or from: by its id, or by whom and which atrium. */
 export const withdrawInvitation = (which: { id: string } | { to: string; roster: string }) => ask('uninvite', which)
+
+/** A Drive atrium listed as public (phase 8): where its roster is, which says
+ *  whether it really is -- the listing only points. */
+export interface PublicAtrium { lobby_id: string; roster: string; name: string; owner: string; owner_name: string | null; preview_at: number | null; updated_at: number }
+/** Everyone's public Drive atriums, the newest first: asked by anyone, a guest too. */
+export async function publicAtriums(): Promise<PublicAtrium[]> {
+  const { ok, answer } = await toWorker<PublicAtrium[]>('/people/atriums')
+  return ok && Array.isArray(answer) ? answer : []
+}
+/** Its card's picture, from the directory: a new address with each new one. */
+export const publicPreviewUrl = (atrium: Pick<PublicAtrium, 'lobby_id' | 'preview_at'>) =>
+  atrium.preview_at ? `${workerUrl()}/public/${atrium.lobby_id}.webp?v=${atrium.preview_at}` : null
+/** One's own atrium listed, or its listing brought up to date: its name, and
+ *  its picture (WebP, base64) if there's a new one. */
+export const publishAtrium = (listing: { lobby_id: string; roster: string; name: string; preview?: string }) => ask('publish', listing)
+export const unpublishAtrium = (lobbyId: string) => ask('unpublish', { lobby_id: lobbyId })
 
 /** An existing account's name, in the directory -- where others find it to
  *  add it to a Drive atrium. Once a visit; a username already someone

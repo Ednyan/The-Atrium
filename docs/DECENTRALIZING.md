@@ -994,6 +994,32 @@ public list. Contributions already need no account.
   Cloudflare R2 (10 GB free, no download fees), or served by viewers who
   already have them.
 
+**Built (2026-10-19; the user chose: listed, anyone may view, the R2 mirror
+later).**
+- **The roster says.** A public atrium's roster carries `public`: every
+  generation of its key, as text. Its owner makes it so (`makePublic`) and
+  private again (`makePrivate`, which also makes a new generation, so whoever
+  read it while it was public can't read what's written after). A generation
+  made while it's public (someone removed) is public too (`changeRoster`).
+- **The listing only points.** The rooms worker's directory keeps
+  `public_atriums` in D1: lobby id, roster id, name, owner, and the card's
+  picture (WebP, at most 300 KB). `/people/publish` and `/people/unpublish`
+  are the owner's (whoever listed it first; the operator may take any off),
+  `/people/atriums` lists them for anyone, banned owners' left out, and
+  `/public/<id>.webp?v=<time>` serves the picture, cached for good. At most 50
+  listings per account. A listing whose roster isn't public opens nothing, so
+  a forged or stale one leaks no key.
+- **Viewers.** Anyone, a guest too, opens one from the atrium browser's
+  public list (`viewPublicAtrium`): a working copy here, kept with `viewer`
+  and no folder. The sync reads it with the app's key and sends nothing; the
+  atrium is view only (`edit_permission_mode: 'none'`). Made private, a
+  viewer is out with `DriveEnd` 'private' and told so. Guests aren't in the
+  atrium's room (it needs a sign-in), so they see changes at each look (20 s).
+- **Kept current:** the owner's app updates the listing's name and picture
+  whenever it shares a new picture (on leaving the atrium), and takes it off
+  when the atrium is deleted.
+- **Not yet:** the R2 mirror for very popular atriums.
+
 ## Phase 9: retiring the limits
 
 - **New atriums default to Drive** for people signed in with Google, and to

@@ -32,10 +32,10 @@
 // downloaded again.
 
 import * as drive from './drive'
-import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, sendInvitation, withdrawInvitation, type Person } from './people'
+import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, publishAtrium, sendInvitation, unpublishAtrium, withdrawInvitation, type Person } from './people'
 import {
   admit, base64ToBytes, bytesToBase64, carried, changesSince, clockTime, clockWho, invitedWritersOf, KeyMissing, keyFromText, keyOf, keyringOf, keyToText, later, manages,
-  memberOf, merge, newAtriumKey, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
+  memberOf, merge, newAtriumKey, newGeneration, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
   snapshotOf, type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Snapshot, type Table,
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
@@ -167,7 +167,9 @@ export async function myIdentity(me: { id: string }): Promise<Mine> {
 // their own; one's invitation to an atrium another holds here isn't taken for
 // one kept.
 // The atrium's picture as this copy last took it: its file (the owner's) and version.
-interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean; preview?: string; previewVersion?: string }
+// `viewer`: a public atrium's (phase 8), with no place in its roster and no
+// folder -- its keys are the roster's own, and it sends nothing.
+interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean; viewer?: boolean; preview?: string; previewVersion?: string }
 const KEPT = 'atrium.driveAtriums.byAccount'
 // Before (2026-10-18): one list for the whole browser. Each entry is claimed
 // by the account its roster, as last read here, has in it, as that account
@@ -236,13 +238,13 @@ export async function leaveDriveAtrium(lobbyId: string): Promise<void> {
   forgetBrowserAtrium(lobbyId)
 }
 
-/** Why one's out of a Drive atrium: removed from its roster, blocked, or the
- *  atrium deleted by its owner. */
-export type DriveEnd = 'removed' | 'blocked' | 'deleted'
-const outOf = (roster: Roster, me: string): DriveEnd | null =>
+/** Why one's out of a Drive atrium: removed from its roster, blocked, the
+ *  atrium deleted by its owner -- or, a viewer, made private. */
+export type DriveEnd = 'removed' | 'blocked' | 'deleted' | 'private'
+const outOf = (roster: Roster, me: string, viewer = false): DriveEnd | null =>
   roster.blocked.includes(me) ? 'blocked'
     : placeOf(roster, me) || roster.invited.some(invite => invite.user === me) ? null
-      : 'removed'
+      : !viewer ? 'removed' : roster.public ? null : 'private'
 // Found out this visit, by account: the open atrium leaves at once
 // (LobbyScene), and the atrium browser lets it go.
 const ended = new Map<string, DriveEnd>()
@@ -263,7 +265,7 @@ export async function lookAtDriveAtrium(lobbyId: string, me: string): Promise<'i
   } catch (error) {
     return /Drive 404/.test(String(error)) ? 'deleted' : null
   }
-  const out = outOf(roster, me)
+  const out = outOf(roster, me, kept.viewer)
   if (out) return out
   await takePreview(lobbyId, kept, roster, me).catch(error => console.warn('[drive] the atrium’s picture:', error))
   return 'in'
@@ -290,6 +292,8 @@ export async function sharePreview(lobbyId: string, picture: Blob): Promise<void
     : await write({ parent: kept.folder })
   keep(lobbyId, { ...kept, preview: file.id, previewVersion: await store.version(file.id) })
   if (file.id !== kept.preview) await changeRoster(lobbyId, signedInHere(), async roster => ({ roster: { ...roster, preview: file.id } }))
+  // Public: its listing too, the picture and the name as they are now.
+  if (isPublicAtrium(lobbyId)) await list(lobbyId, await bytesOf(picture)).catch(error => console.warn('[drive] its public listing:', error))
 }
 
 // The owner's picture, if it's moved since this copy took it -- opened with
@@ -319,9 +323,10 @@ function rowOf(roster: Roster, me: string) {
   return {
     owner_user_id: roster.members.find(member => member.role === 'owner')?.user ?? '',
     admin_user_ids: roster.members.filter(member => member.role === 'admin').map(member => member.user),
-    // A viewer sees it, and changes nothing: only the owner and admins edit,
-    // as an atrium whose editing is turned off has it.
-    edit_permission_mode: (placeOf(roster, me)?.role === 'viewer' ? 'none' : 'all') as 'all' | 'none',
+    // A viewer sees it, and changes nothing -- one of its members, or anyone
+    // reading a public atrium: only the owner and admins edit, as an atrium
+    // whose editing is turned off has it.
+    edit_permission_mode: ((placeOf(roster, me)?.role ?? 'viewer') === 'viewer' ? 'none' : 'all') as 'all' | 'none',
   }
 }
 /** Google's window, if need be, first thing on a click (it can't open later). */
@@ -460,7 +465,8 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
 export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number }
 export async function myInvitations(): Promise<Invitation[]> {
   return (await invitationsToMe())
-    .filter(row => !isDriveAtrium(row.lobby_id))
+    // Not those one's in -- but those one only reads, public: added, one joins.
+    .filter(row => { const kept = allKept()[row.lobby_id]; return !kept || !!kept.viewer })
     .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at }))
 }
 export const declineInvitation = (id: string) => withdrawInvitation({ id }).then(() => {})
@@ -507,6 +513,8 @@ async function changeRoster(lobbyId: string, me: string, change: (roster: Roster
   if (!manages(memberOf(roster, me)?.role)) throw new Error('NOT_A_MANAGER')
   const keyring = await keyringFrom(kept)
   const next = await change(roster, keyring)
+  // Public: a generation made now is too.
+  if (next.roster.public && next.keyring) next.roster = { ...next.roster, public: await keysOf(next.keyring) }
   await writeRoster(kept, next.roster)
   if (next.keyring) keep(lobbyId, { ...kept, keys: await keysOf(next.keyring) })
   if (session?.lobbyId === lobbyId) {
@@ -634,11 +642,88 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
  *  -- and with it the atrium, for everyone. */
 export async function deleteDriveAtrium(lobbyId: string): Promise<void> {
   await settled()
+  if (isPublicAtrium(lobbyId)) await unpublishAtrium(lobbyId).catch(error => console.warn('[drive] off the public list:', error))
   const kept = allKept()[lobbyId]
   if (kept) await store.trash(kept.folder)
   forgetDriveAtrium(lobbyId)
   // Whoever's in finds it gone now.
   tellRoom(lobbyId)
+}
+
+// ---------------------------------------------------------------- public (phase 8)
+
+// A public atrium: its keys in its roster, for anyone to read it with, and
+// listed in everyone's atrium browser by the Atrium's directory (lib/people)
+// -- which only points to the roster: one that isn't public opens for no one,
+// whatever's listed. Read with the app's key, so a guest reads it too; a
+// viewer has no folder, and sends nothing. Its owner's to make so, and to
+// make private again.
+
+/** Public, as its roster was last read here. */
+export function isPublicAtrium(lobbyId: string): boolean {
+  const kept = allKept()[lobbyId]
+  return !!(kept && rostersKept()[kept.roster]?.roster.public)
+}
+/** Read here as a public atrium's viewer: no place in it. */
+export const isDriveViewer = (lobbyId: string) => !!allKept()[lobbyId]?.viewer
+
+/** The owner's: public -- its keys in its roster -- and listed, with its name
+ *  and its picture. Done again, the listing's brought up to date. */
+export async function makePublic(lobbyId: string, me: string): Promise<void> {
+  await changeRoster(lobbyId, me, async (roster, keyring) => {
+    if (memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
+    return { roster: { ...roster, public: await keysOf(keyring) } }
+  })
+  const { localDb } = await engine()
+  const picture = await localDb.readLocalFileBytes(`local://traces/${lobbyId}/preview.webp`).catch(() => null)
+  await list(lobbyId, picture)
+}
+/** The owner's: private again -- its keys out of its roster, and a new
+ *  generation, so whoever read it while it was public can't read what's
+ *  written from now on -- and off the list. The roster first: a listing left
+ *  behind opens nothing. */
+export async function makePrivate(lobbyId: string, me: string): Promise<void> {
+  await changeRoster(lobbyId, me, async (roster, keyring) => {
+    if (memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
+    const { public: _private, ...rest } = roster
+    return newGeneration(rest, keyring)
+  })
+  await unpublishAtrium(lobbyId)
+}
+
+/** Into a public atrium to read it, anyone -- a guest too: its roster read
+ *  with the app's key, its keys taken from it, and a working copy here for
+ *  the sync to fill (down first). One already in it is in it as before. Its
+ *  atrium's id. */
+export async function viewPublicAtrium(rosterId: string, me: string): Promise<string> {
+  const roster = await readRoster(rosterId)
+  if (!allKept(me)[roster.lobbyId]) {
+    if (!roster.public) throw new Error('NOT_PUBLIC')
+    if (roster.blocked.includes(me)) throw new Error('BLOCKED')
+    keep(roster.lobbyId, { roster: rosterId, folder: '', keys: roster.public, viewer: true }, me)
+  }
+  await engine()
+  await makeWorkingCopy(roster.lobbyId, { name: roster.name, ...rowOf(roster, me), is_public: false, max_players: 50 })
+  return roster.lobbyId
+}
+
+// Its listing: its name as its copy here has it, and a picture if there's a
+// new one to send -- one the directory takes (workers/rooms, people.ts):
+// bigger, the listing keeps the one it has.
+const LISTED_PICTURE_MOST = 300 * 1024
+async function list(lobbyId: string, picture: Uint8Array | null): Promise<void> {
+  const kept = allKept()[lobbyId]
+  if (!kept) throw new Error('not a Drive atrium')
+  const { localDb } = await engine()
+  const { data } = await (localDb.localClient.from('lobbies') as any).select('name').eq('id', lobbyId).maybeSingle()
+  const name = String(data?.name ?? rostersKept()[kept.roster]?.roster.name ?? '').slice(0, 100)
+  const sent = picture && picture.length <= LISTED_PICTURE_MOST ? picture : null
+  await publishAtrium({ lobby_id: lobbyId, roster: kept.roster, name, ...(sent ? { preview: bytesToBase64(sent) } : {}) })
+}
+// This browser's vault, open.
+async function engine() {
+  const { browserEngine } = await import('./browserAtriums')
+  return { localDb: await browserEngine() }
 }
 
 // ---------------------------------------------------------------- in step, while open
@@ -804,7 +889,8 @@ export async function reconnectDrive(): Promise<void> {
 export const syncNow = () => (session ? run(session, async s => { await down(s); await up(s) }) : Promise.resolve())
 
 async function up(s: Session): Promise<void> {
-  if (status.ended) return
+  // A public atrium's viewer has no folder to send to: nothing goes.
+  if (status.ended || s.kept.viewer) return
   // A viewer's saves aren't taken: none made.
   if (s.roster && placeOf(s.roster.roster, s.me)?.role === 'viewer') return
   const at = tick(s.last, Date.now(), s.me)
@@ -880,7 +966,7 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   if (s.roster?.version !== version) {
     const roster = await readRosterAt(s.kept.roster, version)
     s.roster = { version, roster }
-    const out = outOf(roster, s.me)
+    const out = outOf(roster, s.me, s.kept.viewer)
     if (out) { end(s, out); return null }
     // Who owns it, who manages it, whether one may edit: the open atrium shows them.
     await s.local.localClient.from('lobbies').update(rowOf(roster, s.me)).eq('id', s.lobbyId)
@@ -891,11 +977,15 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
       s.inviteCleared = true
       await clearSecret(s.kept.roster)
     }
-    // Generations made since: opened with one's private key.
+    // Generations made since: opened with one's private key -- a viewer's,
+    // as the roster has them, public.
     if (roster.keys.some(generation => !s.keyring.has(generation.n) && generation.for[s.me])) {
       const own = mine?.user === s.me ? mine : await myIdentity({ id: s.me })
       s.keyring = await keyringOf(roster, s.me, own.identity.privateJwk)
       keep(s.lobbyId, { ...s.kept, keys: await keysOf(s.keyring) }, s.me)
+    } else if (s.kept.viewer && roster.public && Object.keys(roster.public).some(n => !s.keyring.has(Number(n)))) {
+      s.keyring = await keyringFrom({ ...s.kept, keys: roster.public })
+      keep(s.lobbyId, { ...s.kept, keys: roster.public }, s.me)
     }
   }
   // Whom to let in -- looked for at every look, not only when the roster
@@ -980,7 +1070,9 @@ async function listWriters(s: Session, roster: Roster): Promise<{ user: string; 
   const writers: { user: string; root: string | null }[] = writersOf(roster)
   // Those in by their invitation aren't in the roster with their folder yet:
   // it's in their profile.
-  const invitedHere = invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
+  // (Asked of the directory with a sign-in: a public atrium's viewer reads
+  // theirs once they're members.)
+  const invitedHere = s.kept.viewer ? [] : invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
   if (invitedHere.length) {
     for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: person.drive_root })
   }

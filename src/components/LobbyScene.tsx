@@ -33,7 +33,7 @@ import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
 import { LOBBY_CHANGED_EVENT, liveTable } from '../lib/liveChanges'
-import { endedFor, isDriveAtrium, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
+import { endedFor, isDriveAtrium, isDriveViewer, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
 import DriveMembers from './DriveMembers'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
@@ -1112,6 +1112,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
+  // A Drive atrium one adds to: its files go to one's own Drive. (A public
+  // atrium's viewer adds nothing.)
+  const inMyDrive = isDriveAtrium(lobbyId) && !isDriveViewer(lobbyId)
   // Room for what's added: a cloud atrium below its limit; a Drive atrium's
   // `files` within what's free in the Drive of whoever adds them -- theirs
   // is where they go (lib/driveSync).
@@ -1121,7 +1124,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       return false
     }
     const bytes = files.reduce((total, file) => total + file.size, 0)
-    const space = bytes && isDriveAtrium(lobbyId) ? knownDriveSpace() : null
+    const space = bytes && inMyDrive ? knownDriveSpace() : null
     if (!space) return true
     if (space.limit !== null && bytes > space.limit - space.usage) {
       showToast(t('atrium.error.driveFull', { size: formatSize(bytes, language), free: formatSize(Math.max(0, space.limit - space.usage), language) }))
@@ -1134,14 +1137,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // minute, and after files go to Drive or leave it.
   const [driveSpace, setDriveSpace] = useState(knownDriveSpace)
   useEffect(() => {
-    if (!isDriveAtrium(lobbyId)) return
+    if (!inMyDrive) return
     const shown = () => setDriveSpace(knownDriveSpace())
     const look = () => void lookAtDriveSpace().catch(error => console.warn('[drive] its space:', error))
     window.addEventListener(DRIVE_SPACE_EVENT, shown)
     look()
     const every = window.setInterval(look, 60_000)
     return () => { window.removeEventListener(DRIVE_SPACE_EVENT, shown); window.clearInterval(every) }
-  }, [lobbyId])
+  }, [inMyDrive])
 
   const getWorldPositionFromScreen = (screenX: number, screenY: number) => {
     if (!worldContainerRef.current) {
@@ -5058,7 +5061,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         {(() => {
           const sizeBytes = useGameStore.getState().getLobbySizeBytes()
           // A Drive atrium's limit is its Drive's: what's used of it all.
-          const drive = isDriveAtrium(lobbyId) ? driveSpace : null
+          const drive = inMyDrive ? driveSpace : null
           const free = drive?.limit != null ? formatSize(Math.max(0, drive.limit - drive.usage), language) : null
           const pct = drive?.limit ? Math.min((drive.usage / drive.limit) * 100, 100) : isLocalData ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
           const used = formatSize(sizeBytes, language)

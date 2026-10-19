@@ -304,6 +304,10 @@ export interface Roster {
   // The picture on its card, its owner's (lib/driveSync, sharePreview): the
   // sealed file in the owner's folder, written over each time.
   preview?: string
+  // Public (phase 8), made so by its owner: every generation of its key, as
+  // text, for anyone to read it with -- a viewer, with no place in it. Gone
+  // when it's private again, with a new generation (lib/driveSync).
+  public?: Record<string, string>
 }
 
 export const memberOf = (roster: Roster, user: string) => roster.members.find(member => member.user === user) ?? null
@@ -342,24 +346,29 @@ export async function admit(roster: Roster, keyring: Keyring, person: Omit<Membe
  *  of the key made without them -- returned with the keyring it joins. */
 export async function removeMember(roster: Roster, keyring: Keyring, user: string, block: boolean): Promise<{ roster: Roster; keyring: Keyring }> {
   if (memberOf(roster, user)?.role === 'owner') throw new Error('the owner stays')
-  const members = roster.members.filter(member => member.user !== user)
+  return newGeneration({
+    ...roster,
+    members: roster.members.filter(member => member.user !== user),
+    invited: roster.invited.filter(invite => invite.user !== user),
+    blocked: block && !roster.blocked.includes(user) ? [...roster.blocked, user] : roster.blocked,
+    // His copies of every generation out too: no device of his can open
+    // more than he already has.
+    keys: roster.keys.map(generation => ({ ...generation, for: Object.fromEntries(Object.entries(generation.for).filter(([who]) => who !== user)) })),
+  }, keyring)
+}
+
+/** A new generation of the key, for its members alone: what's written from
+ *  now on, someone who had the keys before -- removed, or reading it while it
+ *  was public -- can't open. Invitations' secrets cancelled too: one may have
+ *  been seen, and it would open the new generation. Those invited get in by
+ *  their key pair instead, at the next owner's or admin's look. */
+export async function newGeneration(roster: Roster, keyring: Keyring): Promise<{ roster: Roster; keyring: Keyring }> {
   const key = await newAtriumKey()
   const n = Math.max(...roster.keys.map(generation => generation.n)) + 1
   const wrapped: Record<string, Wrapped> = {}
-  for (const member of members) wrapped[member.user] = await wrapFor(member.pub, key)
+  for (const member of roster.members) wrapped[member.user] = await wrapFor(member.pub, key)
   return {
-    roster: {
-      ...roster,
-      members,
-      // Invitations' secrets cancelled too: someone removed may have seen one,
-      // and it would open the new generation. Those invited get in by their
-      // key pair instead, at the next owner's or admin's look.
-      invited: roster.invited.filter(invite => invite.user !== user).map(({ keys: _cancelled, ...invite }) => invite),
-      blocked: block && !roster.blocked.includes(user) ? [...roster.blocked, user] : roster.blocked,
-      // His copies of every generation out too: no device of his can open
-      // more than he already has.
-      keys: [...roster.keys.map(generation => ({ ...generation, for: Object.fromEntries(Object.entries(generation.for).filter(([who]) => who !== user)) })), { n, for: wrapped }],
-    },
+    roster: { ...roster, invited: roster.invited.map(({ keys: _cancelled, ...invite }) => invite), keys: [...roster.keys, { n, for: wrapped }] },
     keyring: new Map([...keyring, [n, key]]),
   }
 }
