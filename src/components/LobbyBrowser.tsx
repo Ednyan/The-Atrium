@@ -581,7 +581,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     for (const lobby of lobbies) {
       const standing = await lookAtDriveAtrium(lobby.id, me)
       if (!standing || standing === 'in') continue
-      await leaveDriveAtrium(lobby.id).catch(error => console.warn('[drive] letting go of', lobby.id, error))
+      await leaveDriveAtrium(lobby.id, standing === 'deleted').catch(error => console.warn('[drive] letting go of', lobby.id, error))
       setBrowserLobbies(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
       showToast(t(standing === 'deleted' ? 'browser.drive.deletedBy' : standing === 'private' ? 'browser.drive.notPublic' : 'browser.drive.removedFrom', { name: lobby.name }))
     }

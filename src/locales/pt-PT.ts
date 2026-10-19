@@ -259,7 +259,7 @@ const ptPT: Catalogue = {
   'browser.drive.adminEmail': 'O endereço Google da pessoa',
   'browser.drive.makeAdmin': 'Tornar admin',
   'browser.drive.leave': 'Sair',
-  'browser.drive.deleteConfirm': 'Eliminar este atrium do Google Drive? Fecha-se para todos os que estão nele.',
+  'browser.drive.deleteConfirm': 'Eliminar este átrio do Google Drive de vez? Fecha para todos os que participam e não poderá ser recuperado.',
   'browser.drive.leaveConfirm': 'Sair deste atrium? É retirado deste browser, e os outros continuam com ele. Continua a ser membro: fica em Partilhados consigo, para abrir de novo.',
   'browser.drive.step.signIn': 'A iniciar sessão no Google…',
   'browser.drive.step.folder': 'A criar a sua pasta no Google Drive…',

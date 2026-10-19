@@ -299,7 +299,7 @@ const ko: Catalogue = {
   'browser.drive.adminEmail': '상대의 Google 주소',
   'browser.drive.makeAdmin': '관리자로 지정',
   'browser.drive.leave': '나가기',
-  'browser.drive.deleteConfirm': '이 Atrium을 Google 드라이브에서 삭제할까요? 모든 멤버에게서 닫혀요.',
+  'browser.drive.deleteConfirm': '이 아트리움을 Google 드라이브에서 영구히 삭제할까요? 참여한 모든 사람에게서 닫히며, 되돌릴 수 없습니다.',
   'browser.drive.leaveConfirm': '이 Atrium에서 나갈까요? 이 브라우저에서 사라지고, 다른 사람들은 계속 써요. 멤버로 남아 있어서 “나와 공유됨”에서 다시 열 수 있어요.',
   'browser.drive.step.signIn': 'Google에 로그인하는 중…',
   'browser.drive.step.folder': 'Google 드라이브에 폴더를 만드는 중…',

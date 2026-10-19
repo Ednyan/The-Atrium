@@ -254,7 +254,7 @@ const fr: Catalogue = {
   'browser.drive.adminEmail': 'Son adresse Google',
   'browser.drive.makeAdmin': 'Faire admin',
   'browser.drive.leave': 'Quitter',
-  'browser.drive.deleteConfirm': 'Supprimer cet atrium de Google Drive ? Il se ferme pour tous ceux qui y sont.',
+  'browser.drive.deleteConfirm': 'Supprimer définitivement cet atrium de Google Drive ? Il se ferme pour tous ceux qui en font partie, et il ne pourra pas être récupéré.',
   'browser.drive.leaveConfirm': 'Quitter cet atrium ? Il est retiré de ce navigateur, les autres le gardent. Vous restez membre : il est dans Partagés avec vous, pour l’ouvrir à nouveau.',
   'browser.drive.step.signIn': 'Connexion à Google…',
   'browser.drive.step.folder': 'Création de votre dossier dans Google Drive…',

@@ -65,8 +65,8 @@ export interface DriveStore {
   shareWith(id: string, email: string): Promise<string>
   unshare(id: string, permission: string): Promise<void>
   noResharing(id: string): Promise<void>
-  trash(id: string): Promise<void>
-  /** Deleted for good: the space is the account's again. */
+  /** Deleted for good, a folder with all in it: the space is the account's
+   *  again (never to Drive's trash, where it would count a month more). */
   remove(id: string): Promise<void>
 }
 // A file as a folder's listing has it: its version, to tell it's changed.
@@ -87,7 +87,6 @@ const googleDrive: DriveStore = {
   shareWith: (id, email) => drive.shareWith(id, email, 'writer', true),
   unshare: drive.unshare,
   noResharing: drive.noResharing,
-  trash: drive.trash,
   remove: drive.removeFile,
 }
 let store: DriveStore = googleDrive
@@ -227,9 +226,14 @@ export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 
 /** Out of a Drive atrium on this browser, for the account signed in: off its
  *  list, and its working copy gone -- unless another account here still
- *  holds it, whose copy it is too. The copy's sync state goes with it. */
-export async function leaveDriveAtrium(lobbyId: string): Promise<void> {
+ *  holds it, whose copy it is too. The copy's sync state goes with it. The
+ *  atrium deleted by its owner (`deleted`), one's own folder for it -- one's
+ *  saves and files -- is deleted from one's Drive too: nobody reads it now.
+ *  Quietly not without Drive just now (its window needs a click). */
+export async function leaveDriveAtrium(lobbyId: string, deleted = false): Promise<void> {
   await settled()
+  const folder = allKept()[lobbyId]?.folder
+  if (deleted && folder && store.canWrite()) await removeQuietly(folder).catch(error => console.warn('[drive] one’s folder for a deleted atrium:', error))
   forgetDriveAtrium(lobbyId)
   if (anotherAccountsDriveAtrium(lobbyId)) return
   const { browserEngine, forgetBrowserAtrium } = await import('./browserAtriums')
@@ -652,13 +656,15 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
   })
 }
 
-/** The owner's: its folder in Drive gone -- the roster and the owner's saves
- *  -- and with it the atrium, for everyone. */
+/** The owner's: its folder in Drive deleted for good -- the roster, the
+ *  owner's saves and files -- and with it the atrium, for everyone. Each
+ *  member's own folder for it goes as their app finds it gone
+ *  (leaveDriveAtrium). */
 export async function deleteDriveAtrium(lobbyId: string): Promise<void> {
   await settled()
   if (isPublicAtrium(lobbyId)) await unpublishAtrium(lobbyId).catch(error => console.warn('[drive] off the public list:', error))
   const kept = allKept()[lobbyId]
-  if (kept) await store.trash(kept.folder)
+  if (kept) await removeQuietly(kept.folder)
   forgetDriveAtrium(lobbyId)
   // Whoever's in finds it gone now.
   tellRoom(lobbyId)
@@ -1158,7 +1164,7 @@ async function tidy(s: Session, roster: Roster, listed: { user: string; files: L
   if (!store.canWrite()) return
   const mine = listed.find(writer => writer.user === s.me)?.files ?? []
   const done = mine.filter(file => file.name.endsWith('.save') && s.snapshot?.folded.has(file.id)).slice(0, TRASH_AT_ONCE)
-  for (const file of done) await store.trash(file.id).catch(error => console.warn('[drive] removing a folded save:', error))
+  for (const file of done) await removeQuietly(file.id).catch(error => console.warn('[drive] removing a folded save:', error))
   if (memberOf(roster, s.me)?.role !== 'owner' || Date.now() - s.compactedAt < COMPACT_EVERY_MS) return
   const saves = listed.flatMap(writer => writer.files).filter(file => file.name.endsWith('.save'))
   if (saves.filter(file => !s.snapshot?.folded.has(file.id)).length < COMPACT_AFTER) return
@@ -1290,6 +1296,9 @@ async function removeFiles(unused: { url: string; file: string }[]): Promise<str
   })))
   return removed.filter((url): url is string => url !== null)
 }
+
+/** Deleted for good -- and already gone is as good. */
+const removeQuietly = (id: string) => store.remove(id).catch(error => { if (!/Drive 404/.test(String(error))) throw error })
 
 /** Each sealed into one's folder `files`; where each went, as `media` rows.
  *  One that fails is left out, and sent with a later save. */

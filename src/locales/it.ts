@@ -256,7 +256,7 @@ const it: Catalogue = {
   'browser.drive.adminEmail': 'Il suo indirizzo Google',
   'browser.drive.makeAdmin': 'Rendi admin',
   'browser.drive.leave': 'Esci',
-  'browser.drive.deleteConfirm': 'Eliminare questo atrium da Google Drive? Si chiude per tutti quelli che ci sono.',
+  'browser.drive.deleteConfirm': 'Eliminare definitivamente questo atrio da Google Drive? Si chiude per tutti quelli che ne fanno parte e non potrà essere recuperato.',
   'browser.drive.leaveConfirm': 'Uscire da questo atrium? Viene tolto da questo browser e gli altri lo tengono. Resti membro: è in Condivisi con te, per riaprirlo.',
   'browser.drive.step.signIn': 'Accesso a Google…',
   'browser.drive.step.folder': 'Creazione della tua cartella in Google Drive…',

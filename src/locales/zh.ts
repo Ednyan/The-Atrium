@@ -298,7 +298,7 @@ const zh: Catalogue = {
   'browser.drive.adminEmail': '对方的 Google 地址',
   'browser.drive.makeAdmin': '设为管理员',
   'browser.drive.leave': '退出',
-  'browser.drive.deleteConfirm': '要从 Google 云端硬盘删除这个 Atrium 吗？所有成员都将无法再打开它。',
+  'browser.drive.deleteConfirm': '要从 Google 云端硬盘永久删除这个中庭吗？它将对所有成员关闭，且无法恢复。',
   'browser.drive.leaveConfirm': '要退出这个 Atrium 吗？它会从此浏览器中移除，其他人仍可使用。你仍是成员：可以在“与你共享”中再次打开。',
   'browser.drive.step.signIn': '正在登录 Google…',
   'browser.drive.step.folder': '正在 Google 云端硬盘中创建你的文件夹…',

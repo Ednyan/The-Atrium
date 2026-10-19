@@ -483,9 +483,6 @@ export async function noResharing(id: string): Promise<void> {
   await drive(`files/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ writersCanShare: false }) })
 }
 
-export async function trash(id: string): Promise<void> {
-  await drive(`files/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) })
-}
 /** Deleted for good, not to the trash -- where it would count against the
  *  account's space for a month more. */
 export async function removeFile(id: string): Promise<void> {

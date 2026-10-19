@@ -258,7 +258,7 @@ const ru: Catalogue = {
   'browser.drive.adminEmail': 'Его адрес Google',
   'browser.drive.makeAdmin': 'Сделать админом',
   'browser.drive.leave': 'Выйти',
-  'browser.drive.deleteConfirm': 'Удалить этот атриум из Google Диска? Он закроется для всех его участников.',
+  'browser.drive.deleteConfirm': 'Удалить этот атриум из Google Диска навсегда? Он закроется для всех участников, и его нельзя будет вернуть.',
   'browser.drive.leaveConfirm': 'Выйти из этого атриума? Он исчезнет из этого браузера, а у остальных останется. Вы остаётесь участником: он будет в разделе «Доступные вам», чтобы открыть снова.',
   'browser.drive.step.signIn': 'Вход в Google…',
   'browser.drive.step.folder': 'Создаём вашу папку в Google Диске…',

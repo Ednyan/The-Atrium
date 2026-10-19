@@ -289,7 +289,7 @@ export const en = {
   'browser.drive.adminEmail': 'Their Google address',
   'browser.drive.makeAdmin': 'Make admin',
   'browser.drive.leave': 'Leave',
-  'browser.drive.deleteConfirm': 'Delete this atrium from Google Drive? It closes for everyone in it.',
+  'browser.drive.deleteConfirm': 'Delete this atrium from Google Drive for good? It closes for everyone in it, and it can’t be brought back.',
   'browser.drive.leaveConfirm': 'Leave this atrium? It’s removed from this browser, and the others keep it. You stay a member: it’s under Shared with you, to open again.',
   'browser.drive.step.signIn': 'Signing in to Google…',
   'browser.drive.step.folder': 'Making your folder in Google Drive…',

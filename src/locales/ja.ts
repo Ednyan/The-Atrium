@@ -295,7 +295,7 @@ const ja: Catalogue = {
   'browser.drive.adminEmail': '相手の Google アドレス',
   'browser.drive.makeAdmin': '管理者にする',
   'browser.drive.leave': '退出',
-  'browser.drive.deleteConfirm': 'この Atrium を Google ドライブから削除しますか？参加している全員が使えなくなります。',
+  'browser.drive.deleteConfirm': 'このアトリウムを Google ドライブから完全に削除しますか？参加している全員が使えなくなり、元に戻すことはできません。',
   'browser.drive.leaveConfirm': 'この Atrium から退出しますか？このブラウザから消えますが、他の人は使い続けられます。メンバーのままなので、「共有されたもの」からまた開けます。',
   'browser.drive.step.signIn': 'Google にログイン中…',
   'browser.drive.step.folder': 'Google ドライブにフォルダを作成中…',
