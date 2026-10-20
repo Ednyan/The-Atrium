@@ -40,7 +40,7 @@ import {
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
-import { onRoomEvent, sayToRoom, sendThroughRoom } from './rooms'
+import { onRoomEvent, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
 import { hostedStore, isHostedId } from './hostedStore'
 
@@ -842,9 +842,17 @@ async function engine() {
 
 // ---------------------------------------------------------------- in step, while open
 
-// How long after the last write a save goes up, and how often Drive is looked at.
+// How long after the last write a save goes up, and how often Drive is looked
+// at. With the atrium's room live, saves and roster changes come through it as
+// they're made: the store is looked at only now and then, for what the room
+// missed (docs/SCALING.md: Drive's quota per minute at scale; each look at the
+// hosted store is the Atrium's own request) -- and at once when the room's
+// back after a gap. Without the room, a hosted atrium's looks are fewer too.
 const QUIET_MS = 1500
 const LOOK_MS = 20_000
+const LOOK_HOSTED_MS = 60_000
+const LOOK_LIVE_MS = 2 * 60_000
+const lookEvery = (s: Session) => (roomStatus(s.lobbyId) === 'live' ? LOOK_LIVE_MS : isHostedId(s.kept.roster) ? LOOK_HOSTED_MS : LOOK_MS)
 // Saves read side by side.
 const AT_ONCE = 6
 // A save goes through the room as itself up to this many bytes, sealed (the
@@ -875,6 +883,9 @@ interface Session {
   folders: Map<string, string>
   quiet: number
   looking: number
+  // When the store was last looked at, and whether the room was live then.
+  lookedAt: number
+  roomLive: boolean
   stopHearing: () => void
   // Those who asked to be let in and were put off, this visit.
   putOff: Set<string>
@@ -927,7 +938,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
@@ -940,10 +951,18 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const stopSaves = onRoomEvent(ROOM_EVENT, (payload, sender) => { if (session === s) void run(s, x => heard(x, payload, sender)) })
   const stopAsks = onRoomEvent(ASK_EVENT, (_payload, sender) => { if (session === s) void run(s, x => asked(x, sender)) })
   const stopRoster = onRoomEvent(ROSTER_EVENT, (_payload, sender) => { if (session === s) void run(s, x => rosterTold(x, sender)) })
-  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster() }
   const both = async (x: Session) => { await down(x); await up(x) }
-  void run(s, both)
-  s.looking = window.setInterval(() => { if (session === s) void run(s, both) }, LOOK_MS)
+  const look = () => { s.lookedAt = Date.now(); void run(s, both) }
+  // The room back after a gap: what it missed, looked for now.
+  const stopWatching = watchRooms(() => {
+    const live = roomStatus(s.lobbyId) === 'live'
+    if (session === s && live && !s.roomLive && s.lookedAt) look()
+    s.roomLive = live
+  })
+  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster(); stopWatching() }
+  look()
+  // Each tick a little early must still count: a second's grace.
+  s.looking = window.setInterval(() => { if (session === s && Date.now() - s.lookedAt >= lookEvery(s) - 1000) look() }, LOOK_MS)
 }
 
 /** Out of step: what was left to go up goes, then nothing more. Leaving an
