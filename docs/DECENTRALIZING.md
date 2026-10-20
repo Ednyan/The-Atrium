@@ -1036,6 +1036,80 @@ only once `driveHasEverything` says Drive has every row and file. Then
 Usage box shows the Drive's free space and refuses files bigger than it; files
 no trace uses are deleted from Drive for good.
 
+## Phase 10: off Supabase, onto Cloudflare
+
+**Chosen 2026-10-20.** Costs and the reasoning are in docs/SCALING.md (path
+B). The user chose:
+- Cloud atriums stay, **hosted on Cloudflare**.
+- Email accounts **keep their passwords**.
+
+**The idea: one more store under the Drive sync.** `lib/driveSync` already
+does everything an atrium kept elsewhere needs: rosters and roles, sealed
+saves and files, merging, snapshots, restore, public atriums. It talks to
+storage through one interface (`DriveStore`). A **hosted store** is a second
+implementation of that interface: the Atrium's own files, on Cloudflare.
+- File bytes in R2.
+- Folders, names, versions and owners in D1 (`store_files`), and who else
+  may write a file (`store_shares`).
+- Each account's private files in D1 (`store_appdata`).
+
+A hosted atrium is then a Drive atrium whose store is ours:
+- the same code;
+- the same encryption, with keys in the roster wrapped per member;
+- the same room for live saves.
+
+**Rules of the hosted store** (the worker's `/store/*`):
+- Anyone with an id may read it (ids are random and contents sealed), as
+  Drive's "anyone with the link".
+- Only the owner writes or deletes a file, or someone the owner shared it
+  with (an admin, for the roster). Shares are by account, not email.
+- Each account has a quota of bytes.
+- Files written over get a new version. Reads say their version, for the
+  sync's cheap "has it changed" checks.
+
+**Where one's key pair lives:**
+- In one's Drive's app folder when one has Drive, as now, so Drive atriums
+  stay unreadable to us.
+- In the hosted store's app data for an account without Drive.
+- One key pair per account either way, published in the directory.
+- A hosted atrium is readable by whoever holds its keys. With those keys on
+  our server, as cloud atriums are on Supabase today, this is encryption at
+  rest, not against us.
+
+**Steps**
+1. The hosted store:
+   - the worker's `/store/*` routes, R2 and D1;
+   - `lib/hostedStore`, the client;
+   - `driveSync` choosing the store per atrium: `Kept.hosted`, the
+     session's store, the identity's store per account;
+   - shares by account for hosted admins.
+   - Tested against wrangler dev.
+2. Looking less when the room's there. A connected room already brings
+   saves and roster changes, so look every few minutes, not every 20 s. Needed
+   for hosted atriums (every look is our request) and for Drive at scale
+   (SCALING.md).
+3. Public atriums mirrored to the hosted store: their writers' saves and
+   files copied there; viewers read there first, Drive second. This is the
+   phase 8 R2 mirror.
+4. Email accounts into D1, beside Google accounts:
+   - sign-up, confirmation, sign-in, reset and deletion, by the worker,
+     mailed by Resend;
+   - passwords hashed with PBKDF2;
+   - Supabase's bcrypt hashes imported, checked once, then rehashed;
+   - the worker's own sessions.
+5. Cloud atriums onto the hosted store, same ids:
+   - new cloud atriums are hosted ones;
+   - existing ones are moved, rows and files, by a one-time migration,
+     with `lib/moveToDrive`'s approach.
+6. Everything else to the worker: Stripe contributions, deletion codes,
+   platform admins, `app_changes`, special themes, visits.
+7. The app off the Supabase client. A month with Supabase read-only, then
+   cancel.
+8. Drive atriums on desktop. Separate; the desktop never used Supabase.
+
+**Needs from the user:** R2 enabled in the Cloudflare dashboard, before
+step 1 can be deployed.
+
 ## Risks
 
 | Risk | What we know | Mitigation |

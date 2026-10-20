@@ -42,8 +42,11 @@ import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { onRoomEvent, sayToRoom, sendThroughRoom } from './rooms'
 import { useGameStore } from '../store/gameStore'
+import { hostedStore, isHostedId } from './hostedStore'
 
-/** What the sync needs of Drive: lib/drive, or a stand-in (the harness). */
+/** What the sync needs of where an atrium is kept: Google Drive (lib/drive),
+ *  the Atrium's own hosted store (lib/hostedStore) -- or a stand-in (the
+ *  harness). */
 export interface DriveStore {
   /** Can write now, without asking anyone to sign in. */
   canWrite(): boolean
@@ -61,8 +64,9 @@ export interface DriveStore {
   listByLink(folder: string): Promise<Listed[]>
   readAppData(name: string): Promise<Uint8Array | null>
   writeAppData(name: string, bytes: Uint8Array): Promise<void>
-  /** Shared with someone to edit, quietly; the permission's id. */
-  shareWith(id: string, email: string): Promise<string>
+  /** Shared with someone to edit, quietly -- by their Google address (Drive)
+   *  or their account (the hosted store); the share's id. */
+  shareWith(id: string, to: { email: string; account: string }): Promise<string>
   unshare(id: string, permission: string): Promise<void>
   noResharing(id: string): Promise<void>
   /** Deleted for good, a folder with all in it: the space is the account's
@@ -84,13 +88,39 @@ const googleDrive: DriveStore = {
   listByLink: drive.listByLink,
   readAppData: async name => { const blob = await drive.readAppData(name); return blob && bytesOf(blob) },
   writeAppData: (name, bytes) => drive.writeAppData(name, new Blob([bytes as BlobPart])),
-  shareWith: (id, email) => drive.shareWith(id, email, 'writer', true),
+  shareWith: (id, to) => drive.shareWith(id, to.email, 'writer', true),
   unshare: drive.unshare,
   noResharing: drive.noResharing,
   remove: drive.removeFile,
 }
-let store: DriveStore = googleDrive
-export const useDriveStore = (next: DriveStore) => { store = next }
+let driveStore: DriveStore = googleDrive
+let hosted: DriveStore = hostedStore
+export const useDriveStore = (next: DriveStore) => { driveStore = next }
+export const useHostedStore = (next: DriveStore) => { hosted = next }
+/** The store an id is in: the hosted store's are marked (lib/hostedStore). */
+const storeOf = (id: string) => (isHostedId(id) ? hosted : driveStore)
+/** A hosted atrium: one kept in the Atrium's own store, not in Drive. */
+export const isHostedAtrium = (lobbyId: string) => { const kept = allKept()[lobbyId]; return !!kept && isHostedId(kept.roster) }
+// The sync's store: each call made where its id is -- a roster, a folder, a
+// file says which by itself. What isn't by id (Google's window, one's app
+// data) is Drive's; the hosted store's are asked by name where needed.
+const store: DriveStore = {
+  canWrite: () => driveStore.canWrite(),
+  signIn: () => driveStore.signIn(),
+  pick: id => storeOf(id).pick(id),
+  createFolder: (name, parent) => (parent ? storeOf(parent) : driveStore).createFolder(name, parent),
+  shareByLink: id => storeOf(id).shareByLink(id),
+  write: (name, bytes, place) => storeOf('id' in place ? place.id : place.parent).write(name, bytes, place),
+  readByLink: id => storeOf(id).readByLink(id),
+  version: id => storeOf(id).version(id),
+  listByLink: folder => storeOf(folder).listByLink(folder),
+  readAppData: name => driveStore.readAppData(name),
+  writeAppData: (name, bytes) => driveStore.writeAppData(name, bytes),
+  shareWith: (id, to) => storeOf(id).shareWith(id, to),
+  unshare: (id, share) => storeOf(id).unshare(id, share),
+  noResharing: id => storeOf(id).noResharing(id),
+  remove: id => storeOf(id).remove(id),
+}
 
 const asJson = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
 const fromJson = <T>(bytes: Uint8Array): T => JSON.parse(new TextDecoder().decode(bytes))
@@ -116,10 +146,14 @@ const readRoster = async (id: string) => readRosterAt(id, await store.version(id
 
 // ---------------------------------------------------------------- one's own key pair
 
-// Made the first time one uses a Drive atrium: the pair (its private half in
-// one's Google account's hidden app folder, so every device signed in to it
-// has it) and one's folder for atriums, shared by link. Their public parts go
-// in one's profile, for whoever adds one to an atrium.
+// Made the first time one uses a Drive atrium or a hosted one: the pair, one
+// per account, and one's folder for atriums in each store. The pair's private
+// half is kept in one's Drive's hidden app folder when one has Drive --
+// unreadable to the Atrium, so Drive atriums stay its members' alone -- and
+// otherwise in the hosted store's app data (an account with no Drive). Either
+// way every device signed in to the account has it. Their public parts go in
+// one's profile, for whoever adds one to an atrium. `root`: one's folder for
+// atriums in Drive ('' until there's one).
 interface Mine { user: string; identity: Identity; root: string }
 const IDENTITY_FILE = 'atrium-identity.json'
 const IDENTITY_HERE = 'atrium.driveIdentity'
@@ -129,34 +163,70 @@ let mine: Mine | null = null
 // adds one finds them. Once a visit.
 let identityPublished = ''
 async function publishIdentity(own: Mine): Promise<void> {
-  if (identityPublished === own.user) return
-  await myEntry({ drive_key: own.identity.publicJwk, drive_root: own.root })
-  identityPublished = own.user
+  if (identityPublished === `${own.user}/${own.root}`) return
+  await myEntry({ drive_key: own.identity.publicJwk, drive_root: own.root || null })
+  identityPublished = `${own.user}/${own.root}`
 }
 
-export async function myIdentity(me: { id: string }): Promise<Mine> {
-  if (mine?.user === me.id) return mine
+/** One's key pair -- and, unless `hostedOnly` (an atrium in the hosted store,
+ *  which needs no Drive), one's folder for atriums in Drive. NEED_DRIVE: the
+ *  pair is in one's Drive, which this page can't reach just now (its window
+ *  needs a click: ensureSignedIn). */
+export async function myIdentity(me: { id: string }, hostedOnly = false): Promise<Mine> {
+  let own: Mine | null = mine?.user === me.id ? mine : null
+  if (own && (hostedOnly || own.root)) return own
   try {
     const here = JSON.parse(localStorage.getItem(IDENTITY_HERE) || 'null') as Mine | null
-    if (here?.user === me.id) {
-      mine = here
-      await publishIdentity(here)
-      return here
-    }
+    if (here?.user === me.id) own = here
   } catch { /* none kept */ }
-  const kept = await store.readAppData(IDENTITY_FILE)
-  let found = kept ? fromJson<{ identity: Identity; root: string }>(kept) : null
-  if (!found) {
-    const root = await store.createFolder('Digital Atrium')
-    await store.shareByLink(root.id)
-    found = { identity: await newIdentity(), root: root.id }
-    await store.writeAppData(IDENTITY_FILE, asJson(found))
+  if (!own) {
+    // In Drive, when Drive's at hand; else in the hosted store's app data.
+    const inDrive = driveStore.canWrite() ? await driveStore.readAppData(IDENTITY_FILE) : null
+    const inHosted = inDrive ? null : await hosted.readAppData(IDENTITY_FILE).catch(() => null)
+    const found = inDrive ?? inHosted
+    if (found) {
+      const kept = fromJson<{ identity: Identity; root?: string }>(found)
+      own = { user: me.id, identity: kept.identity, root: kept.root ?? '' }
+    } else if ((await myEntry()).drive_key) {
+      // Published already, so kept in a Drive this page can't read now: never
+      // a second pair, which would shut one out of what the first opens.
+      throw new Error('NEED_DRIVE')
+    } else {
+      // A new pair, kept at once: in Drive when it's at hand -- unreadable to
+      // the Atrium -- else in the hosted store.
+      own = { user: me.id, identity: await newIdentity(), root: '' }
+      await (driveStore.canWrite() ? driveStore : hosted).writeAppData(IDENTITY_FILE, asJson({ identity: own.identity }))
+    }
   }
-  mine = { user: me.id, ...found }
-  await publishIdentity(mine)
-  try { localStorage.setItem(IDENTITY_HERE, JSON.stringify(mine)) } catch { /* fetched again next time */ }
-  return mine
+  // One's folder for atriums in Drive, made the first time it's needed --
+  // and the pair kept with it in Drive's app folder from then on.
+  if (!hostedOnly && !own.root) {
+    const root = await driveStore.createFolder('Digital Atrium')
+    await driveStore.shareByLink(root.id)
+    own = { ...own, root: root.id }
+    await driveStore.writeAppData(IDENTITY_FILE, asJson({ identity: own.identity, root: own.root }))
+  }
+  mine = own
+  await publishIdentity(own)
+  try { localStorage.setItem(IDENTITY_HERE, JSON.stringify(own)) } catch { /* fetched again next time */ }
+  return own
 }
+
+// One's folder for atriums in the hosted store: made the first time it's
+// needed, and published, as one's Drive folder is (drive_root).
+const HOSTED_ROOT_HERE = 'atrium.hostedRoot'
+export async function myHostedRoot(me: { id: string }): Promise<string> {
+  try {
+    const here = JSON.parse(localStorage.getItem(HOSTED_ROOT_HERE) || 'null') as { user: string; root: string } | null
+    if (here?.user === me.id) return here.root
+  } catch { /* none kept */ }
+  const root = (await myEntry()).hosted_root ?? (await hosted.createFolder('Digital Atrium')).id
+  await myEntry({ hosted_root: root })
+  try { localStorage.setItem(HOSTED_ROOT_HERE, JSON.stringify({ user: me.id, root })) } catch { /* asked again next time */ }
+  return root
+}
+/** Someone's folder for atriums in the store an atrium is in. */
+const rootIn = (person: { drive_root: string | null; hosted_root?: string | null }, hostedAtrium: boolean) => (hostedAtrium ? person.hosted_root ?? null : person.drive_root)
 
 // ---------------------------------------------------------------- which atriums
 
@@ -233,7 +303,7 @@ export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 export async function leaveDriveAtrium(lobbyId: string, deleted = false): Promise<void> {
   await settled()
   const folder = allKept()[lobbyId]?.folder
-  if (deleted && folder && store.canWrite()) await removeQuietly(folder).catch(error => console.warn('[drive] one’s folder for a deleted atrium:', error))
+  if (deleted && folder && storeOf(folder).canWrite()) await removeQuietly(folder).catch(error => console.warn('[drive] one’s folder for a deleted atrium:', error))
   forgetDriveAtrium(lobbyId)
   if (anotherAccountsDriveAtrium(lobbyId)) return
   const { browserEngine, forgetBrowserAtrium } = await import('./browserAtriums')
@@ -287,7 +357,7 @@ const PREVIEW = 'atrium.preview'
  *  not without Drive just now (its window needs a click): the next one goes. */
 export async function sharePreview(lobbyId: string, picture: Blob): Promise<void> {
   const kept = allKept()[lobbyId]
-  if (!kept?.owner || !store.canWrite()) return
+  if (!kept?.owner || !storeOf(kept.roster).canWrite()) return
   const sealed = await seal(await keyringFrom(kept), await bytesOf(picture))
   const write = (place: { id: string } | { parent: string }) => store.write(PREVIEW, sealed, place)
   // Written over -- or anew, if it's gone (removed by hand).
@@ -335,15 +405,19 @@ function rowOf(roster: Roster, me: string) {
     edit_permission_mode: ((placeOf(roster, me)?.role ?? 'viewer') === 'viewer' ? 'none' : 'all') as 'all' | 'none',
   }
 }
-/** Google's window, if need be, first thing on a click (it can't open later). */
-export const ensureSignedIn = () => store.signIn()
+/** Google's window, if need be, first thing on a click (it can't open later)
+ *  -- for `lobbyId`, its store's: a hosted atrium's needs one's sign-in only. */
+export const ensureSignedIn = (lobbyId?: string) => {
+  const kept = lobbyId ? allKept()[lobbyId] : null
+  return (kept ? storeOf(kept.roster) : driveStore).signIn()
+}
 
 /** The keys the roster gives `me` that `have` lacks -- every one, those had
  *  kept: wrapped for one, opened with one's private key; a public atrium's
  *  viewer, its public ones. Null if it gives none new. */
 async function newKeys(roster: Roster, me: string, viewer: boolean, have: Record<string, string>): Promise<Record<string, string> | null> {
   if (roster.keys.some(generation => !(String(generation.n) in have) && generation.for[me])) {
-    const own = mine?.user === me ? mine : await myIdentity({ id: me })
+    const own = mine?.user === me ? mine : await myIdentity({ id: me }, true)
     return { ...have, ...await keysOf(await keyringOf(roster, me, own.identity.privateJwk)) }
   }
   if (viewer && roster.public && Object.keys(roster.public).some(n => !(n in have))) return { ...have, ...roster.public }
@@ -365,13 +439,15 @@ async function folderFor(root: string, lobbyId: string): Promise<string> {
 
 /** A new Drive atrium, of the atrium kept in this browser as `lobbyId`: its
  *  owner's folder, its first key, its roster. Its first save, all of it, goes
- *  up when it's opened (startDriveSync). Signed in to Google already. */
-export async function createDriveAtrium(lobbyId: string, name: string, me: { id: string; name: string }): Promise<void> {
+ *  up when it's opened (startDriveSync). Signed in to Google already -- or,
+ *  `hosted`, kept in the Atrium's own store instead (phase 10). */
+export async function createDriveAtrium(lobbyId: string, name: string, me: { id: string; name: string }, hostedAtrium = false): Promise<void> {
   await settled()
-  const own = await myIdentity(me)
+  const own = await myIdentity(me, hostedAtrium)
+  const root = hostedAtrium ? await myHostedRoot(me) : own.root
   const key = await newAtriumKey()
-  const folder = await folderFor(own.root, lobbyId)
-  const roster = await newRoster(lobbyId, name, { user: me.id, name: me.name, root: own.root, pub: own.identity.publicJwk }, key)
+  const folder = await folderFor(root, lobbyId)
+  const roster = await newRoster(lobbyId, name, { user: me.id, name: me.name, root, pub: own.identity.publicJwk }, key)
   const file = await store.write('atrium.roster', asJson(roster), { parent: folder })
   // Admins it's shared with to edit can't share it on: only the owner makes admins.
   await store.noResharing(file.id)
@@ -439,9 +515,11 @@ export type JoinResult = { lobbyId: string; state: 'in' | 'waiting' | 'notAdded'
  *  member -- one's folder for it, and its key. Again, while waiting, until in. */
 export async function joinDriveAtrium(rosterId: string, me: { id: string; name: string }, onStep: (step: JoinStep) => void = () => {}): Promise<JoinResult> {
   onStep('signIn')
-  await store.signIn()
+  await storeOf(rosterId).signIn()
   onStep('keys')
-  const own = await myIdentity(me)
+  const hostedAtrium = isHostedId(rosterId)
+  const own = await myIdentity(me, hostedAtrium)
+  const root = hostedAtrium ? await myHostedRoot(me) : own.root
   const roster = await readRoster(rosterId)
   const lobbyId = roster.lobbyId
   if (roster.blocked.includes(me.id)) return { lobbyId, state: 'blocked' }
@@ -449,7 +527,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
   // A member with this key pair (one made elsewhere waits to be let in again).
   if (member && sameKey(member.pub, own.identity.publicJwk)) {
     onStep('folder')
-    const folder = await folderFor(own.root, lobbyId)
+    const folder = await folderFor(root, lobbyId)
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' }, me.id)
     await clearSecret(rosterId)
     return { lobbyId, state: 'in' }
@@ -463,7 +541,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     const keyring = secret ? await openWithSecret(base64ToBytes(secret), invited.keys).catch(() => null) : null
     if (keyring) {
       onStep('folder')
-      const folder = await folderFor(own.root, lobbyId)
+      const folder = await folderFor(root, lobbyId)
       keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false }, me.id)
       return { lobbyId, state: 'in' }
     }
@@ -592,9 +670,10 @@ async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof 
   await changeRoster(lobbyId, me, async (roster, keyring) => {
     if (roster.blocked.includes(data.id)) throw new Error('BLOCKED')
     const name = data.display_name || data.username || ''
-    if (data.drive_key && data.drive_root) {
+    const root = rootIn(data, isHostedAtrium(lobbyId))
+    if (data.drive_key && root) {
       result = 'in'
-      return { roster: (after = await admit(roster, keyring, { user: data.id, name, root: data.drive_root, pub: data.drive_key }, role)) }
+      return { roster: (after = await admit(roster, keyring, { user: data.id, name, root, pub: data.drive_key }, role)) }
     }
     // No key pair yet: the key sealed with a fresh secret their invitation
     // carries, so they can enter at once.
@@ -607,8 +686,9 @@ async function add(lobbyId: string, me: string, data: Awaited<ReturnType<typeof 
 }
 
 /** A member's role changed -- or the role someone invited comes in with.
- *  Admins' alone by the owner, with the admin's Google address: the roster
- *  shared with it to edit (or no longer) -- so a member's, once they're in. */
+ *  Admins' alone by the owner: the roster shared with them to edit (or no
+ *  longer) -- in Drive, with their Google address; in the hosted store, with
+ *  their account -- so a member's, once they're in. */
 export async function setRole(lobbyId: string, me: string, user: string, role: Exclude<Role, 'owner'>, adminEmail?: string): Promise<void> {
   const kept = allKept()[lobbyId]
   if (!kept) throw new Error('not a Drive atrium')
@@ -623,8 +703,8 @@ export async function setRole(lobbyId: string, me: string, user: string, role: E
     if ((role === 'admin' || member.role === 'admin') && !owner) throw new Error('OWNER_ONLY')
     let grant = member.grant
     if (role === 'admin' && member.role !== 'admin') {
-      if (!adminEmail) throw new Error('ADMIN_EMAIL_NEEDED')
-      grant = await store.shareWith(kept.roster, adminEmail)
+      if (!adminEmail && !isHostedId(kept.roster)) throw new Error('ADMIN_EMAIL_NEEDED')
+      grant = await store.shareWith(kept.roster, { email: adminEmail ?? '', account: user })
     } else if (role !== 'admin' && member.grant) {
       await store.unshare(kept.roster, member.grant)
       grant = undefined
@@ -937,7 +1017,7 @@ async function up(s: Session): Promise<void> {
   const unused = unusedFiles(s, current.traces)
   if (!changes.length && !unsent.length && !unused.length) return
   // Kept for later: the next diff still has them.
-  if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
+  if (!storeOf(s.kept.roster).canWrite()) { setStatus({ signInNeeded: true }); return }
   // Its files first: whoever takes the save finds them there.
   for (const row of await sendFiles(s, unsent)) changes.push({ table: 'media', id: row.id, at, row })
   for (const url of await removeFiles(unused)) changes.push({ table: 'media', id: url, at, row: null })
@@ -1043,18 +1123,19 @@ async function letIn(s: Session, roster: Roster): Promise<void> {
   let next = roster
   for (const invite of roster.invited) {
     const profile = profiles.get(invite.user)
-    if (profile?.drive_key && profile.drive_root) next = await admit(next, s.keyring, { user: invite.user, name: invite.name, root: profile.drive_root, pub: profile.drive_key }, invite.role)
+    const root = profile && rootIn(profile, isHostedId(s.kept.roster))
+    if (profile?.drive_key && root) next = await admit(next, s.keyring, { user: invite.user, name: invite.name, root, pub: profile.drive_key }, invite.role)
   }
   for (const member of roster.members) {
     const profile = profiles.get(member.user)
     if (profile?.drive_key && !sameKey(profile.drive_key, member.pub)) {
-      next = await admit(next, s.keyring, { user: member.user, name: member.name, root: profile.drive_root ?? member.root, pub: profile.drive_key }, member.role)
+      next = await admit(next, s.keyring, { user: member.user, name: member.name, root: rootIn(profile, isHostedId(s.kept.roster)) ?? member.root, pub: profile.drive_key }, member.role)
     }
   }
   if (next === roster) return
   // Not signed in to Google on this page (it doesn't outlast a reload): the
   // button asks, and the click lets them in.
-  if (!store.canWrite()) { setStatus({ signInNeeded: true }); return }
+  if (!storeOf(s.kept.roster).canWrite()) { setStatus({ signInNeeded: true }); return }
   try {
     await writeRoster(s.kept, next)
     s.roster = null
@@ -1104,7 +1185,7 @@ async function listWriters(s: Session, roster: Roster): Promise<{ user: string; 
   // theirs once they're members.)
   const invitedHere = s.kept.viewer ? [] : invitedWritersOf(roster).filter(invite => !s.folders.has(invite.user))
   if (invitedHere.length) {
-    for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: person.drive_root })
+    for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: rootIn(person, isHostedId(s.kept.roster)) })
   }
   for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
   const listed: { user: string; files: Listed[] }[] = []
@@ -1161,7 +1242,7 @@ async function takeSnapshot(s: Session, file: Listed, listed: { files: Listed[] 
  *  owner's app, once enough saves have gathered, folds all it has read into
  *  a new snapshot. */
 async function tidy(s: Session, roster: Roster, listed: { user: string; files: Listed[] }[]): Promise<void> {
-  if (!store.canWrite()) return
+  if (!storeOf(s.kept.roster).canWrite()) return
   const mine = listed.find(writer => writer.user === s.me)?.files ?? []
   const done = mine.filter(file => file.name.endsWith('.save') && s.snapshot?.folded.has(file.id)).slice(0, TRASH_AT_ONCE)
   for (const file of done) await removeQuietly(file.id).catch(error => console.warn('[drive] removing a folded save:', error))

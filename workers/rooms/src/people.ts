@@ -41,12 +41,23 @@ const TABLES = [
     lobby_id text primary key, roster text not null, name text not null, owner text not null,
     preview blob, preview_at integer, listed_at integer not null, updated_at integer not null)`,
   'create index if not exists public_atriums_owner on public_atriums (owner)',
+  // The hosted store (src/store.ts): its files and folders, who else may
+  // write which, and each account's own app data.
+  `create table if not exists store_files (
+    id text primary key, parent text, name text not null, owner text not null, folder integer not null,
+    version integer not null, size integer not null, created_at integer not null, updated_at integer not null)`,
+  'create index if not exists store_files_parent on store_files (parent)',
+  'create index if not exists store_files_owner on store_files (owner)',
+  'create table if not exists store_shares (file text not null, account text not null, primary key (file, account))',
+  'create table if not exists store_appdata (account text not null, name text not null, bytes text not null, updated_at integer not null, primary key (account, name))',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
 ]
 // Columns added since the tables were first made: added where they're missing.
-const ADDED = ['alter table accounts add column settings text', 'alter table accounts add column name_changed_at integer']
+const ADDED = ['alter table accounts add column settings text', 'alter table accounts add column name_changed_at integer',
+  // One's folder for atriums in the hosted store (phase 10), as drive_root is in Drive.
+  'alter table accounts add column hosted_root text']
 // Made once per instance of the worker, the first time it's needed.
 let made: Promise<unknown> | null = null
 export const tablesIn = (db: D1Database) => (made ??= (async () => {
@@ -324,19 +335,23 @@ export async function people(request: Request, env: Env, what: string): Promise<
         // Merged as one statement: two settings saved at once both stay.
         await db.prepare("update accounts set settings = json_patch(coalesce(settings, '{}'), ?) where id = ?").bind(JSON.stringify(patch), who.id).run()
       }
+      if ('hosted_root' in set) {
+        const root = typeof set.hosted_root === 'string' && /^h\.[\w-]{20,40}$/.test(set.hosted_root) ? set.hosted_root : null
+        await db.prepare('update accounts set hosted_root = ? where id = ?').bind(root, who.id).run()
+      }
       if ('drive_key' in set || 'drive_root' in set) {
         const key = JSON.stringify(set.drive_key ?? null)
         const root = typeof set.drive_root === 'string' ? set.drive_root : null
         if (key.length > 1000 || (root && root.length > 128)) return answer(400, { error: 'drive' })
         await db.prepare('update accounts set drive_key = ?, drive_root = ? where id = ?').bind(key === 'null' ? null : key, root, who.id).run()
       }
-      const row = await db.prepare('select id, kind, username, display_name, drive_key, drive_root, email, settings, name_changed_at from accounts where id = ?').bind(who.id).first()
+      const row = await db.prepare('select id, kind, username, display_name, drive_key, drive_root, hosted_root, email, settings, name_changed_at from accounts where id = ?').bind(who.id).first()
       return answer(200, shown(row))
     }
 
     // Others, by username or by their ids: what's public of them -- never their email.
     case 'find': {
-      const columns = 'select id, username, display_name, drive_key, drive_root from accounts'
+      const columns = 'select id, username, display_name, drive_key, drive_root, hosted_root from accounts'
       const username = text('username', 40)
       if (username !== null) {
         const row = await db.prepare(`${columns} where username = ? collate nocase`).bind(username.trim().replace(/^@/, '')).first()

@@ -21,6 +21,11 @@ custom_domain = true
 
 # The directory of who's who (src/people.ts): usernames, Drive keys and
 # folders, invitations. Its tables are made by the worker on first use.
+# The hosted store's bytes (src/store.ts, phase 10).
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "atrium-files"
+
 [[d1_databases]]
 binding = "PEOPLE"
 database_name = "atrium-people"

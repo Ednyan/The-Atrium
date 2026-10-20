@@ -38,6 +38,10 @@ export interface Env {
   // Pinterest's app (src/pinterest.ts): its id and secret (secrets).
   PINTEREST_CLIENT_ID?: string
   PINTEREST_CLIENT_SECRET?: string
+  // The hosted store (src/store.ts): its bytes, and each account's quota in
+  // MB (50 if unset).
+  FILES?: R2Bucket
+  STORE_QUOTA_MB?: string
   // A local test's stand-in for every other service on the internet
   // (Resend, Cloudflare's APIs, Pinterest): never set live.
   TEST_UPSTREAM?: string

@@ -7,7 +7,7 @@ import { toWorker } from './worker'
 import { workerUrl } from './rooms'
 
 /** What anyone may know of someone: never their email. */
-export interface Person { id: string; username: string | null; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null }
+export interface Person { id: string; username: string | null; display_name: string | null; drive_key: JsonWebKey | null; drive_root: string | null; hosted_root?: string | null }
 /** A Google account's own settings, private to it (lib/profile). */
 export interface Settings { player_color?: string; custom_themes?: unknown[] }
 export interface InvitationRow {
@@ -25,7 +25,7 @@ async function ask<T>(what: string, body: object = {}): Promise<T> {
   return answer as T
 }
 
-type Settable = Partial<Pick<Person, 'username' | 'display_name' | 'drive_key' | 'drive_root'>> & { settings?: Settings }
+type Settable = Partial<Pick<Person, 'username' | 'display_name' | 'drive_key' | 'drive_root' | 'hosted_root'>> & { settings?: Settings }
 /** One's own entry, changed as asked: one's email, settings and when one's
  *  name last changed shown to oneself alone. Settings given are merged in.
  *  `language`, the page's: a Google account's welcome, as it chooses its
