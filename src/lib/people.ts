@@ -12,6 +12,7 @@ export interface Person { id: string; username: string | null; display_name: str
 export interface Settings { player_color?: string; custom_themes?: unknown[] }
 export interface InvitationRow {
   id: string; from_user: string; from_name: string | null; roster: string; lobby_id: string; name: string; secret: string | null; created_at: number
+  auto?: number | null
 }
 
 async function ask<T>(what: string, body: object = {}): Promise<T> {
@@ -48,7 +49,7 @@ export async function usernameAvailable(username: string, mine?: string): Promis
   }
 }
 
-export const sendInvitation = (invitation: { to: string; roster: string; lobby_id: string; name: string; secret: string | null }) => ask('invite', invitation)
+export const sendInvitation = (invitation: { to: string; roster: string; lobby_id: string; name: string; secret: string | null; auto?: boolean }) => ask('invite', invitation)
 export const invitationsToMe = () => ask<InvitationRow[]>('invites')
 /** One's invitation's secret gone, the invitation kept. */
 export const clearSecret = (roster: string) => ask('clear', { roster })

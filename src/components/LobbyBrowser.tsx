@@ -380,6 +380,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     window.addEventListener('hashchange', look)
     return () => window.removeEventListener('hashchange', look)
   }, [])
+  // In by an invitation: its working copy, filled by the first sync
+  // (lib/driveSync, down first), and kept in this browser.
+  const keepJoined = async (lobbyId: string, name: string, me: string) => {
+    await browserEngine()
+    await makeWorkingCopy(lobbyId, { name, ...(rowFromRoster(lobbyId, me) ?? { owner_user_id: me }), is_public: false, max_players: 50 })
+    rememberBrowserAtrium(lobbyId)
+  }
   const joinInvite = async (asked = invite, ask = false) => {
     if (!asked) return
     setJoinNote('')
@@ -418,10 +425,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       }
       if (result.state === 'in') {
         setJoining('opening')
-        // Its working copy, filled by the first sync (lib/driveSync, down first).
-        await browserEngine()
-        await makeWorkingCopy(result.lobbyId, { name: asked.name, ...(rowFromRoster(result.lobbyId, user.id) ?? { owner_user_id: user.id }), is_public: false, max_players: 50 })
-        rememberBrowserAtrium(result.lobbyId)
+        await keepJoined(result.lobbyId, asked.name, user.id)
         setInvite(null)
         onJoinLobby(result.lobbyId)
       } else if (result.state === 'notAdded') {
@@ -460,6 +464,35 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     await keepInDrive(lobby.id, lobby.name, me)
     await loadBrowserLobbies()
   })
+  // One's cloud atriums, moved into the Atrium's own cloud by themselves as one
+  // comes in (phase 10, step 5): each as "Move to my Drive" moves one
+  // (lib/moveToDrive), its people with it, one at a time, its card saying so.
+  // One that won't go stays in the cloud, safe, and is tried again on the next
+  // visit -- not again on this one.
+  // ponytail: no lock across devices -- the owner's two browsers opening in the
+  // same seconds could each move it (two hosted copies, nothing lost); a lock
+  // needs a compare-and-set the hosted store hasn't got. Add one if it happens.
+  const triedMoving = useRef(new Set<string>())
+  const moveToHosted = async (owned: { id: string; name: string }[], me: { id: string; name: string }) => {
+    const waiting = owned.filter(lobby => !triedMoving.current.has(lobby.id))
+    if (!waiting.length) return
+    waiting.forEach(lobby => triedMoving.current.add(lobby.id))
+    const { moveToDrive } = await import('../lib/moveToDrive')
+    let moved = 0
+    for (const lobby of waiting) {
+      setConverting(lobby.id)
+      try {
+        await moveToDrive(lobby.id, me, true)
+        moved++
+        showToast(t('browser.cloud.moved', { name: lobby.name }))
+      } catch (err) {
+        console.warn('[cloud] not moved yet:', lobby.id, err)
+        setError(t('browser.cloud.notMoved', { name: lobby.name, reason: driveProblem(err) }))
+      }
+    }
+    setConverting(null)
+    if (moved) { void loadLobbies(); void checkCanCreateLobby() }
+  }
   const moveLobby = (lobby: LobbyWithOwner) => intoDrive(lobby, async me => {
     await (await import('../lib/moveToDrive')).moveToDrive(lobby.id, me)
     showToast(t('browser.drive.moved', { name: lobby.name }))
@@ -479,7 +512,28 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // Invitations to Drive atriums: shown here, no link needed (lib/driveSync).
   const [invitations, setInvitations] = useState<Invitation[]>([])
-  const lookForInvitations = () => { if (myId && canDrive) void myInvitations().then(setInvitations).catch(() => {}) }
+  // One's invitations -- to Drive atriums and the Atrium's cloud's alike. Those
+  // that join by themselves (one's cloud atrium moved, its people with it --
+  // the worker vouched for them) are joined quietly, once a visit; one that
+  // can't be (Drive to connect first, say) stays in the list, to join by hand.
+  const triedJoining = useRef(new Set<string>())
+  const lookForInvitations = () => {
+    if (!myId || !(canHost || canDrive)) return
+    void myInvitations().then(async found => {
+      let joined = 0
+      for (const one of found.filter(one => one.auto && !triedJoining.current.has(one.roster))) {
+        triedJoining.current.add(one.roster)
+        try {
+          const result = await joinDriveAtrium(one.roster, { id: myId, name: username || 'You' })
+          if (result.state === 'in') { await keepJoined(result.lobbyId, one.name, myId); joined++ }
+        } catch (error) {
+          console.warn('[drive] joining by itself:', error)
+        }
+      }
+      setInvitations(joined ? await myInvitations() : found)
+      if (joined) void loadBrowserLobbies()
+    }).catch(() => {})
+  }
   useEffect(lookForInvitations, [myId])
 
   useEffect(() => {
@@ -743,6 +797,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         sortByLastVisited(ownedLobbies || [], lobby => lobby.id),
       )
       setUserLobbies(enrichedOwned)
+      // Into the Atrium's own cloud, by themselves (phase 10). The desktop's
+      // are its vault's: nowhere to move.
+      if (!isDesktop && canHost) void moveToHosted(ownedLobbies ?? [], { id: user.id, name: username || 'You' })
 
       // Load lobbies the user administers but doesn't own -- these get the
       // same "Manage" affordance as owned atriums (just without the

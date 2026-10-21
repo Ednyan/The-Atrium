@@ -63,7 +63,10 @@ const TABLES = [
 // Columns added since the tables were first made: added where they're missing.
 const ADDED = ['alter table accounts add column settings text', 'alter table accounts add column name_changed_at integer',
   // One's folder for atriums in the hosted store (phase 10), as drive_root is in Drive.
-  'alter table accounts add column hosted_root text']
+  'alter table accounts add column hosted_root text',
+  // An invitation that joins by itself (phase 10): one's cloud atrium moved,
+  // its people with it -- vouched for by Supabase (cloudMember).
+  'alter table invites add column auto integer']
 // Made once per instance of the worker, the first time it's needed.
 let made: Promise<unknown> | null = null
 export const tablesIn = (db: D1Database) => (made ??= (async () => {
@@ -163,6 +166,26 @@ export async function supersededBy(env: Env, id: string, googleId: string | null
   if (!existing) return null
   await forgetAccount(env.PEOPLE, id, true)
   return existing
+}
+
+/** Whether an invitation may join by itself: its atrium is a Supabase cloud
+ *  atrium the sender owns, and the one it's to was on its lists there -- an
+ *  admin, whitelisted, or an editor. Asked of Supabase with the sender's own
+ *  sign-in (its rules let an owner read their atrium's lists). Anything else
+ *  -- a Google account's, an atrium already gone, an answer that didn't come
+ *  -- is an ordinary invitation: joining is then the invited person's call. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+async function cloudMember(env: Env, token: string, from: string, lobby: string, to: string): Promise<boolean> {
+  if (!UUID.test(lobby) || !UUID.test(to) || typeof token !== 'string') return false
+  const rows = async <T>(path: string): Promise<T[]> => {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }).catch(() => null)
+    return response?.ok ? response.json() as Promise<T[]> : []
+  }
+  const [atrium] = await rows<{ owner_user_id: string; admin_user_ids: string[] | null }>(`lobbies?id=eq.${lobby}&select=owner_user_id,admin_user_ids`)
+  if (!atrium || atrium.owner_user_id !== from) return false
+  if (atrium.admin_user_ids?.includes(to)) return true
+  const lists = await rows<{ list_type: string }>(`lobby_access_lists?lobby_id=eq.${lobby}&user_id=eq.${to}&select=list_type`)
+  return lists.some(row => row.list_type === 'whitelist' || row.list_type === 'editor')
 }
 
 /** A Google account, gone from the directory: its row, the invitations to
@@ -369,16 +392,21 @@ export async function people(request: Request, env: Env, what: string): Promise<
       return answer(200, results.map(shown))
     }
 
-    // An invitation from oneself: one per person and atrium, the latest.
+    // An invitation from oneself: one per person and atrium, the latest -- and
+    // replaced only by whoever sent it: anyone knowing a roster's id could
+    // otherwise put their own secret (or none) over someone else's.
     case 'invite': {
       const to = text('to', 64), roster = text('roster', 128), lobby = text('lobby_id', 64), name = text('name', 200)
       const secret = asked.secret === null ? null : text('secret', 2000)
       if (!to || !roster || !lobby || !name || (asked.secret !== null && secret === null)) return answer(400, { error: 'body' })
-      await db.prepare(`insert into invites (id, to_user, from_user, roster, lobby_id, name, secret, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)
-        on conflict (to_user, roster) do update set from_user = excluded.from_user, lobby_id = excluded.lobby_id, name = excluded.name,
-        secret = excluded.secret, created_at = excluded.created_at`)
-        .bind(crypto.randomUUID(), to, who.id, roster, lobby, name, secret, Date.now()).run()
-      return answer(200, { ok: true })
+      // Joining by itself, asked: granted only as cloudMember says.
+      const auto = asked.auto === true && await cloudMember(env, asked.token as string, who.id, lobby, to) ? 1 : 0
+      await db.prepare(`insert into invites (id, to_user, from_user, roster, lobby_id, name, secret, created_at, auto) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict (to_user, roster) do update set lobby_id = excluded.lobby_id, name = excluded.name,
+        secret = excluded.secret, created_at = excluded.created_at, auto = excluded.auto
+        where invites.from_user = excluded.from_user`)
+        .bind(crypto.randomUUID(), to, who.id, roster, lobby, name, secret, Date.now(), auto).run()
+      return answer(200, { ok: true, auto: !!auto })
     }
 
     // One's invitations, the newest first, with who sent each.
@@ -422,7 +450,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
     }
 
     case 'invites': {
-      const { results } = await db.prepare(`select i.id, i.from_user, i.roster, i.lobby_id, i.name, i.secret, i.created_at,
+      const { results } = await db.prepare(`select i.id, i.from_user, i.roster, i.lobby_id, i.name, i.secret, i.created_at, i.auto,
         coalesce(a.display_name, a.username) as from_name from invites i left join accounts a on a.id = i.from_user
         where i.to_user = ? order by i.created_at desc`).bind(who.id).all()
       return answer(200, results)

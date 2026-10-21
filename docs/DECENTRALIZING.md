@@ -1111,14 +1111,31 @@ A hosted atrium is then a Drive atrium whose store is ours:
      made by account, with no address step. The usage box shows one's cloud
      space (`spaceOf`: Drive's or the hosted store's, one shared keeper in
      `lib/drive`, `keptSpace`).
-   - **5b, existing ones moved, on the owner's next visit:** rows and files
-     to the browser, then hosted (`lib/moveToDrive` generalised). Members
-     re-added: admins as admins; editors and whitelisted people as editors
-     or viewers by the atrium's edit mode; the blacklist as blocked. Their
-     invitations join without asking (an `auto` flag on invites). Public
-     ones made public, view-only. Passwords dropped for the invite link plus
-     ask-to-join. Owners who never come back: their atriums kept as .atrium
-     files before Supabase closes.
+   - **5b, existing ones moved, on the owner's next visit (built
+     2026-10-21).** The atrium browser moves each Supabase cloud atrium its
+     owner has, one at a time, as "Move to my Drive" moves one
+     (`lib/moveToDrive`, now `moveToDrive(id, me, hosted)`): rows and files
+     to the browser, then the hosted store, then its people, then -- only
+     once everything is there -- the original deleted. A stop is picked up
+     on the next visit; one that fails stays in Supabase, safe, and says so.
+     - People (`driveSync.addPeople`, one roster change): admins as admins
+       (shared the roster by account; in Drive, which shares by Google
+       address, as editors); whitelisted people and editors as editors, or
+       viewers as the edit mode had it; the blacklist blocked. Someone with
+       a key pair is let in at once, anyone else invited with a secret.
+     - An admin invited before they're in carries their grant
+       (`Invited.grant`): kept when let in, taken back when removed or made
+       an editor.
+     - Their invitations join by themselves (`invites.auto`). The worker
+       grants that only after asking Supabase, with the sender's own
+       sign-in, that the atrium is the sender's and the person was on its
+       lists (`people.ts`, `cloudMember`); otherwise it's an ordinary
+       invitation. An invitation is replaced only by its own sender.
+     - Public ones made public, visitors reading. Passwords dropped: the
+       invite link and asking to join stand in.
+     - "Move to my Drive" brings the people the same way.
+     - **Still to do, at cutover (step 7):** owners who never come back --
+       their atriums exported as .atrium files before Supabase closes.
 6. Everything else to the worker: Stripe contributions, deletion codes,
    platform admins, `app_changes`, special themes, visits.
 7. The app off the Supabase client. A month with Supabase read-only, then

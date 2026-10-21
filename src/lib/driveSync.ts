@@ -594,20 +594,24 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
 // One's invitations to Drive atriums, in the Atrium's directory (lib/people):
 // which atrium (its roster in Drive), its name, and who added one -- shown in
 // the atrium browser, so nobody needs a link. Newest first.
-export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number }
+// `auto`: joins by itself, the worker having vouched for it -- one's cloud
+// atrium moved, its people with it (lib/moveToDrive).
+export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number; auto: boolean }
 export async function myInvitations(): Promise<Invitation[]> {
   return (await invitationsToMe())
     // Not those one's in -- but those one only reads, public: added, one joins.
     .filter(row => { const kept = allKept()[row.lobby_id]; return !kept || !!kept.viewer })
-    .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at }))
+    .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at, auto: !!row.auto }))
 }
 export const declineInvitation = (id: string) => withdrawInvitation({ id }).then(() => {})
 // Told to someone added, in their atrium browser: with the secret that opens
 // it if they have no key pair yet. Never a second secret for an invitation
 // still standing -- the roster's sealed keys answer to the first. One per
 // person per atrium: sent again, it replaces the last, and is new again.
-async function invite(to: string, roster: Roster, rosterId: string, secret: Uint8Array | null): Promise<void> {
-  await sendInvitation({ to, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret) })
+// `auto`: asked to join by itself, which the worker grants only for one's own
+// cloud atrium and someone who was on its lists there.
+async function invite(to: string, roster: Roster, rosterId: string, secret: Uint8Array | null, auto = false): Promise<void> {
+  await sendInvitation({ to, roster: rosterId, lobby_id: roster.lobbyId, name: roster.name, secret: secret && bytesToBase64(secret), ...(auto ? { auto } : {}) })
 }
 
 // ---------------------------------------------------------------- members: adding, roles, removing
@@ -680,6 +684,44 @@ async function rosterTold(s: Session, sender: string): Promise<void> {
  *  they've opened the invite. */
 export async function addPerson(lobbyId: string, me: string, username: string, role: Exclude<Role, 'owner'>): Promise<'in' | 'invited'> {
   return add(lobbyId, me, await profileBy('username', username.trim().replace(/^@/, '')), role)
+}
+
+/** Several people in at once, and some kept out -- one change to the roster:
+ *  a cloud atrium's people, brought with it (lib/moveToDrive). Each is let in
+ *  if they have a key pair where it's kept, else invited with a secret, as
+ *  addPerson does; an admin is given the roster to write (the hosted store
+ *  shares by account) as they're added. Their invitations join by themselves.
+ *  Anyone already in it, invited or blocked is left as they are, so it can
+ *  be asked again after a stop. */
+export async function addPeople(lobbyId: string, me: string, people: { user: string; name: string; role: Exclude<Role, 'owner'> }[], blocked: string[]): Promise<void> {
+  const kept = allKept()[lobbyId]
+  if (!kept) throw new Error('not a Drive atrium')
+  const hostedAtrium = isHostedId(kept.roster)
+  const profiles = new Map((await peopleByIds(people.map(one => one.user))).map(person => [person.id, person]))
+  let invites: { to: string; secret: Uint8Array | null }[] = []
+  let after: Roster | null = null
+  await changeRoster(lobbyId, me, async (roster, keyring) => {
+    invites = []
+    let next: Roster = { ...roster, blocked: [...new Set([...roster.blocked, ...blocked])] }
+    for (const one of people) {
+      if (memberOf(next, one.user) || next.invited.some(invite => invite.user === one.user) || next.blocked.includes(one.user)) continue
+      // Drive shares by Google address, which nobody here has: an admin only where it's by account.
+      const role = one.role === 'admin' && !hostedAtrium ? 'editor' : one.role
+      const grant = role === 'admin' ? await store.shareWith(kept.roster, { email: '', account: one.user }) : undefined
+      const profile = profiles.get(one.user)
+      const root = profile && rootIn(profile, hostedAtrium)
+      if (profile?.drive_key && root) {
+        next = await admit(next, keyring, { user: one.user, name: one.name, root, pub: profile.drive_key, ...(grant ? { grant } : {}) }, role)
+        invites.push({ to: one.user, secret: null })
+      } else {
+        const secret = newSecret()
+        next = { ...next, invited: [...next.invited, { user: one.user, name: one.name, role, keys: await sealForSecret(secret, keyring), ...(grant ? { grant } : {}) }] }
+        invites.push({ to: one.user, secret })
+      }
+    }
+    return { roster: (after = next) }
+  })
+  for (const { to, secret } of invites) await invite(to, after!, kept.roster, secret, true)
 }
 
 /** Their invitation sent again: let in now if they've a key pair since, else a
@@ -759,11 +801,13 @@ export async function removePerson(lobbyId: string, me: string, user: string, bl
   if (!kept) throw new Error('not a Drive atrium')
   await changeRoster(lobbyId, me, async (roster, keyring) => {
     const member = memberOf(roster, user)
-    if (member?.role === 'admin' && memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
-    if (member?.grant) await store.unshare(kept.roster, member.grant)
+    const invited = roster.invited.find(invite => invite.user === user)
+    if ((member ?? invited)?.role === 'admin' && memberOf(roster, me)?.role !== 'owner') throw new Error('OWNER_ONLY')
+    // Their grant taken back: a member's, or an admin's given before they were in.
+    const grant = member?.grant ?? invited?.grant
+    if (grant) await store.unshare(kept.roster, grant)
     // Their invitation, if one stands: gone.
     await withdrawInvitation({ to: user, roster: kept.roster })
-    const invited = roster.invited.find(invite => invite.user === user)
     if (!member && !invited?.keys) {
       // Only invited, and never able to read it: off the list (and blocked, if so).
       return { roster: { ...roster, invited: roster.invited.filter(invite => invite.user !== user), blocked: block ? [...new Set([...roster.blocked, user])] : roster.blocked } }

@@ -288,8 +288,10 @@ export type Role = 'owner' | 'admin' | 'editor' | 'viewer'
 // their permission to write the roster, so it can be taken back.
 export interface Member { user: string; name: string; root: string; role: Role; pub: JsonWebKey; grant?: string }
 // `keys`: the key's generations sealed with their invitation's secret, so they
-// can enter before they're let in properly.
-export interface Invited { user: string; name: string; role: Role; keys?: SecretSealed }
+// can enter before they're let in properly. `grant`: an admin's, given before
+// they're in (a cloud atrium moved with its people, lib/moveToDrive) -- theirs
+// once they are.
+export interface Invited { user: string; name: string; role: Role; keys?: SecretSealed; grant?: string }
 export interface Roster {
   v: 2
   lobbyId: string
@@ -332,8 +334,9 @@ export async function admit(roster: Roster, keyring: Keyring, person: Omit<Membe
     const key = keyring.get(generation.n)
     return key ? { ...generation, for: { ...generation.for, [person.user]: await wrapFor(person.pub, key) } } : generation
   }))
-  // Let in again (a new key pair): an admin keeps the grant that's theirs to lose.
-  const grant = memberOf(roster, person.user)?.grant
+  // Let in again (a new key pair), or at last (invited as an admin): an admin
+  // keeps the grant that's theirs to lose.
+  const grant = person.grant ?? memberOf(roster, person.user)?.grant ?? roster.invited.find(invite => invite.user === person.user)?.grant
   return {
     ...roster,
     members: [...roster.members.filter(member => member.user !== person.user), { ...person, role, ...(grant && role === 'admin' ? { grant } : {}) }],

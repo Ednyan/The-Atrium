@@ -1,37 +1,74 @@
-// A cloud atrium moved into its owner's Google Drive (phase 9). Copied whole
-// into this browser -- the same ids, so its threads, frames and groups hold,
-// and its address and room are the same -- with its files fetched from the
-// cloud into the browser's vault; kept in Drive (lib/driveSync, keepInDrive);
-// and, only once Drive has all of it, the cloud original deleted.
+// A cloud atrium moved out of Supabase: into its owner's Google Drive (phase
+// 9), or into the Atrium's own cloud, the hosted store (phase 10 -- by itself,
+// on its owner's next visit). Copied whole into this browser -- the same ids,
+// so its threads, frames and groups hold, and its address and room are the
+// same -- with its files fetched from the cloud into the browser's vault; kept
+// in Drive or the hosted store (lib/driveSync, keepInDrive); its people
+// brought with it; and, only once all of it is there, the original deleted.
 //
-// Begun again after a stop, it picks up where it was. Before Drive has it,
-// the copy is made again, over the last; after, the copy in Drive is the
-// atrium (opening its address opens it, App), so it's only finished: sent
-// what's left, then the original let go.
+// Its people (bringPeople): its admins as admins (in Drive, which shares by
+// Google address, as editors), whoever was whitelisted or an editor as
+// editors -- or viewers, as its edit mode had it -- and its blacklist kept
+// out. Their invitations join by themselves. Its password goes: the invite
+// link and asking to join stand in for it. A public one is public still,
+// visitors reading it.
 //
-// Who it was shared with in the cloud isn't carried: a Drive atrium's members
-// are its roster's, added again from its settings. Nor is anything changed in
-// the cloud original while it's being moved -- the seconds it takes.
+// Begun again after a stop, it picks up where it was. Before the new place has
+// it, the copy is made again, over the last; after, the copy there is the
+// atrium (opening its address opens it, App), so it's only finished: its
+// people, what's left sent, then the original let go. Nothing changed in the
+// cloud original while it's being moved -- the seconds it takes -- is carried.
 import { cloudClient } from './supabase'
 import { fetchAllLobbyTraces } from '../hooks/useTraces'
+import type { Role } from './driveFormat'
 
 // Where the cloud keeps an atrium's files (Supabase Storage, the traces bucket).
 const CLOUD_FILES = '/storage/v1/object/public/traces/'
 
-export async function moveToDrive(lobbyId: string, me: { id: string; name: string }): Promise<void> {
+export async function moveToDrive(lobbyId: string, me: { id: string; name: string }, hosted = false): Promise<void> {
   const { data: lobby, error } = await cloudClient.from('lobbies').select('*').eq('id', lobbyId).single()
   if (error) throw error
   if (lobby.owner_user_id !== me.id) throw new Error('NOT_OWNER')
   const [{ browserEngine, rememberBrowserAtrium }, sync] = await Promise.all([import('./browserAtriums'), import('./driveSync')])
   if (!sync.isDriveAtrium(lobbyId)) {
     await copyIntoBrowser(lobby, await browserEngine())
-    rememberBrowserAtrium(lobbyId)
-    await sync.keepInDrive(lobbyId, lobby.name, me)
+    await sync.keepInDrive(lobbyId, lobby.name, me, hosted)
   }
+  // This browser's only once it's kept there: a copy that didn't get there is
+  // no atrium of anyone's here -- made again, over itself, next time.
+  rememberBrowserAtrium(lobbyId)
+  // Its people, while the cloud still has its lists -- and the worker can
+  // still vouch for their invitations from them.
+  await bringPeople(lobby, me.id, sync.addPeople)
+  if (lobby.is_public && !sync.isPublicAtrium(lobbyId)) await sync.makePublic(lobbyId, me.id)
   // Nothing of it still to go up, rows or files: only then is the original let go.
   if (!(await sync.driveHasEverything(lobbyId, me.id))) throw new Error('MOVE_INCOMPLETE')
   const { error: removed } = await cloudClient.from('lobbies').delete().eq('id', lobbyId)
   if (removed) throw removed
+}
+
+type Assignable = Exclude<Role, 'owner'>
+
+/** Who a cloud atrium's people are, from its row and lists, and the role each
+ *  had -- handed to lib/driveSync's addPeople. */
+async function bringPeople(lobby: Record<string, any>, me: string, addPeople: typeof import('./driveSync').addPeople): Promise<void> {
+  const { data: lists, error } = await cloudClient.from('lobby_access_lists').select('user_id, list_type').eq('lobby_id', lobby.id)
+  if (error) throw error
+  const rows = (lists ?? []) as { user_id: string; list_type: string }[]
+  const listed = (type: string) => new Set(rows.filter(row => row.list_type === type).map(row => row.user_id))
+  const admins = new Set<string>(lobby.admin_user_ids ?? [])
+  const editors = listed('editor')
+  const blocked = listed('blacklist')
+  const roleOf = (user: string): Assignable =>
+    admins.has(user) ? 'admin'
+      : lobby.edit_permission_mode === 'none' || (lobby.edit_permission_mode === 'selected' && !editors.has(user)) ? 'viewer'
+        : 'editor'
+  const users = [...new Set([...admins, ...editors, ...listed('whitelist')])].filter(user => user !== me && !blocked.has(user))
+  if (!users.length && !blocked.size) return
+  // Their names as the cloud knows them: not everyone is in the directory yet.
+  const { data: profiles } = users.length ? await cloudClient.from('profiles').select('id, username, display_name').in('id', users) : { data: [] }
+  const nameOf = new Map(((profiles ?? []) as { id: string; username: string | null; display_name: string | null }[]).map(row => [row.id, row.display_name || row.username || '']))
+  await addPeople(lobby.id, me, users.map(user => ({ user, name: nameOf.get(user) ?? '', role: roleOf(user) })), [...blocked].filter(user => user !== me))
 }
 
 async function copyIntoBrowser(lobby: Record<string, any>, local: typeof import('./localDb')): Promise<void> {
