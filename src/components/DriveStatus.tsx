@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { ensureSignedIn, letInAsker, putOffAsker, reconnectDrive, watchDriveStatus, type DriveStatus as Status } from '../lib/driveSync'
+import { letInAsker, putOffAsker, reconnectDrive, watchDriveStatus, type DriveStatus as Status } from '../lib/driveSync'
 import { showToast } from '../lib/toast'
 
 // Inside a Drive atrium, what it's doing that matters to whoever's in it
@@ -28,8 +28,7 @@ function Asking({ status }: { status: Status }) {
   const letIn = async (user: string) => {
     setBusy(user)
     try {
-      // Google's window first, while the click counts: the member list is written.
-      await ensureSignedIn()
+      // Signed in first (lib/driveSync), while the click counts: the member list is written.
       await letInAsker(user)
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error))

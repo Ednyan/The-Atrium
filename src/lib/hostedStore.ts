@@ -14,6 +14,7 @@
 import { accountToken } from './signedIn'
 import { workerUrl } from './rooms'
 import { base64ToBytes, bytesToBase64 } from './driveFormat'
+import { keptSpace } from './drive'
 import type { DriveStore } from './driveSync'
 
 export const HOSTED_MARK = 'h.'
@@ -30,9 +31,10 @@ async function read(path: string): Promise<Response> {
   return response
 }
 
+export interface HostedUsage { usage: number; limit: number; atriums: number; most: number }
 /** The store, as whoever `token` says is signed in: the page's account
  *  (hostedStore), or -- a test playing several people -- each one's. */
-export function hostedStoreFor(token: () => Promise<string | null>): DriveStore & { usage(): Promise<{ usage: number; limit: number }> } {
+export function hostedStoreFor(token: () => Promise<string | null>): DriveStore & { usage(): Promise<HostedUsage> } {
   const signedInToken = async () => {
     const value = await token().catch(() => null)
     if (!value) throw new Error('NOT_SIGNED_IN')
@@ -78,8 +80,12 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
     shareWith: async (id, to) => (await ask<{ share: string }>('share', { id, account: to.account })).share,
     unshare: async (id, share) => { await ask('unshare', { id, account: share }) },
     remove: async id => { await ask('remove', { id }) },
-    /** One's hosted bytes, and one's quota. */
-    usage: () => ask<{ usage: number; limit: number }>('usage', {}),
+    /** One's hosted bytes and one's quota; the hosted atriums one owns, and how many one may. */
+    usage: () => ask<HostedUsage>('usage', {}),
   }
 }
 export const hostedStore = hostedStoreFor(accountToken)
+// One's space in it, of one's quota, for the atrium one's in.
+// ponytail: not keyed by account -- a switch of account in the same page is
+// shown the last one's until its next look (each atrium opened looks).
+export const hostedSpace = keptSpace(() => 'account', () => hostedStore.usage())

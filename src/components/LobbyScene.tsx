@@ -33,7 +33,7 @@ import PalettePanel from './PalettePanel'
 import OverlayPanel from './OverlayPanel'
 import { inOverlayMode, overlayNow, seeingThrough, setOverlay, useOverlay } from '../lib/overlay'
 import { LOBBY_CHANGED_EVENT, liveTable } from '../lib/liveChanges'
-import { endedFor, isDriveAtrium, isDriveViewer, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
+import { endedFor, isDriveAtrium, isDriveViewer, isHostedAtrium, spaceOf, watchDriveStatus, type DriveEnd } from '../lib/driveSync'
 import DriveSettings from './DriveSettings'
 import { takeColourAt } from '../lib/eyedropper'
 import { tCount, useTranslation } from '../lib/i18n'
@@ -65,7 +65,7 @@ import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type Q
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
 import { formatSize } from '../lib/size'
-import { DRIVE_SPACE_EVENT, knownDriveSpace, lookAtDriveSpace, reserveDriveSpace } from '../lib/drive'
+import { DRIVE_SPACE_EVENT } from '../lib/drive'
 import AtriumMenu, { ControlsPanel, HudIconButton, MENU_ICONS, MenuIcon, SlideLabel, ViewBar, type MenuItem } from './AtriumMenu'
 import { useNarrow } from '../lib/useNarrow'
 import { useLinked } from '../lib/peers'
@@ -1112,39 +1112,40 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // A Drive atrium one adds to: its files go to one's own Drive. (A public
-  // atrium's viewer adds nothing.)
-  const inMyDrive = isDriveAtrium(lobbyId) && !isDriveViewer(lobbyId)
-  // Room for what's added: a cloud atrium below its limit; a Drive atrium's
-  // `files` within what's free in the Drive of whoever adds them -- theirs
-  // is where they go (lib/driveSync).
+  // A Drive atrium one adds to: its files go to one's own Drive -- a hosted
+  // one's, to one's own room in the Atrium's cloud (lib/driveSync, spaceOf).
+  // (A public atrium's viewer adds nothing.)
+  const hostedHere = isHostedAtrium(lobbyId)
+  const mySpace = isDriveAtrium(lobbyId) && !isDriveViewer(lobbyId) ? spaceOf(lobbyId) : null
+  // Room for what's added: a cloud atrium below its limit; a Drive or hosted
+  // atrium's `files` within what's free where whoever adds them keeps theirs.
   const ensureLobbyHasSpace = (files: Blob[] = []) => {
     if (useGameStore.getState().isLobbyFull()) {
       showToast(lobbyFullMessage())
       return false
     }
     const bytes = files.reduce((total, file) => total + file.size, 0)
-    const space = bytes && inMyDrive ? knownDriveSpace() : null
+    const space = bytes && mySpace ? mySpace.known() : null
     if (!space) return true
     if (space.limit !== null && bytes > space.limit - space.usage) {
-      showToast(t('atrium.error.driveFull', { size: formatSize(bytes, language), free: formatSize(Math.max(0, space.limit - space.usage), language) }))
+      showToast(t(hostedHere ? 'atrium.error.cloudFull' : 'atrium.error.driveFull', { size: formatSize(bytes, language), free: formatSize(Math.max(0, space.limit - space.usage), language) }))
       return false
     }
-    reserveDriveSpace(bytes)
+    mySpace!.reserve(bytes)
     return true
   }
-  // A Drive atrium's Drive space, as last looked at: when it's opened, each
-  // minute, and after files go to Drive or leave it.
-  const [driveSpace, setDriveSpace] = useState(knownDriveSpace)
+  // That space, as last looked at: when it's opened, each minute, and after
+  // files are sent or removed.
+  const [driveSpace, setDriveSpace] = useState(() => mySpace?.known() ?? null)
   useEffect(() => {
-    if (!inMyDrive) return
-    const shown = () => setDriveSpace(knownDriveSpace())
-    const look = () => void lookAtDriveSpace().catch(error => console.warn('[drive] its space:', error))
+    if (!mySpace) return
+    const shown = () => setDriveSpace(mySpace.known())
+    const look = () => void mySpace.look().catch(error => console.warn('[drive] its space:', error))
     window.addEventListener(DRIVE_SPACE_EVENT, shown)
     look()
     const every = window.setInterval(look, 60_000)
     return () => { window.removeEventListener(DRIVE_SPACE_EVENT, shown); window.clearInterval(every) }
-  }, [inMyDrive])
+  }, [mySpace])
 
   const getWorldPositionFromScreen = (screenX: number, screenY: number) => {
     if (!worldContainerRef.current) {
@@ -5060,8 +5061,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             button, its words the size of theirs. */}
         {(() => {
           const sizeBytes = useGameStore.getState().getLobbySizeBytes()
-          // A Drive atrium's limit is its Drive's: what's used of it all.
-          const drive = inMyDrive ? driveSpace : null
+          // A Drive atrium's limit is its Drive's: what's used of it all -- a
+          // hosted one's, one's room in the Atrium's cloud.
+          const drive = mySpace ? driveSpace : null
           const free = drive?.limit != null ? formatSize(Math.max(0, drive.limit - drive.usage), language) : null
           const pct = drive?.limit ? Math.min((drive.usage / drive.limit) * 100, 100) : isLocalData ? 0 : Math.min((sizeBytes / LOBBY_SIZE_LIMIT) * 100, 100)
           const used = formatSize(sizeBytes, language)
@@ -5073,14 +5075,14 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               data-usage=""
               tabIndex={0}
               title={!drive ? said : `${said} · ${free !== null
-                ? t('atrium.hud.driveOf', { used: formatSize(drive.usage, language), limit: formatSize(drive.limit!, language), free })
+                ? t(hostedHere ? 'atrium.hud.cloudOf' : 'atrium.hud.driveOf', { used: formatSize(drive.usage, language), limit: formatSize(drive.limit!, language), free })
                 : t('atrium.hud.driveUsed', { used: formatSize(drive.usage, language) })}`}
               className="relative shrink-0 h-[2.125rem] px-3 flex items-center gap-3 border border-nier-border/40 font-mono text-[11px] tracking-[0.15em] uppercase pointer-events-auto"
               style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
             >
               <span className="text-nier-bg/60">{t('atrium.hud.usage')}</span>
               <span className={`tabular-nums tracking-wider ${tone}`}>{used}</span>
-              {free !== null && <span data-drive-free="" className="text-nier-bg/60 tabular-nums tracking-wider">{t('atrium.hud.driveFree', { free })}</span>}
+              {free !== null && <span data-drive-free="" className="text-nier-bg/60 tabular-nums tracking-wider">{t(hostedHere ? 'atrium.hud.cloudFree' : 'atrium.hud.driveFree', { free })}</span>}
               {(!isLocalData || free !== null) && (
                 <span className="absolute inset-x-0 bottom-0 h-[2px] bg-nier-border/20">
                   <span

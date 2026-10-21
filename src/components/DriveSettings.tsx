@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
-import { addPerson, driveMembers, ensureSignedIn, findDeletions, inviteLink, makePrivate, makePublic, removePerson, resendInvitation, restoreDeletions, setRole, type Deletion } from '../lib/driveSync'
+import { addPerson, driveMembers, driveProblem, ensureSignedIn, findDeletions, isHostedAtrium, inviteLink, makePrivate, makePublic, removePerson, resendInvitation, restoreDeletions, setRole, type Deletion } from '../lib/driveSync'
 import type { Clock, Member, Role, Roster } from '../lib/driveFormat'
 import { Switch } from './Customization'
 import { FIELD, FIELD_LABEL, Nobody, OwnerBadge, REMOVE_BUTTON, SettingsFrame, SettingsGroup, SettingsPerson, SMALL_BUTTON, type SettingsTab } from './AtriumSettingsParts'
@@ -41,25 +41,14 @@ export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: strin
   const load = () => driveMembers(lobbyId, me).then(found => { setRoster(found.roster); setMyRole(found.role) })
   useEffect(() => { load().catch(error => setNotice({ text: explain(error), error: true })) }, [lobbyId])
 
-  const explain = (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
-    const known: Record<string, string> = {
-      NO_SUCH_USER: t('browser.drive.noSuchUser'),
-      BLOCKED: t('browser.drive.isBlocked'),
-      OWNER_ONLY: t('browser.drive.ownerOnly'),
-      DB_UPDATE_NEEDED: t('browser.drive.dbUpdate'),
-      PICK_CANCELLED: t('browser.drive.pickCancelled'),
-    }
-    // Google's robot check, whose page a browser can't read.
-    if (/Failed to fetch|NetworkError|Load failed/.test(message)) return t('browser.drive.googleBusy')
-    return known[message] ?? message
-  }
-  // Each change: Google's window first, while the click still counts.
+  const explain = driveProblem
+  // Each change: Google's window first, while the click still counts -- for
+  // a hosted atrium, one's sign-in only.
   const act = async (task: () => Promise<string | void>) => {
     setBusy(true)
     setNotice(null)
     try {
-      await ensureSignedIn()
+      await ensureSignedIn(lobbyId)
       const said = await task()
       if (said) setNotice({ text: said })
       await load()
@@ -91,7 +80,8 @@ export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: strin
   const ROLE_SELECT = 'bg-nier-black border border-nier-border/30 text-nier-bg px-2 py-1 text-xs'
 
   // A member, and what can be done about them: their role, their invitation
-  // again, out -- or blocked. Admin is a step more (their Google address).
+  // again, out -- or blocked. Admin is a step more in Drive (their Google
+  // address); a hosted atrium shares by account, and needs none.
   const memberRow = (member: Member) => (
     <SettingsPerson
       key={member.user}
@@ -131,7 +121,7 @@ export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: strin
             aria-label={t('atrium.manage.addAs')}
             onChange={e => {
               const role = e.target.value as Assignable
-              if (role === 'admin') { setAdminFor(member.user); setAdminEmail('') }
+              if (role === 'admin' && !isHostedAtrium(lobbyId)) { setAdminFor(member.user); setAdminEmail('') }
               else { setAdminFor(null); void act(() => setRole(lobbyId, me, member.user, role)) }
             }}
             className={ROLE_SELECT}

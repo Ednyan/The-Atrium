@@ -2,10 +2,10 @@ import { useTranslation } from '../lib/i18n'
 
 export type Where = 'cloud' | 'browser' | 'drive'
 
-// Where a new atrium is kept, chosen as it's made or imported: the cloud's
-// (shared, three at most), this browser's (lib/browserAtriums), or -- for
-// testers, behind the Drive switch -- Google Drive too (lib/driveSync).
-// `noCloud`: a Google account's, which has no atriums in the cloud.
+// Where a new atrium is kept, chosen as it's made or imported: this browser's
+// (lib/browserAtriums), and the Atrium's cloud too (the hosted store, shared,
+// three at most) or Google Drive too (lib/driveSync).
+// `noCloud`: no atriums in the Atrium's cloud -- a guest's, or the desktop's.
 export default function KeptWhere({ where, canCloud, canDrive = false, noCloud = false, onChange }: { where: Where; canCloud: boolean; canDrive?: boolean; noCloud?: boolean; onChange: (where: Where) => void }) {
   const { t } = useTranslation()
   const places: Where[] = [...(noCloud ? [] : ['cloud' as const]), 'browser', ...(canDrive ? ['drive' as const] : [])]

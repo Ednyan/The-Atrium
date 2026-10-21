@@ -42,8 +42,10 @@ import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { onRoomEvent, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
-import { hostedStore, isHostedId } from './hostedStore'
+import { hostedSpace, hostedStore, isHostedId } from './hostedStore'
 import { mirrorList, mirrorPut, mirroredStore } from './mirror'
+import { t } from './i18n'
+import type { TranslationKey } from '../locales/en'
 
 /** What the sync needs of where an atrium is kept: Google Drive (lib/drive),
  *  the Atrium's own hosted store (lib/hostedStore) -- or a stand-in (the
@@ -102,6 +104,32 @@ export const useHostedStore = (next: DriveStore) => { hosted = next }
 const storeOf = (id: string) => (isHostedId(id) ? hosted : driveStore)
 /** A hosted atrium: one kept in the Atrium's own store, not in Drive. */
 export const isHostedAtrium = (lobbyId: string) => { const kept = allKept()[lobbyId]; return !!kept && isHostedId(kept.roster) }
+// The sync's own errors, as a person is told them (driveProblem).
+const SAID: Partial<Record<string, TranslationKey>> = {
+  NO_SUCH_USER: 'browser.drive.noSuchUser',
+  BLOCKED: 'browser.drive.isBlocked',
+  OWNER_ONLY: 'browser.drive.ownerOnly',
+  DB_UPDATE_NEEDED: 'browser.drive.dbUpdate',
+  PICK_CANCELLED: 'browser.drive.pickCancelled',
+  NEED_DRIVE: 'browser.drive.needDrive',
+  MOVE_INCOMPLETE: 'browser.drive.moveIncomplete',
+}
+/** What went wrong, as a person is told it: the sync's errors by name;
+ *  "Failed to fetch", Google's robot check, whose page a browser can't read;
+ *  the Atrium's three; anything else as it came. */
+export function driveProblem(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const said = SAID[message]
+  if (said) return t(said)
+  if (message === 'MOVE_FILES_FAILED') return t('browser.drive.moveFilesFailed', { count: (error as { count?: number }).count ?? 0 })
+  if (/Failed to fetch|NetworkError|Load failed/.test(message)) return t('browser.drive.googleBusy')
+  if (/too many atriums/.test(message)) return t('browser.errLimitReached')
+  return message
+}
+
+/** Whose space an atrium's files take as one adds them: one's Drive, or one's
+ *  room in the Atrium's cloud. */
+export const spaceOf = (lobbyId: string) => (isHostedAtrium(lobbyId) ? hostedSpace : drive.driveSpace)
 // A public Drive atrium's viewer reads it through its mirror first (lib/mirror),
 // while its session runs.
 let mirrored: DriveStore | null = null
@@ -412,10 +440,11 @@ function rowOf(roster: Roster, me: string) {
   }
 }
 /** Google's window, if need be, first thing on a click (it can't open later)
- *  -- for `lobbyId`, its store's: a hosted atrium's needs one's sign-in only. */
-export const ensureSignedIn = (lobbyId?: string) => {
-  const kept = lobbyId ? allKept()[lobbyId] : null
-  return (kept ? storeOf(kept.roster) : driveStore).signIn()
+ *  -- or, for an atrium in the hosted store (`of`: its id, its roster's, or
+ *  HOSTED_MARK for a new one), one's sign-in only, no window. */
+export const ensureSignedIn = (of?: string) => {
+  const roster = of && (isHostedId(of) ? of : allKept()[of]?.roster)
+  return (roster ? storeOf(roster) : driveStore).signIn()
 }
 
 /** The keys the roster gives `me` that `have` lacks -- every one, those had
@@ -479,10 +508,11 @@ export async function makeWorkingCopy(lobbyId: string, row: Record<string, unkno
   if (error) throw error
 }
 
-/** An atrium kept in this browser, kept in Drive too, at any time: made a
- *  Drive atrium, and all of it sent up now rather than when it's next opened. */
-export async function keepInDrive(lobbyId: string, name: string, me: { id: string; name: string }): Promise<void> {
-  await createDriveAtrium(lobbyId, name, me)
+/** An atrium kept in this browser, kept in Drive too -- or `hosted`, in the
+ *  Atrium's own store -- at any time: all of it sent up now rather than when
+ *  it's next opened. */
+export async function keepInDrive(lobbyId: string, name: string, me: { id: string; name: string }, hostedAtrium = false): Promise<void> {
+  await createDriveAtrium(lobbyId, name, me, hostedAtrium)
   await startDriveSync(lobbyId, me.id)
   await syncNow()
   await stopDriveSync()
@@ -1070,7 +1100,8 @@ export function watchDriveStatus(watcher: (status: DriveStatus) => void): () => 
 }
 /** On a click: Google's window, then what waited goes up. */
 export async function reconnectDrive(): Promise<void> {
-  await store.signIn()
+  // Google's window, or for a hosted atrium one's sign-in.
+  await (session ? storeOf(session.kept.roster) : driveStore).signIn()
   setStatus({ signInNeeded: false })
   await syncNow()
 }
@@ -1097,7 +1128,7 @@ async function up(s: Session): Promise<void> {
   // Its files first: whoever takes the save finds them there.
   for (const row of await sendFiles(s, unsent)) changes.push({ table: 'media', id: row.id, at, row })
   for (const url of await removeFiles(unused)) changes.push({ table: 'media', id: url, at, row: null })
-  if (unsent.length || unused.length) void drive.lookAtDriveSpace().catch(() => {})
+  if (unsent.length || unused.length) void spaceOf(s.lobbyId).look().catch(() => {})
   if (!changes.length) return
   const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
   const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
@@ -1548,6 +1579,8 @@ export async function letInAsker(user: string): Promise<void> {
   const s = session
   const asker = status.asking.find(one => one.user === user)
   if (!s || !asker) return
+  // Its sign-in first (Google's window for Drive), while the click still counts.
+  await storeOf(s.kept.roster).signIn()
   await addPerson(s.lobbyId, s.me, asker.username, 'editor')
   setStatus({ asking: status.asking.filter(one => one.user !== user) })
 }

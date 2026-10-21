@@ -1097,10 +1097,28 @@ A hosted atrium is then a Drive atrium whose store is ours:
    - passwords hashed with PBKDF2;
    - Supabase's bcrypt hashes imported, checked once, then rehashed;
    - the worker's own sessions.
-5. Cloud atriums onto the hosted store, same ids:
-   - new cloud atriums are hosted ones;
-   - existing ones are moved, rows and files, by a one-time migration,
-     with `lib/moveToDrive`'s approach.
+5. Cloud atriums onto the hosted store, same ids. Done before step 4: cloud
+   rows are guarded by Supabase's RLS, and the hosted store already takes
+   Supabase sign-ins. The user chose (2026-10-21): hosted atriums for
+   everyone signed in, 3 an account, 50 MB in all; existing ones moved
+   automatically; public ones view-only for visitors.
+   - **5a, new cloud atriums are hosted ones (built 2026-10-21).** On the
+     web every new atrium starts in the browser; "Online" then makes it a
+     hosted atrium, as "Google Drive" makes a Drive one. The worker refuses a
+     fourth member list (`atrium.roster`) an account owns, and `usage` says
+     how many it has. Imports go the same way. Hosted atriums never ask for
+     Google: entering, joining, settings, letting someone in; an admin is
+     made by account, with no address step. The usage box shows one's cloud
+     space (`spaceOf`: Drive's or the hosted store's, one shared keeper in
+     `lib/drive`, `keptSpace`).
+   - **5b, existing ones moved, on the owner's next visit:** rows and files
+     to the browser, then hosted (`lib/moveToDrive` generalised). Members
+     re-added: admins as admins; editors and whitelisted people as editors
+     or viewers by the atrium's edit mode; the blacklist as blocked. Their
+     invitations join without asking (an `auto` flag on invites). Public
+     ones made public, view-only. Passwords dropped for the invite link plus
+     ask-to-join. Owners who never come back: their atriums kept as .atrium
+     files before Supabase closes.
 6. Everything else to the worker: Stripe contributions, deletion codes,
    platform admins, `app_changes`, special themes, visits.
 7. The app off the Supabase client. A month with Supabase read-only, then

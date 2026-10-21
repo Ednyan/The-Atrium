@@ -4,11 +4,14 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { carryLinks } from '../lib/traceLinks'
 import { carriedFrameId, freshIds } from '../lib/frames'
 import { AtriumFileError, fileOrderKeys, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
-import { forceImport, isKnownTraceType, mediaStaysBehind, nameFileTraces, readAsDataUrl, setForceImport, standInRow } from '../lib/atriumFile'
+import { forceImport, isKnownTraceType, nameFileTraces, readAsDataUrl, setForceImport, standInRow } from '../lib/atriumFile'
 import { browserEngine, rememberBrowserAtrium } from '../lib/browserAtriums'
 import { fetchMedia } from '../lib/exportImage'
 import { Check } from './ShapeStyleControls'
 import KeptWhere from './KeptWhere'
+import { driveProblem, ensureSignedIn, keepInDrive } from '../lib/driveSync'
+import { HOSTED_MARK, hostedStore } from '../lib/hostedStore'
+import { useGameStore } from '../store/gameStore'
 
 interface ImportAtriumProps {
   onClose: () => void
@@ -17,10 +20,8 @@ interface ImportAtriumProps {
   canCloud: boolean
 }
 
-// An atrium in the cloud holds 10 MB; a file carries its pictures as text, a
-// third bigger. One kept on this device -- the desktop's vault, or this
-// browser -- has no limit but the machine's.
-const CLOUD_MAX = 14 * 1024 * 1024
+// One kept on this device -- the desktop's vault, or this browser -- has no
+// limit but the machine's. One in the Atrium's cloud, its owner's room there.
 const LOCAL_MAX = 512 * 1024 * 1024
 
 // Enough names to go looking with, not so many that the notice becomes a wall.
@@ -50,8 +51,10 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
   const [atriumName, setAtriumName] = useState('')
   const [fileSize, setFileSize] = useState(0)
   const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(1)
-  // Into this browser rather than the cloud (lib/browserAtriums).
-  const [inBrowser, setInBrowser] = useState(!isDesktop && !canCloud)
+  // On the web, into this browser (lib/browserAtriums) -- and the Atrium's
+  // cloud too, as a hosted atrium (lib/driveSync), if so chosen.
+  const inBrowser = !isDesktop
+  const [toCloud, setToCloud] = useState(!isDesktop && canCloud)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
   // Import succeeded but something was lost or refused -- distinct from
@@ -87,14 +90,6 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
 
   const handleImport = async () => {
     if (!parsed || !supabase) return
-    // On this device (the desktop's vault, which is `supabase` there, or this
-    // browser's), or in the cloud.
-    const local = isDesktop || inBrowser
-    if (!local && fileSize > CLOUD_MAX) {
-      setError(t('transfer.import.tooLarge', { size: fileSizeMB, max: CLOUD_MAX / (1024 * 1024) }))
-      return
-    }
-
     if (atriumName.length < 3) {
       setError(t('transfer.import.nameTooShort'))
       return
@@ -108,14 +103,17 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
       const { data: { user } } = await client.auth.getUser()
       if (!user) throw new Error(t('transfer.import.notAuthenticated'))
 
-      if (!local) {
+      // Into the cloud: one of one's three, within one's room there -- a file
+      // carries its pictures as text, a third bigger than they'll be.
+      if (toCloud) {
         setProgress(t('transfer.import.checkingLimit'))
-        const { data: count } = await (client as any).rpc('get_user_lobby_count', {
-          p_user_id: user.id
-        })
-
-        if (count != null && count >= 3) {
-          setError(t('transfer.import.atCap'))
+        await ensureSignedIn(HOSTED_MARK)
+        const room = await hostedStore.usage()
+        const free = room.limit - room.usage
+        const refused = room.atriums >= room.most ? t('transfer.import.atCap')
+          : fileSize * 3 / 4 > free ? t('transfer.import.tooLarge', { size: fileSizeMB, max: (Math.max(0, free) / (1024 * 1024)).toFixed(1) }) : null
+        if (refused) {
+          setError(refused)
           setStatus('preview')
           return
         }
@@ -305,12 +303,6 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
         let imageUrl = trace.image_url
         let mediaError = ''
 
-        // From the desktop, onto the web: the layout, not the files (lib/atriumFile).
-        if (mediaStaysBehind(parsed, local)) {
-          if (mediaUrl?.startsWith('data:')) { mediaUrl = null; mediaError = 'files from the desktop app stay on the desktop for now' }
-          if (imageUrl?.startsWith('data:')) { imageUrl = null; mediaError ||= 'files from the desktop app stay on the desktop for now' }
-        }
-
         // Into the browser, a file kept in our cloud comes too, so the copy
         // here stands on its own whatever becomes of the cloud's.
         const ownedHere = async (url: unknown) => {
@@ -435,6 +427,14 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
         }
       }
 
+      // Kept in the cloud too -- or, if it won't have it, kept here only, and said.
+      let cloudFailure = ''
+      if (toCloud) {
+        setProgress(t('transfer.import.toCloud'))
+        await keepInDrive(lobbyId, atriumName, { id: user.id, name: useGameStore.getState().username || 'You' }, true)
+          .catch(e => { cloudFailure = driveProblem(e) })
+      }
+
       setStatus('done')
       const summary = [t('transfer.import.summaryTraces', { count: imported })]
       if (mediaMissing > 0) summary.push(t('transfer.import.summaryNoFiles', { count: mediaMissing }))
@@ -461,6 +461,7 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
           more: rest > 0 ? t('transfer.import.noticeMore', { count: rest }) : '',
         }))
       }
+      if (cloudFailure) notices.push(t('transfer.import.noticeCloud', { reason: cloudFailure }))
       if (linkFailure) notices.push(t('transfer.import.noticeLinks', { reason: linkFailure }))
       if (droppedColumns.size > 0) {
         notices.push(t('transfer.import.noticeColumns', { columns: [...droppedColumns].join(', ') }))
@@ -551,7 +552,7 @@ export default function ImportAtrium({ onClose, onImported, canCloud }: ImportAt
 
             {!isDesktop && canCloud && (
               <div className="mb-4">
-                <KeptWhere where={inBrowser ? 'browser' : 'cloud'} canCloud={canCloud} onChange={where => setInBrowser(where === 'browser')} />
+                <KeptWhere where={toCloud ? 'cloud' : 'browser'} canCloud={canCloud} onChange={where => setToCloud(where === 'cloud')} />
               </div>
             )}
 

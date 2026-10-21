@@ -499,30 +499,44 @@ export async function removeFile(id: string): Promise<void> {
   await drive(`files/${id}`, { method: 'DELETE' })
 }
 
-/** The signed-in account's Drive: bytes used, and its limit (null: none). */
+/** Where an atrium's files go, as one adds them: bytes used, and its limit (null: none). */
 export interface DriveSpace { usage: number; limit: number | null }
-let space: (DriveSpace & { user: string }) | null = null
 export const DRIVE_SPACE_EVENT = 'atrium:drive-space'
-function keepSpace(next: DriveSpace & { user: string }) {
-  space = next
-  window.dispatchEvent(new CustomEvent(DRIVE_SPACE_EVENT))
+export interface KeptSpace {
+  /** As last looked at, if it's this account's. */
+  known(): DriveSpace | null
+  /** Looked at again -- never a sign-in window. */
+  look(): Promise<DriveSpace | null>
+  /** Counted as used as soon as a file is let in, before it's sent: two
+   *  dropped one after the other aren't both measured against the same
+   *  space. The next look says what's really used. */
+  reserve(bytes: number): void
 }
-/** As last looked at, if it's this account's. */
-export const knownDriveSpace = (): DriveSpace | null => (space && space.user === grantKept()?.user ? space : null)
-/** Looked at again -- only with Drive given already: never Google's window. */
-export async function lookAtDriveSpace(): Promise<DriveSpace | null> {
-  const user = grantKept()?.user
-  if (!user || !hasDriveToken()) return null
+/** One store's space, as last looked at: `whose` it is now, and `measure`
+ *  (null: can't be looked at now). Said by DRIVE_SPACE_EVENT when it moves. */
+export function keptSpace(whose: () => string | undefined, measure: () => Promise<DriveSpace | null>): KeptSpace {
+  let space: (DriveSpace & { user: string }) | null = null
+  const keep = (next: DriveSpace & { user: string }) => {
+    space = next
+    window.dispatchEvent(new CustomEvent(DRIVE_SPACE_EVENT))
+  }
+  return {
+    known: () => (space && space.user === whose() ? space : null),
+    look: async () => {
+      const user = whose()
+      const measured = user ? await measure() : null
+      if (user && measured) keep({ user, usage: measured.usage, limit: measured.limit })
+      return measured
+    },
+    reserve: bytes => { if (space) keep({ ...space, usage: space.usage + bytes }) },
+  }
+}
+/** The signed-in Google account's Drive -- looked at only with Drive given already. */
+export const driveSpace = keptSpace(() => grantKept()?.user, async () => {
+  if (!hasDriveToken()) return null
   const { storageQuota: quota } = await (await drive('about?fields=storageQuota')).json()
-  keepSpace({ user, usage: Number(quota.usage ?? 0), limit: quota.limit ? Number(quota.limit) : null })
-  return space
-}
-/** Counted as used as soon as a file is let in, before it reaches Drive: two
- *  dropped one after the other aren't both measured against the same space.
- *  The next look says what's really used. */
-export function reserveDriveSpace(bytes: number) {
-  if (space) keepSpace({ ...space, usage: space.usage + bytes })
-}
+  return { usage: Number(quota.usage ?? 0), limit: quota.limit ? Number(quota.limit) : null }
+})
 
 /** A file in the app's hidden folder of the signed-in account's Drive, by
  *  name; null if there's none. Signed in, so no robot check. */

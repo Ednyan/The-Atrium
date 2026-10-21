@@ -21,6 +21,11 @@ import { fromBase64, replies, toBase64, whoIs, type Env } from './who'
 // otherwise (STORE_QUOTA_MB); one file's, at most.
 const QUOTA_MB = 50
 const MOST_FILE_BYTES = 25 * 1024 * 1024
+// Hosted atriums one owns, at most: each is one roster of one's own.
+const MOST_ATRIUMS = 3
+const ROSTER = 'atrium.roster'
+const atriumsOwned = async (db: D1Database, account: string) =>
+  (await db.prepare('select count(*) as n from store_files where owner = ? and name = ? and folder = 0').bind(account, ROSTER).first<{ n: number }>())?.n ?? 0
 const MOST_APPDATA_BYTES = 16 * 1024
 const NAME = /^[^\u0000-\u001f/]{1,200}$/
 // A hosted id: marked, as no Drive id can be (Drive's are letters, digits, - and _).
@@ -82,6 +87,8 @@ export async function store(request: Request, env: Env, what: string): Promise<R
       const folder = await db.prepare('select owner from store_files where id = ? and folder = 1').bind(parent).first<Row>()
       if (!folder) return answer(404, { error: 'Drive 404' })
       if (folder.owner !== who.id) return answer(403, { error: 'Drive 403: not your folder' })
+      // A new atrium is a new roster: three of one's own at most.
+      if (name === ROSTER && await atriumsOwned(db, who.id) >= MOST_ATRIUMS) return answer(403, { error: 'too many atriums' })
     }
     // Whose bytes these are: the file's owner, whoever writes it.
     const owner = row?.owner ?? who.id
@@ -172,10 +179,10 @@ export async function store(request: Request, env: Env, what: string): Promise<R
       return answer(200, { bytes: row?.bytes ?? null })
     }
 
-    // What one uses of one's quota.
+    // What one uses of one's quota, and of one's hosted atriums.
     case 'usage': {
       const used = (await db.prepare('select coalesce(sum(size), 0) as used from store_files where owner = ?').bind(who.id).first<{ used: number }>())?.used ?? 0
-      return answer(200, { usage: used, limit: quotaOf(env) })
+      return answer(200, { usage: used, limit: quotaOf(env), atriums: await atriumsOwned(db, who.id), most: MOST_ATRIUMS })
     }
   }
   return answer(404, { error: 'what' })

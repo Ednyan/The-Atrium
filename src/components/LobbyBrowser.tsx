@@ -9,7 +9,8 @@ import ImportAtrium from './ImportAtrium'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
-import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
+import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -236,17 +237,24 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [newLobbyName, setNewLobbyName] = useState('')
   const [newLobbyPassword, setNewLobbyPassword] = useState('')
   const [newLobbyIsPublic, setNewLobbyIsPublic] = useState(true)
-  // Where the new atrium is kept: the cloud, or this browser -- and Drive too.
+  // Where the new atrium is kept: this browser -- and Drive, or the Atrium's
+  // cloud (phase 10, the hosted store), too. On the web every new atrium
+  // starts in the browser, as its working copy.
   const [newWhere, setNewWhere] = useState<Where>('cloud')
-  const browserChoice = !isDesktop && newWhere !== 'cloud'
+  const browserChoice = !isDesktop
   // Drive atriums: for anyone signed in, where Google sign-in is set up.
   const canDrive = googleOpen && !guest
   // Signed in with Google -- a Google account, or an existing account with
   // its Google -- whose new atriums are kept in Drive by default (phase 9).
   const [withGoogle, setWithGoogle] = useState(() => !!googleAccount())
-  // A guest, or a Google account (phase 6): no atriums in the cloud --
-  // those are an existing account's.
+  // A guest, or a Google account (phase 6): no atriums in Supabase -- those
+  // are an existing account's, until they move to the Atrium's cloud.
   const noCloud = guest || !!googleAccount()
+  // Atriums in the Atrium's cloud: for anyone signed in (phase 10).
+  const canHost = !isDesktop && !guest
+  // One's atriums in the cloud, of the three one may have: hosted ones, and
+  // any still in Supabase.
+  const [ownedCloud, setOwnedCloud] = useState(0)
   const [selectedLobbyId, setSelectedLobbyId] = useState<string | null>(null)
   const [passwordInput, setPasswordInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -366,10 +374,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       history.replaceState(null, '', location.pathname)
       readInvite(found)
         .then(about => (isDriveAtrium(about.lobbyId) ? onJoinLobby(about.lobbyId) : (setJoinNote(''), setInvite({ rosterId: found, ...about }))))
-        .catch(err => {
-          const message = err instanceof Error ? err.message : String(err)
-          setError(/Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
-        })
+        .catch(err => setError(driveProblem(err)))
     }
     look()
     window.addEventListener('hashchange', look)
@@ -427,9 +432,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         setJoinNote(t('browser.drive.blockedHere'))
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      // "Failed to fetch": Google's robot check, whose page a browser can't read.
-      setJoinNote(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : /Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
+      setJoinNote(driveProblem(err))
     } finally {
       setJoining(null)
     }
@@ -448,11 +451,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       if (!user) throw new Error(t('browser.errNotAuthenticated'))
       await how({ id: user.id, name: username || 'You' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate')
-        : message === 'MOVE_INCOMPLETE' ? t('browser.drive.moveIncomplete')
-          : message === 'MOVE_FILES_FAILED' ? t('browser.drive.moveFilesFailed', { count: (err as { count?: number }).count ?? 0 })
-            : message)
+      setError(driveProblem(err))
     } finally {
       setConverting(null)
     }
@@ -559,7 +558,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // click (Google's window, while the click counts) -- closed, not opened.
   const enterBrowserLobby = async (lobby: { id: string; inDrive?: boolean }) => {
     // Drive asked for, if need be -- not to read a public atrium, which needs none.
-    if (lobby.inDrive && !isDriveViewer(lobby.id) && !hasDriveToken()) {
+    if (lobby.inDrive && !isDriveViewer(lobby.id) && !isHostedAtrium(lobby.id) && !hasDriveToken()) {
       try {
         await ensureSignedIn()
       } catch (err) {
@@ -629,7 +628,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       setError(message === 'NOT_PUBLIC' ? t('browser.drive.notPublic', { name: lobby.name })
         : /Drive 404/.test(message) ? t('browser.drive.deletedBy', { name: lobby.name })
           : message === 'BLOCKED' ? t('browser.drive.blockedFrom', { name: lobby.name })
-            : /Failed to fetch|NetworkError|Load failed/.test(message) ? t('browser.drive.googleBusy') : message)
+            : driveProblem(err))
     } finally {
       setOpeningPublic(null)
     }
@@ -832,21 +831,21 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       setCanCreateMore(true)
       return
     }
-    if (noCloud) {
+    if (!canHost) {
       setCanCreateMore(false)
       return
     }
-    
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data, error } = await (supabase as any).rpc('get_user_lobby_count', {
-      p_user_id: user.id
-    })
-
-    if (!error && typeof data === 'number') {
-      setCanCreateMore(data < 3)
+    // Hosted ones (the worker counts them), and those not moved from Supabase yet.
+    const hosted = await hostedStore.usage().catch(() => null)
+    let legacy = 0
+    if (!noCloud) {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data } = user ? await (supabase as any).rpc('get_user_lobby_count', { p_user_id: user.id }) : { data: 0 }
+      legacy = typeof data === 'number' ? data : 0
     }
+    const owned = (hosted?.atriums ?? 0) + legacy
+    setOwnedCloud(owned)
+    setCanCreateMore(owned < (hosted?.most ?? 3))
   }
 
   // One atrium per press: a second press while the first is still being made
@@ -864,23 +863,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     creatingNow.current = true
     setCreating(true)
     try {
-      // Google's window first, while the click that asked still counts.
+      // Google's window first, while the click that asked still counts -- or,
+      // for the Atrium's cloud, one's sign-in.
       if (canDrive && newWhere === 'drive') await ensureSignedIn()
+      else if (canHost && newWhere === 'cloud') {
+        if (!canCreateMore) throw new Error(t('browser.errLimitReached'))
+        await ensureSignedIn(HOSTED_MARK)
+      }
       // Kept in this browser (lib/browserAtriums), or the cloud's.
       const client = browserChoice ? (await browserEngine()).localClient : supabase
       const { data: { user } } = await client.auth.getUser()
       if (!user) throw new Error('Not authenticated')
-
-      if (!isDesktop && !browserChoice) {
-        const { data: count } = await (supabase as any).rpc('get_user_lobby_count', {
-          p_user_id: user.id
-        })
-
-        if (count && count >= 3) {
-          setError(t('browser.errLimitReached'))
-          return
-        }
-      }
 
       // The special theme in season (Spooky around Halloween), if one is;
       // otherwise a bright room for somebody working in a bright interface,
@@ -907,10 +900,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
       if (error) throw error
       if (browserChoice) rememberBrowserAtrium(data.id)
-      // In Drive too (lib/driveSync) -- or, if Drive won't have it, not at all.
-      if (canDrive && newWhere === 'drive') {
+      // In Drive too (lib/driveSync), or the Atrium's cloud -- or, if that
+      // won't have it, not at all.
+      const keptAlso = canDrive && newWhere === 'drive' ? 'drive' : canHost && newWhere === 'cloud' ? 'hosted' : null
+      if (keptAlso) {
         try {
-          await createDriveAtrium(data.id, newLobbyName, { id: user.id, name: username || 'You' })
+          await createDriveAtrium(data.id, newLobbyName, { id: user.id, name: username || 'You' }, keptAlso === 'hosted')
+          if (keptAlso === 'hosted') void checkCanCreateLobby()
         } catch (driveError) {
           await (client.from('lobbies') as any).delete().eq('id', data.id)
           forgetBrowserAtrium(data.id)
@@ -927,7 +923,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     } catch (err: any) {
       console.error('Error creating lobby:', err)
       const problem = vaultProblem(err)
-      setError(problem ? t(problem) : err.message === 'DB_UPDATE_NEEDED' ? t('browser.drive.dbUpdate') : err.message || t('browser.errCreateLobby'))
+      setError(problem ? t(problem) : err.message ? driveProblem(err) : t('browser.errCreateLobby'))
     } finally {
       creatingNow.current = false
       setCreating(false)
@@ -1089,7 +1085,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       // window first, while the click counts); anyone else leaves it.
       if (isDriveAtrium(lobbyId)) {
         if (isDriveOwner(lobbyId)) {
-          await ensureSignedIn()
+          await ensureSignedIn(lobbyId)
           await deleteDriveAtrium(lobbyId)
         }
         await leaveDriveAtrium(lobbyId)
@@ -1129,10 +1125,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     const mine = list === 'yours'
     const tags: CardTag[] = []
     if (lobby.publicRoster) {
-      tags.push({ label: t('browser.inDrive'), where: true })
+      tags.push({ label: t(isHostedId(lobby.publicRoster) ? 'browser.tag.cloud' : 'browser.inDrive'), where: true })
       if (lobby.ownerUsername) tags.push({ label: t('browser.tag.by', { name: lobby.ownerUsername }) })
     } else if (lobby.inDrive) {
-      tags.push({ label: t('browser.inDrive'), where: true })
+      tags.push({ label: t(isHostedAtrium(lobby.id) ? 'browser.tag.cloud' : 'browser.inDrive'), where: true })
       if (viewer) {
         tags.push({ label: t('browser.public') }, { label: t('browser.tag.viewOnly'), strong: true })
         if (drive?.owner) tags.push({ label: t('browser.tag.by', { name: drive.owner }) })
@@ -1506,7 +1502,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   <KeptWhere
                     where={newWhere}
                     canCloud={canCreateMore}
-                    noCloud={noCloud}
+                    noCloud={!canHost}
                     canDrive={canDrive}
                     onChange={where => {
                       setNewWhere(where)
@@ -1554,11 +1550,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               // it was the quietest thing on a screen whose whole purpose is
               // getting you into an atrium -- including a new one.
               // A new atrium is kept in Drive by default for whoever's signed
-              // in with Google, in the browser otherwise (phase 9) -- the
-              // cloud, within its three, by choice.
+              // in with Google (phase 9), in the Atrium's cloud otherwise,
+              // within its three -- in the browser alone past them.
               <button
                 onClick={() => {
-                  setNewWhere(canDrive && withGoogle ? 'drive' : 'browser')
+                  setNewWhere(canDrive && withGoogle ? 'drive' : canHost && canCreateMore ? 'cloud' : 'browser')
                   setShowCreateLobby(true)
                 }}
                 className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
@@ -1583,7 +1579,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                     of something they cannot run out of. */}
                 {/* The cloud's, of its three; those kept in the browser aren't counted. */}
                 <span className="text-nier-bg/70 text-xs tabular-nums">
-                  {isDesktop || noCloud ? yours.length : `${userLobbies.length}/3`}
+                  {isDesktop || guest ? yours.length : `${ownedCloud}/3`}
                 </span>
               </div>
               <div className={ROW_GRID}>
@@ -1854,7 +1850,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       {/* Import Atrium Modal */}
       {showImport && (
         <ImportAtrium
-          canCloud={!noCloud && canCreateMore}
+          canCloud={canHost && canCreateMore}
           onClose={() => setShowImport(false)}
           onImported={() => { loadLobbies(); checkCanCreateLobby(); }}
         />
