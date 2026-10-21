@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { openExternalUrl } from '../lib/openExternal'
-import SupportCreatorCard from './SupportCreatorCard'
 import { openContributors } from '../lib/contributorsRoute'
-import { DONATE_CUT } from './DonateButton'
+import DonateButton from './DonateButton'
+import RichText from './RichText'
+import ConnectTiles from './ConnectTiles'
+import { Brackets } from './landing/parts'
 import { useTranslation } from '../lib/i18n'
+import { useLandingTheme } from '../lib/useLandingTheme'
 import { useCurrency, currencyByCode, minorPerUnit, isAllowedStep } from '../lib/currency'
 import CurrencyToggle from './CurrencyToggle'
 import { checkDisplayName, startContribution } from '../lib/donate'
 import { rememberPendingContribution } from '../lib/pendingContribution'
-import { getCachedContributions, refreshContributions } from '../lib/contributions'
+import { getCachedContributions, refreshContributions, type MonthlyProgress } from '../lib/contributions'
+import { contributionCountKey, gaugeFigures } from '../lib/monthlyGauge'
 import { currentRoutePath } from '../lib/route'
 
 interface ContributePanelProps {
@@ -22,10 +26,56 @@ interface ContributePanelProps {
 // Case and accents folded: "ines" and "Inês" are the same name to anyone
 // reading the wall, and warning about one but not the other would be arbitrary.
 const fold = (value: string) =>
-  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
+/** This month against its goal, as the landing page's support chapter says
+ *  it: the share funded, the light's level, how many gave -- or, with no
+ *  figure to show, that people keep it standing. */
+export function MonthLevel({ month }: { month: MonthlyProgress | null }) {
+  const { t } = useTranslation()
+  const figures = gaugeFigures(month)
+  if (!figures) return <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70">{t('landing.support.keptStanding')}</p>
+  return (
+    <>
+      <div className="flex items-baseline justify-between gap-4 mb-3">
+        <span className="text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
+        <span className="text-sm tracking-wider text-nier-strong tabular-nums whitespace-nowrap">{t('goal.funded', { percent: figures.percent })}</span>
+      </div>
+      {/* The light's level: how much of the month is kept lit. */}
+      <div className="h-[3px] overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.12)' }}>
+        <div className="h-full transition-[width] duration-700 ease-out landing-light-fill" style={{ width: `${figures.percent}%` }} />
+      </div>
+      <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
+        {t(contributionCountKey(figures.count), { count: figures.count })}
+      </p>
+    </>
+  )
+}
 
-// Choosing an amount, and where to send it.
+// A label as the landing page's chapters have one: a diamond in its light,
+// the name, and a rule drawn out from it.
+function RoomLabel({ children, id }: { children: string; id?: string }) {
+  return (
+    <div className="flex items-center gap-4 text-xs tracking-[0.3em] uppercase">
+      <span aria-hidden="true" className="landing-lit w-2.5 h-2.5 rotate-45 shrink-0 border" />
+      <h2 id={id} className="text-nier-strong">{children}</h2>
+      <span aria-hidden="true" className="donate-rule h-px flex-1 max-w-[16rem]" />
+    </div>
+  )
+}
+
+// One choice of several, as the landing page's bento lays its cells out: the
+// chosen one lit from above.
+function Choice({ chosen, onPick, children, className = '' }: { chosen: boolean; onPick: () => void; children: React.ReactNode; className?: string }) {
+  return (
+    <button type="button" aria-pressed={chosen} onClick={onPick} className={`donate-choice py-2.5 tracking-[0.15em] ${className}`}>
+      {children}
+    </button>
+  )
+}
+
+// Choosing an amount, and where to send it -- a room in the landing page's
+// light: who is asking and why on one side, the form on the other.
 //
 // Checkout is Stripe's own page, opened in a browser: the app never touches a
 // card number, a Stripe key, or anything that would make this screen worth
@@ -33,6 +83,9 @@ const fold = (value: string) =>
 // Function that builds the session.
 export default function ContributePanel({ onClose, onStarted }: ContributePanelProps) {
   const { t } = useTranslation()
+  // The landing page's own theme, wherever this opens -- the welcome screen,
+  // the atrium browser, the contributors wall -- as the wall does.
+  const theme = useLandingTheme()
   // Every amount below this line is in MINOR units -- cents, or whole yen for
   // a currency with no minor unit. Units would have read more naturally and
   // would have needed a * 100 somewhere, which is exactly the multiply that
@@ -44,9 +97,18 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   // beside it should get out of the way.
   const [nameFocused, setNameFocused] = useState(false)
 
+  // Keys stay in the room while it's open: Escape closes it, Tab goes round it.
+  const room = useRef<HTMLDivElement>(null)
   useEffect(() => {
+    room.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (event.key !== 'Tab' || !room.current) return
+      const stops = [...room.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])')]
+      if (!stops.length) return
+      const first = stops[0], last = stops[stops.length - 1]
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === room.current)) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -58,8 +120,8 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  // Names already on the wall, so a collision is caught here rather than by the
-  // operator after the money has arrived.
+  // The month, and the names already on the wall -- so a collision is caught
+  // here rather than by the operator after the money has arrived.
   //
   // The wall groups by name -- most contributors have no account to be told
   // apart by -- so two people under one name become a single trace with both
@@ -70,17 +132,14 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
   // Only approved names are public, so a name still waiting on approval cannot
   // be checked against. That gap is the operator's to close, and is why the
   // check at approval exists as well as this one.
-  const [wallNames, setWallNames] = useState<Set<string>>(new Set())
+  const [contributions, setContributions] = useState(getCachedContributions)
   useEffect(() => {
-    const load = (names: string[]) => setWallNames(new Set(names.map(fold)))
-    load(getCachedContributions().contributors.map(c => c.displayName))
-    // Then the current list, since a cache from last week is exactly when this
-    // would be wrong. Failure is silent: the check is a courtesy, and the panel
-    // must still work with no network.
-    void refreshContributions().then(fresh => {
-      if (fresh) load(fresh.contributors.map(c => c.displayName))
-    })
+    // Then the current figures, since a cache from last week is exactly when
+    // this would be wrong. Failure is silent: the check is a courtesy, and the
+    // panel must still work with no network.
+    void refreshContributions().then(fresh => { if (fresh) setContributions(fresh) })
   }, [])
+  const wallNames = new Set(contributions.contributors.map(c => fold(c.displayName)))
 
   // Shown when they have typed a name someone else is already using, and again
   // as a question if they try to go ahead with it anyway.
@@ -117,9 +176,10 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
     && isAllowedStep(chosenMinor, currency)
 
   const taken = displayName.trim().length > 0 && wallNames.has(fold(displayName))
+  const canGo = !busy && amountValid && !nameProblem && !!supabase
 
   const contribute = async () => {
-    if (!amountValid || nameProblem) return
+    if (!canGo) return
 
     // Asked once. Answering "that was me" is a real answer and must not be
     // asked again on the next attempt.
@@ -155,286 +215,228 @@ export default function ContributePanel({ onClose, onStarted }: ContributePanelP
     onClose()
   }
 
+  const field = 'w-full bg-transparent border border-nier-border/30 text-nier-bg py-2.5 text-sm tracking-wide placeholder-nier-bg/45 focus:border-nier-border/70 transition-colors'
+
   return (
     <div
-      className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] p-4 overflow-y-auto pointer-events-auto"
+      data-landing-theme={theme.resolved}
+      className="donate-room fixed inset-0 z-[10000300] overflow-y-auto pointer-events-auto"
       data-ui-element
+      data-lenis-prevent
       onClick={onClose}
     >
-      {/* Two cards, dealt from one.
+      {/* The one light, from above, as over the landing page's hall. */}
+      <div aria-hidden="true" className="landing-skylight fixed inset-0 pointer-events-none" />
 
-          They arrive stacked in the middle with Support on top, hold for a
-          beat so it can be read as the thing being offered, then part -- which
-          is what says there was a second card there all along rather than two
-          panels appearing at once. Side by side only where there is room; on a
-          narrow screen they stack, Support first, and the deal is dropped
-          because there is nowhere to deal to. */}
-      <div className="flex flex-col items-center gap-5 w-full max-w-md lg:max-w-[58rem]">
-        {/* Equal heights: the pair is one object, and one card ending two
-            inches above the other made it look like two panels that happened
-            to be next to each other. Each still scrolls inside itself once the
-            row hits 85vh. */}
-        <div
-          className="flex flex-col lg:flex-row lg:items-stretch justify-center gap-5 w-full"
-          onClick={event => event.stopPropagation()}
-        >
-        <SupportCreatorCard />
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={t('common.close')}
+        className="fixed top-5 right-5 z-10 w-10 h-10 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/80 transition-colors"
+        style={{ backgroundColor: 'rgb(var(--c-ground) / 0.7)' }}
+      >
+        ×
+      </button>
 
-        <div className="donate-card-right donate-card bg-nier-blackLight border p-6 w-full lg:max-w-md relative max-h-[85vh] overflow-y-auto">
-        <div className="corner absolute top-0 left-0 w-4 h-4 border-l border-t" />
-        <div className="corner absolute top-0 right-0 w-4 h-4 border-r border-t" />
-        <div className="corner absolute bottom-0 left-0 w-4 h-4 border-l border-b" />
-        <div className="corner absolute bottom-0 right-0 w-4 h-4 border-r border-b" />
+      <div
+        ref={room}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="donate-room-title"
+        tabIndex={-1}
+        onClick={event => event.stopPropagation()}
+        className="relative max-w-[1100px] mx-auto px-5 sm:px-10 py-16 md:py-20 min-h-full flex items-center outline-none"
+      >
+        <div className="w-full grid md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] gap-12 md:gap-16 items-center">
+          {/* Who is asking, and what it pays for -- before being asked. */}
+          <div className="donate-rise-left">
+            <RoomLabel>{t('support.title')}</RoomLabel>
+            <p className="mt-8 text-[clamp(1.1rem,1.55vw,1.4rem)] font-extralight leading-[1.5] text-nier-strong text-pretty">
+              <RichText text={t('support.who')} className="donate-emphasis" />
+            </p>
+            <p className="mt-6 text-nier-bg/75 leading-relaxed text-pretty">
+              <RichText text={t('support.costs')} className="donate-emphasis" />
+            </p>
+            <p className="mt-4 text-nier-bg/75 leading-relaxed text-pretty">
+              <RichText text={t('support.ask')} className="donate-emphasis" />
+            </p>
+            <h3 className="mt-10 mb-4 text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('support.connect')}</h3>
+            <ConnectTiles columns={2} />
+          </div>
 
-        {/* The question, asked before any money moves.
+          {/* The form, framed as the support chapter's panel is. */}
+          <div className="donate-rise-right relative">
+            <Brackets />
+            <div className="relative border border-nier-border/30 p-6 sm:p-8" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
+              {/* The question, asked before any money moves.
 
-            Two people under one name become one trace with both amounts added
-            together, and there is no account behind most contributions to tell
-            them apart. Caught here it costs a question; caught after the
-            payment it costs an email, a reply, and a name that was wrong on the
-            wall in the meantime.
+                  Two people under one name become one trace with both amounts
+                  added together, and there is no account behind most
+                  contributions to tell them apart. Caught here it costs a
+                  question; caught after the payment it costs an email, a
+                  reply, and a name that was wrong on the wall in the meantime.
 
-            Deliberately not a refusal. Donating again under the name you
-            already used is the ordinary case, and the whole point is that only
-            the contributor knows which of the two this is. */}
-        {confirmingCollision && (
-          <div className="absolute inset-0 bg-nier-blackLight z-10 p-6 overflow-y-auto">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1.5 h-1.5 rotate-45 border" style={{ borderColor: '#FF6161' }} />
-              <h3 className="tracking-[0.15em] uppercase" style={{ color: '#FF6161' }}>
-                {t('donate.collisionTitle')}
-              </h3>
+                  Deliberately not a refusal. Donating again under the name you
+                  already used is the ordinary case, and the whole point is
+                  that only the contributor knows which of the two this is. */}
+              {confirmingCollision && (
+                <div className="absolute inset-0 z-10 p-6 sm:p-8 overflow-y-auto" style={{ backgroundColor: 'rgb(var(--c-ground))' }}>
+                  <div className="flex items-center gap-4 text-xs tracking-[0.3em] uppercase mb-6" style={{ color: 'rgb(var(--c-danger))' }}>
+                    <span aria-hidden="true" className="w-2.5 h-2.5 rotate-45 shrink-0 border" style={{ borderColor: 'currentColor' }} />
+                    <h3>{t('donate.collisionTitle')}</h3>
+                  </div>
+                  <p className="text-lg font-extralight leading-snug mb-4" style={{ color: 'rgb(var(--c-danger))' }}>
+                    {t('donate.collisionWho', { name: displayName.trim() })}
+                  </p>
+                  <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">{t('donate.collisionWhy')}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
+                    className="donate-confirm w-full py-3 text-xs tracking-[0.18em] uppercase"
+                  >
+                    {t('donate.collisionYes')}
+                  </button>
+                  <p className="text-nier-bg/70 text-xs tracking-wide mt-2 mb-5 leading-relaxed">{t('donate.collisionYesNote')}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmingCollision(false); setDisplayName('') }}
+                    className="w-full py-3 border text-xs tracking-[0.18em] uppercase transition-colors"
+                    style={{ borderColor: 'rgb(var(--c-danger) / 0.5)', color: 'rgb(var(--c-danger))' }}
+                  >
+                    {t('donate.collisionNo')}
+                  </button>
+                  <p className="text-nier-bg/70 text-xs tracking-wide mt-2 leading-relaxed">{t('donate.collisionNoNote')}</p>
+                </div>
+              )}
+
+              <MonthLevel month={contributions.month} />
+
+              {/* What paying gets you -- here is what your name joins -- and
+                  then the form that joins it. */}
+              <p className="mt-6 text-nier-bg/75 text-sm leading-relaxed text-pretty">{t('support.wall')}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose()
+                  openContributors(currentRoutePath() || '/welcome')
+                }}
+                className="landing-link mt-1 text-xs tracking-[0.18em] uppercase"
+              >
+                {t('support.seeWall')} <span aria-hidden="true">→</span>
+              </button>
+
+              <div className="mt-7 mb-6 h-px" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.14)' }} />
+
+              <h3 id="donate-room-title" className="sr-only">{t('donate.heading')}</h3>
+
+              {/* One-off or monthly */}
+              <div className="donate-bento grid grid-cols-2 mb-6">
+                {[false, true].map(isMonthly => (
+                  <Choice key={String(isMonthly)} chosen={monthly === isMonthly} onPick={() => { setMonthly(isMonthly); setCustomAmount('') }} className="text-xs uppercase">
+                    {isMonthly ? t('donate.monthlyOption') : t('donate.oneOff')}
+                  </Choice>
+                ))}
+              </div>
+
+              {/* The picker sits on the Amount row rather than at the top of
+                  the panel, because it is part of choosing the amount: the
+                  presets under it are denominated by it and change when it
+                  does. */}
+              <div className="flex items-end justify-between gap-3 mb-3">
+                <label htmlFor="donate-other-amount" className="block text-nier-bg/70 text-xs tracking-[0.2em] uppercase">{t('donate.amount')}</label>
+                <CurrencyToggle />
+              </div>
+              <div className="donate-bento grid grid-cols-4 mb-3">
+                {presets.map(preset => (
+                  <Choice key={preset} chosen={!customAmount.trim() && selected === preset} onPick={() => { setAmount(preset); setCustomAmount('') }} className="text-sm tabular-nums">
+                    {format(preset, { whole: true })}
+                  </Choice>
+                ))}
+              </div>
+
+              {/* The symbol sits inside the field rather than in the
+                  placeholder, so it is still there once something has been
+                  typed over it. The table's symbol, not Intl's: this one has
+                  to sit to the LEFT of a field whatever the language. */}
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">{money.symbol}</span>
+                <input
+                  id="donate-other-amount"
+                  type="text"
+                  inputMode="decimal"
+                  value={customAmount}
+                  onChange={e => setCustomAmount(e.target.value)}
+                  placeholder={t('donate.otherAmount')}
+                  className={`${field} pr-4 ${money.symbol.length > 1 ? 'pl-14' : 'pl-9'}`}
+                />
+              </div>
+              {customAmount.trim() && !amountValid && (
+                <p className="text-xs tracking-wide mt-2" style={{ color: 'rgb(var(--c-danger))' }}>
+                  {t('donate.minimum', { amount: format(money.min, { whole: true }) })}
+                </p>
+              )}
+
+              {/* "Optional" answers whether you have to fill it in, not what
+                  happens if you do. The question mark carries the rest, on
+                  hover over either the label or the field -- and gets out of
+                  the way the moment somebody starts typing. */}
+              <div className="name-field relative mt-6" data-typing={nameFocused ? 'true' : 'false'}>
+                <label htmlFor="donate-display-name" className="flex items-center gap-1.5 text-nier-bg/70 text-xs tracking-[0.2em] uppercase mb-3 w-fit">
+                  {t('donate.nameLabel')} — {t('donate.nameOptional')}
+                  <span className="name-hint-mark" aria-hidden="true">?</span>
+                </label>
+                <input
+                  id="donate-display-name"
+                  type="text"
+                  value={displayName}
+                  onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
+                  onFocus={() => setNameFocused(true)}
+                  onBlur={() => setNameFocused(false)}
+                  placeholder={t('donate.namePlaceholder')}
+                  maxLength={60}
+                  aria-describedby="donate-display-name-help"
+                  className={`${field} px-4`}
+                />
+                <span className="name-bubble" id="donate-display-name-help" role="tooltip">
+                  <span>
+                    {t('donate.nameHelp')}
+                    <span className="name-bubble-note">{t('donate.nameHelpNote')}</span>
+                  </span>
+                </span>
+              </div>
+              {nameProblem ? (
+                <p className="text-xs tracking-wide mt-2" style={{ color: 'rgb(var(--c-danger))' }}>
+                  {t(nameProblem.key, nameProblem.key === 'donate.errNameLength' ? { max: nameProblem.max } : undefined)}
+                </p>
+              ) : taken ? (
+                <p className="text-xs tracking-wide mt-2 font-bold leading-relaxed" style={{ color: 'rgb(var(--c-danger))' }}>
+                  {t('donate.takenShort', { name: displayName.trim() })}
+                </p>
+              ) : (
+                <p className="text-nier-bg/65 text-xs tracking-wide mt-2 leading-relaxed">{t('donate.nameChecked')}</p>
+              )}
+
+              {error && (
+                <p className="mt-5 border p-3 text-xs tracking-wide" style={{ borderColor: 'rgb(var(--c-danger) / 0.45)', color: 'rgb(var(--c-danger))' }}>{error}</p>
+              )}
+
+              {/* The landing page's own Donate button. Exact, not rounded like
+                  the presets: it names what is about to be charged, and
+                  "Donate $8" over a typed 7.50 misstates it. */}
+              <DonateButton
+                onClick={contribute}
+                disabled={!canGo}
+                label={busy ? t('donate.opening') : t(monthly ? 'donate.submitMonthly' : 'donate.submit', { amount: format(Number.isFinite(chosenMinor) ? chosenMinor : 0) })}
+                tooltip={false}
+                wrapperClassName="w-full mt-7"
+                className="w-full py-3.5 text-xs"
+              />
+
+              {/* Who takes the card, and whether monthly can be stopped. */}
+              <p className="text-nier-bg/65 text-xs tracking-wide mt-3 leading-relaxed">{t('donate.stripeNote')}</p>
             </div>
-
-            <p className="text-sm tracking-wide leading-relaxed font-bold mb-4" style={{ color: '#FF6161' }}>
-              {t('donate.collisionWho', { name: displayName.trim() })}
-            </p>
-
-            <p className="text-nier-bg/80 text-sm tracking-wide leading-relaxed mb-6">
-              {t('donate.collisionWhy')}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => { setCollisionAccepted(true); setConfirmingCollision(false) }}
-              className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
-            >
-              {t('donate.collisionYes')}
-            </button>
-            <p className="text-nier-bg/70 text-xs tracking-wider mt-2 mb-5 leading-relaxed">
-              {t('donate.collisionYesNote')}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => { setConfirmingCollision(false); setDisplayName('') }}
-              className="w-full py-3 border text-xs tracking-[0.15em] uppercase transition-colors"
-              style={{ borderColor: 'rgba(255,97,97,0.5)', color: '#FF6161' }}
-            >
-              {t('donate.collisionNo')}
-            </button>
-            <p className="text-nier-bg/70 text-xs tracking-wider mt-2 leading-relaxed">
-              {t('donate.collisionNoNote')}
-            </p>
           </div>
-        )}
-
-        {/* What paying gets you, before being asked to pay.
-
-            This sat under the submit button, on the argument that an outcome
-            belongs next to the action that causes it. But there it reads as a
-            footnote to a decision already made: by the time anyone reached it
-            they had picked an amount and typed a name, and the reason for
-            doing either was still further down the card. Above the heading it
-            is the invitation rather than the receipt -- here is what your name
-            joins, and then the form that joins it. */}
-        <div className="support-well border p-4 mb-5">
-          <p className="text-nier-bg/75 text-xs tracking-wide leading-relaxed mb-3">
-            {t('support.wall')}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              onClose()
-              openContributors(currentRoutePath() || '/welcome')
-            }}
-            className="support-action w-full py-2.5 border text-[11px] tracking-[0.15em] uppercase"
-            style={{ clipPath: DONATE_CUT }}
-          >
-            ◇ {t('support.seeWall')}
-          </button>
         </div>
-
-        <div className="flex items-center gap-3 mb-5">
-          <div className="byline-mark w-2 h-2 rotate-45" />
-          <h3 className="support-orange tracking-[0.15em] uppercase">{t('donate.heading')}</h3>
-          <div className="support-rule flex-1 h-px" />
-        </div>
-
-        {/* One-off or monthly */}
-        <div className="flex gap-2 mb-5">
-          {[false, true].map(isMonthly => (
-            <button
-              key={String(isMonthly)}
-              type="button"
-              onClick={() => { setMonthly(isMonthly); setCustomAmount('') }}
-              className={`flex-1 py-2 text-xs tracking-[0.15em] uppercase border transition-colors ${
-                monthly === isMonthly
-                  ? 'donate-chosen'
-                  : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
-              }`}
-            >
-              {isMonthly ? t('donate.monthlyOption') : t('donate.oneOff')}
-            </button>
-          ))}
-        </div>
-
-        {/* The picker sits on the Amount row rather than at the top of the
-            panel, because it is part of choosing the amount: the presets under
-            it are denominated by it and change when it does. */}
-        <div className="flex items-end justify-between gap-3 mb-2">
-          <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('donate.amount')}</label>
-          <CurrencyToggle />
-        </div>
-        <div className="flex gap-2 mb-3">
-          {presets.map(preset => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => { setAmount(preset); setCustomAmount('') }}
-              className={`flex-1 py-2 text-sm tracking-wider border transition-colors ${
-                !customAmount.trim() && selected === preset
-                  ? 'donate-chosen'
-                  : 'border-nier-border/30 text-nier-bg/80 hover:border-nier-border/60 hover:text-nier-bg'
-              }`}
-            >
-              {format(preset, { whole: true })}
-            </button>
-          ))}
-        </div>
-
-        {/* The symbol sits inside the field rather than in the placeholder, so
-            it is still there once something has been typed over it. A bare
-            number in a box that takes money reads as unfinished.
-
-            The table's symbol, not Intl's: this one has to sit to the LEFT of
-            a field whatever the language, where Intl would put it after the
-            number in French and leave the field labelled with nothing. */}
-        <div className="relative mb-1">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-nier-bg/70 text-sm pointer-events-none">
-            {money.symbol}
-          </span>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={customAmount}
-            onChange={e => setCustomAmount(e.target.value)}
-            placeholder={t('donate.otherAmount')}
-            className={`w-full pr-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors ${
-              money.symbol.length > 1 ? 'pl-14' : 'pl-9'
-            }`}
-          />
-        </div>
-        {customAmount.trim() && !amountValid && (
-          <p className="text-xs tracking-wider mb-2" style={{ color: '#FF6161' }}>
-            {t('donate.minimum', { amount: format(money.min, { whole: true }) })}
-          </p>
-        )}
-
-        {/* "Optional" answers whether you have to fill it in, not what
-            happens if you do. The question mark carries the rest, on hover
-            over either the label or the field -- and gets out of the way the
-            moment somebody starts typing, because an explanation floating
-            over the thing you are doing is in the way rather than helpful. */}
-        <div className="name-field relative mt-4" data-typing={nameFocused ? 'true' : 'false'}>
-          <label
-            htmlFor="donate-display-name"
-            className="flex items-center gap-1.5 text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2 w-fit"
-          >
-            {t('donate.nameLabel')} — {t('donate.nameOptional')}
-            <span className="name-hint-mark" aria-hidden="true">?</span>
-          </label>
-          <input
-            id="donate-display-name"
-            type="text"
-            value={displayName}
-            onChange={e => { setDisplayName(e.target.value); setCollisionAccepted(false) }}
-            onFocus={() => setNameFocused(true)}
-            onBlur={() => setNameFocused(false)}
-            placeholder={t('donate.namePlaceholder')}
-            maxLength={60}
-            aria-describedby="donate-display-name-help"
-            className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-          />
-          <span className="name-bubble" id="donate-display-name-help" role="tooltip">
-            <span>
-              {t('donate.nameHelp')}
-              <span className="name-bubble-note">{t('donate.nameHelpNote')}</span>
-            </span>
-          </span>
-        </div>
-        {nameProblem ? (
-          <p className="text-xs tracking-wider mt-2" style={{ color: '#FF6161' }}>
-            {t(nameProblem.key, nameProblem.key === 'donate.errNameLength' ? { max: nameProblem.max } : undefined)}
-          </p>
-        ) : taken ? (
-          <p className="text-xs tracking-wide mt-2 font-bold leading-relaxed" style={{ color: 'rgb(var(--c-danger))' }}>
-            {t('donate.takenShort', { name: displayName.trim() })}
-          </p>
-        ) : (
-          // Four sentences became one line.
-          //
-          // Everything the old copy said was true and none of it was needed
-          // before paying: that a person checks the name matters at the moment
-          // it is refused, not now, and the refusal email says so itself.
-          // "Leave empty to stay anonymous" is the only part that changes what
-          // somebody does next, and the field's own placeholder already says
-          // it -- so this says the one thing the placeholder cannot.
-          <p className="text-nier-bg/70 text-xs tracking-wide mt-2 leading-relaxed">
-            {t('donate.nameChecked')}
-          </p>
-        )}
-
-        {error && (
-          <div className="bg-red-900/20 border border-red-500/40 p-3 mt-4">
-            <p className="text-red-400 text-xs tracking-wide">{error}</p>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={contribute}
-          disabled={busy || !amountValid || !!nameProblem || !supabase}
-          className="donate-commit w-full mt-5 py-3 text-xs tracking-[0.15em] uppercase disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          {/* Exact, not rounded like the preset buttons above: this one names
-              what is about to be charged, and "Donate $8" over a typed 7.50 is
-              a button that misstates the amount it is taking. */}
-          {busy ? t('donate.opening') : t(monthly ? 'donate.submitMonthly' : 'donate.submit', { amount: format(Number.isFinite(chosenMinor) ? chosenMinor : 0) })}
-        </button>
-
-        {/* Was a paragraph listing every payment method by name, which nobody
-            reads and Stripe's own page shows a second later anyway. What
-            remains answers the real hesitation: who takes the card, and
-            whether monthly can be stopped. */}
-        <p className="text-nier-bg/70 text-xs tracking-wide mt-3 leading-relaxed">
-          {t('donate.stripeNote')}
-        </p>
-
-        </div>
-        </div>
-
-        {/* Under both cards rather than inside one of them. It closes the
-            whole thing, so belonging to either card was a small lie about
-            what it does. */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-10 py-2.5 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.18em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-          style={{ clipPath: DONATE_CUT, backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}
-        >
-          {t('common.close')}
-        </button>
       </div>
     </div>
   )

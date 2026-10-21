@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
     // here and tells everyone else nothing they couldn't already guess.
     if (!operator) return json({ error: 'Not allowed' }, 403)
 
-    const { action, id, reason, refund, displayName, amountEur, createdAt, message, goalEur } = await req.json()
+    const { action, id, reason, refund, displayName, amountEur, createdAt, message, goalEur, kind, counts } = await req.json()
 
     switch (action) {
       // The monthly goal the gauge fills towards.
@@ -114,13 +114,53 @@ Deno.serve(async (req: Request) => {
       case 'list': {
         const { data, error } = await admin
           .from('contributions')
-          .select('id, display_name, kind, name_approved, name_rejected_reason, hidden, refunded, settled_eur_cents, created_at')
+          .select('id, display_name, kind, name_approved, name_rejected_reason, hidden, refunded, settled_eur_cents, created_at, stripe_event_id, counts_toward_goal')
           .eq('livemode', true)
           .not('display_name', 'is', null)
           .order('created_at', { ascending: false })
           .limit(200)
         if (error) throw error
-        return json({ entries: data ?? [] })
+        // Added by hand is what has no Stripe event behind it; the event's id
+        // itself stays here.
+        return json({ entries: (data ?? []).map(({ stripe_event_id, ...entry }) => ({ ...entry, manual: !stripe_event_id })) })
+      }
+
+      // A contribution added by hand, as valid as one Stripe reported: a
+      // payment that came another way, or a name for someone whose payment
+      // came in without one. Approved at once -- the operator is the one who
+      // would approve it. `counts` false keeps its money out of the month and
+      // the totals, for someone already counted: the wall shows them with
+      // what they gave, and nothing is counted twice.
+      case 'add': {
+        const name = typeof displayName === 'string' ? displayName.trim() : ''
+        if (!name) return json({ error: 'A contribution added by hand needs a name.' }, 400)
+        const problem = nameProblem(name)
+        if (problem) return json({ error: problem }, 400)
+
+        const cents = Math.round(Number(amountEur) * 100)
+        if (!Number.isFinite(cents) || cents <= 0 || cents > 100_000_000) return json({ error: 'That amount is not a number.' }, 400)
+
+        const when = typeof createdAt === 'string' && createdAt.trim() ? new Date(createdAt) : new Date()
+        if (Number.isNaN(when.getTime())) return json({ error: 'That date could not be read.' }, 400)
+
+        const { data, error } = await admin
+          .from('contributions')
+          .insert({
+            amount_cents: cents,
+            currency: 'eur',
+            settled_eur_cents: cents,
+            kind: kind === 'monthly' ? 'monthly' : 'one_time',
+            display_name: name,
+            name_approved: true,
+            // Real money, or a real person's name: never a test row.
+            livemode: true,
+            counts_toward_goal: counts !== false,
+            created_at: when.toISOString(),
+          })
+          .select('id')
+          .single()
+        if (error) throw error
+        return json({ ok: true, id: data.id })
       }
 
       // Off the wall, still counted. Distinct from a rejection: this one was
@@ -147,8 +187,9 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true })
       }
 
-      // Correcting what is displayed. Only the three fields the wall shows, and
-      // only ones sent -- an omitted field is left alone rather than nulled.
+      // Correcting what is displayed. Only the three fields the wall shows --
+      // and whether its money counts -- and only ones sent: an omitted field is
+      // left alone rather than nulled.
       case 'edit': {
         if (!id) return json({ error: 'Missing id' }, 400)
 
@@ -177,6 +218,9 @@ Deno.serve(async (req: Request) => {
           if (Number.isNaN(when.getTime())) return json({ error: 'That date could not be read.' }, 400)
           patch.created_at = when.toISOString()
         }
+
+        // Whether its money counts toward the month and the totals.
+        if (typeof counts === 'boolean') patch.counts_toward_goal = counts
 
         if (Object.keys(patch).length === 0) return json({ error: 'Nothing to change' }, 400)
 

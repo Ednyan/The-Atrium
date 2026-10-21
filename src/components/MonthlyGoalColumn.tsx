@@ -168,27 +168,32 @@ export default function MonthlyGoalColumn({ month, onOpen, side = 'left', scale 
               in the ground colour, the half over the empty tube in the fill
               colour -- and neither needs a layer of its own. inset() from the
               bottom is the fill's own height, so the two always meet exactly
-              at the surface however full it is. */}
+              at the surface however full it is.
+
+              The clip sits on a layer the size of the tube, not on the words:
+              an inset()'s percentages are of the box it clips, so on the
+              words themselves "10%" took a tenth of the words -- their last
+              letters, the text reading upward -- rather than the tube's. */}
           {([
             // Over the empty part, above the surface.
             { clip: `inset(0 0 ${filled ? percent : 0}% 0)`, className: 'text-nier-bg' },
             // Over the fill, below it.
             { clip: `inset(${100 - (filled ? percent : 0)}% 0 0 0)`, className: 'text-nier-black' },
           ] as const).map(({ clip, className }, index) => (
-            <span
+            <div
               key={index}
-              className={`absolute top-2 left-1/2 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap pointer-events-none tabular-nums ${className}`}
-              style={{
-                writingMode: 'vertical-rl',
-                transform: 'translateX(-50%) rotate(180deg)',
-                clipPath: clip,
-                // Matches the fill's own travel, so the halves move with the
-                // surface rather than snapping to it when it arrives.
-                transition: 'clip-path 1600ms ease-out',
-              }}
+              className="absolute inset-0 pointer-events-none"
+              // Matches the fill's own travel, so the halves move with the
+              // surface rather than snapping to it when it arrives.
+              style={{ clipPath: clip, transition: 'clip-path 1600ms ease-out' }}
             >
-              {t('goal.funded', { percent })}
-            </span>
+              <span
+                className={`absolute top-2 left-1/2 text-[10px] tracking-[0.15em] uppercase whitespace-nowrap tabular-nums ${className}`}
+                style={{ writingMode: 'vertical-rl', transform: 'translateX(-50%) rotate(180deg)' }}
+              >
+                {t('goal.funded', { percent })}
+              </span>
+            </div>
           ))}
         </div>
       </div>

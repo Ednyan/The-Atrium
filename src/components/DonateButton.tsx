@@ -25,6 +25,10 @@ interface DonateButtonProps {
   // the button to stretch has to say so here -- flex-1 on the button inside an
   // inline-flex wrapper stretches nothing.
   wrapperClassName?: string
+  disabled?: boolean
+  // Its "what it asks for" bubble on hover -- not where the room around it
+  // already says so (the donate pop-up's own commit).
+  tooltip?: boolean
 }
 
 // Fixed rather than random. A button that rearranges itself on every render is
@@ -76,6 +80,8 @@ export default function DonateButton({
   label,
   className = '',
   wrapperClassName = '',
+  disabled = false,
+  tooltip = true,
 }: DonateButtonProps) {
   const accent = variant === 'accent'
   const { t } = useTranslation()
@@ -141,15 +147,16 @@ export default function DonateButton({
     <span
       ref={wrapRef}
       className={`donate-btn-wrap ${wrapperClassName}`}
-      onMouseEnter={() => canHover && setHovered(true)}
+      onMouseEnter={() => canHover && tooltip && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onFocus={() => canHover && setHovered(true)}
+      onFocus={() => canHover && tooltip && setHovered(true)}
       onBlur={() => setHovered(false)}
     >
     <button
       type="button"
       onClick={onClick}
-      className={`donate-btn relative px-4 sm:px-5 py-2.5 text-[11px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] ${
+      disabled={disabled}
+      className={`donate-btn relative px-4 sm:px-5 py-2.5 text-[11px] tracking-[0.18em] uppercase transition-transform hover:scale-[1.03] active:scale-[0.99] disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:scale-100 ${
         accent ? 'text-nier-black font-semibold' : 'border border-nier-border/40 text-nier-bg/85 hover:text-nier-bg'
       } ${className}`}
       // The glow travels with the button. It is the one thing on any screen

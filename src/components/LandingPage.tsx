@@ -15,13 +15,12 @@ import TraceTitle from './TraceTitle'
 import { useState, useEffect, useMemo, useRef, startTransition } from 'react'
 import { isDesktop } from '../lib/supabase'
 import PortalScene from './PortalScene'
-import ContributePanel from './ContributePanel'
+import ContributePanel, { MonthLevel } from './ContributePanel'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
 import LanguageToggle from './LanguageToggle'
 import { useTranslation } from '../lib/i18n'
-import { contributionCountKey } from '../lib/monthlyGauge'
 import type { TranslationKey } from '../locales/en'
 import { openContributors } from '../lib/contributorsRoute'
 import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
@@ -81,29 +80,11 @@ function SupportPanel() {
   const [showContribute, setShowContribute] = useState(false)
   const [data, setData] = useState<ContributionsData>(() => getCachedContributions())
   useEffect(() => startContributionsRefresh(setData), [])
-  const month = data.month
-  const percent = month && month.goalCents > 0 ? Math.min(100, (month.totalCents / month.goalCents) * 100) : 0
   return (
     <div className="relative">
       <Brackets />
       <div className="border border-nier-border/30 p-6 sm:p-8" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}>
-        {month && month.goalCents > 0 ? (
-          <>
-            <div className="flex items-baseline justify-between mb-3">
-              <span className="text-xs tracking-[0.2em] uppercase text-nier-bg/70">{t('landing.support.thisMonth')}</span>
-              <span className="text-sm tracking-wider text-nier-strong tabular-nums">{t('goal.funded', { percent: Math.round(percent) })}</span>
-            </div>
-            {/* The light's level: how much of the month is kept lit. */}
-            <div className="h-[3px] overflow-hidden" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.12)' }}>
-              <div className="h-full transition-[width] duration-700 ease-out landing-light-fill" style={{ width: `${percent}%` }} />
-            </div>
-            <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70 mt-3">
-              {t(contributionCountKey(month.contributionCount), { count: month.contributionCount })}
-            </p>
-          </>
-        ) : (
-          <p className="text-xs tracking-[0.15em] uppercase text-nier-bg/70">{t('landing.support.keptStanding')}</p>
-        )}
+        <MonthLevel month={data.month} />
         <div className="flex flex-col sm:flex-row gap-2 mt-7">
           <DonateButton onClick={() => setShowContribute(true)} wrapperClassName="flex-1" className="w-full py-3" />
           <button
@@ -854,11 +835,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
         .landing-cta:hover { box-shadow: 0 0 46px rgb(var(--landing-light) / 0.38); transform: translateY(-1px); }
         .landing-cta:active { transform: translateY(1px); }
         [data-landing-theme='light'] .landing-cta:hover { box-shadow: 0 10px 30px rgb(var(--c-fg) / 0.22); }
-        .landing-cta:focus-visible, .landing-link:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 4px; }
-        .landing-link { position: relative; color: rgb(var(--c-fg) / 0.85); transition: color 0.25s ease; padding: 0.4rem 0; }
-        .landing-link::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: currentColor; transform: scaleX(0.35); transform-origin: left; transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1); opacity: 0.6; }
-        .landing-link:hover { color: rgb(var(--c-strong)); }
-        .landing-link:hover::after { transform: scaleX(1); }
+        .landing-cta:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 4px; }
 
         /* Cells with hairlines between them: the grid's own lines. */
         .landing-bento { background: rgb(var(--c-fg) / 0.16); border: 1px solid rgb(var(--c-fg) / 0.16); }

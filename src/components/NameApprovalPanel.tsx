@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { Check } from './ShapeStyleControls'
 import {
   SEED_PRESETS,
   clearSeededContributors,
@@ -28,7 +29,14 @@ interface Entry {
   refunded: boolean
   settled_eur_cents: number
   created_at: string
+  // Added by hand rather than reported by Stripe (moderate-contributors, 'add').
+  manual: boolean
+  // Whether its money is in the month and the totals.
+  counts_toward_goal: boolean
 }
+
+// What the add/edit dialog sends.
+interface ContributionFields { displayName: string; amountEur: number; createdAt: string; counts: boolean; kind?: 'one_time' | 'monthly' }
 
 // Moderating the contributors wall.
 //
@@ -68,6 +76,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
   const [editing, setEditing] = useState<Entry | null>(null)
   const [deleting, setDeleting] = useState<Entry | null>(null)
   const [messaging, setMessaging] = useState<Entry | null>(null)
+  const [adding, setAdding] = useState(false)
 
   // The monthly goal, in euros, as the operator types it. Null until the
   // settings have been read, so an empty box cannot be mistaken for a goal of
@@ -219,6 +228,14 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
             className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
           >
             {goalSaving ? t('common.saving') : goalSaved ? t('common.saved') : t('common.save')}
+          </button>
+          {/* A contribution by hand: a payment that came another way, or a
+              name for one that came without. */}
+          <button
+            onClick={() => setAdding(true)}
+            className="ml-auto px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors whitespace-nowrap"
+          >
+            ◇ {t('names.add.button')}
           </button>
         </div>
 
@@ -410,6 +427,17 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         />
       )}
 
+      {adding && (
+        <EditDialog
+          entry={null}
+          onCancel={() => setAdding(false)}
+          onSave={fields => {
+            setAdding(false)
+            run('new', () => call('add', { ...fields }))
+          }}
+        />
+      )}
+
       {deleting && (
         <ConfirmDelete
           entry={deleting}
@@ -448,6 +476,9 @@ function Row({ entry, children, warning }: { entry: Entry; children: React.React
           {entry.display_name}
           {entry.hidden && <span className="text-nier-bg/70 text-[9px] uppercase tracking-wider ml-2">hidden</span>}
           {entry.refunded && <span className="text-red-400/80 text-[9px] uppercase tracking-wider ml-2">refunded</span>}
+          {entry.manual && <span className="text-nier-bg/70 text-[9px] uppercase tracking-wider ml-2">{t('names.tag.manual')}</span>}
+          {/* Only when the function says so: one older than the column sends nothing. */}
+          {entry.counts_toward_goal === false && <span className="text-[9px] uppercase tracking-wider ml-2" style={{ color: '#E8C15A' }}>{t('names.tag.notCounted')}</span>}
         </div>
         <div className="text-[9px] text-nier-bg/70 tracking-wider uppercase mt-1">
           €{euros(entry.settled_eur_cents)} · {entry.kind === 'monthly' ? t('names.kind.monthly') : t('names.kind.oneOff')} · {formatDate(entry.created_at)}
@@ -618,18 +649,23 @@ function RejectDialog({ entry, onCancel, onSend }: {
   )
 }
 
+// A contribution's fields: one being corrected, or -- `entry` null -- one
+// added by hand, which also says its kind.
 function EditDialog({ entry, onCancel, onSave }: {
-  entry: Entry
+  entry: Entry | null
   onCancel: () => void
-  onSave: (patch: { displayName: string; amountEur: number; createdAt: string }) => void
+  onSave: (fields: ContributionFields) => void
 }) {
   const { t } = useTranslation()
-  const [displayName, setDisplayName] = useState(entry.display_name ?? '')
-  const [amount, setAmount] = useState(String(euros(entry.settled_eur_cents)))
-  const [date, setDate] = useState(toDateInput(entry.created_at))
+  const [displayName, setDisplayName] = useState(entry?.display_name ?? '')
+  const [amount, setAmount] = useState(entry ? String(euros(entry.settled_eur_cents)) : '')
+  const [date, setDate] = useState(toDateInput(entry?.created_at ?? new Date().toISOString()))
+  const [counts, setCounts] = useState(entry?.counts_toward_goal ?? true)
+  const [kind, setKind] = useState<'one_time' | 'monthly'>('one_time')
+  const euroAmount = Number(amount.replace(',', '.'))
 
   return (
-    <Dialog title={t('names.edit.title')} onCancel={onCancel}>
+    <Dialog title={t(entry ? 'names.edit.title' : 'names.add.title')} onCancel={onCancel}>
       <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mb-2">{t('names.edit.name')}</label>
       <input
         value={displayName}
@@ -653,16 +689,42 @@ function EditDialog({ entry, onCancel, onSave }: {
         className="w-full px-4 py-2 bg-nier-black border border-nier-border/30 text-nier-bg text-sm tracking-wide focus:border-nier-border/60 transition-colors"
       />
 
+      {!entry && (
+        <>
+          <label className="block text-nier-bg/80 text-[9px] tracking-[0.15em] uppercase mt-4 mb-2">{t('names.edit.kind')}</label>
+          <div className="flex gap-2">
+            {(['one_time', 'monthly'] as const).map(option => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={kind === option}
+                onClick={() => setKind(option)}
+                className={`flex-1 py-2 border text-[10px] tracking-[0.15em] uppercase transition-colors ${kind === option ? 'border-nier-bg text-nier-bg' : 'border-nier-border/30 text-nier-bg/70 hover:border-nier-border/60'}`}
+              >
+                {t(option === 'monthly' ? 'names.kind.monthly' : 'names.kind.oneOff')}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="mt-4">
+        <Check checked={counts} onChange={setCounts} label={t('names.edit.counts')} />
+        <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">{t('names.edit.countsHint')}</p>
+      </div>
+
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-3 leading-relaxed">
-        {t('names.edit.note')}
+        {t(entry ? 'names.edit.note' : 'names.add.note')}
       </p>
 
       <button
         type="button"
-        onClick={() => onSave({ displayName, amountEur: Number(amount.replace(',', '.')), createdAt: date })}
-        className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors"
+        // A new one needs a name and an amount; a correction, as it always has, neither.
+        disabled={!entry && (!displayName.trim() || !(euroAmount > 0))}
+        onClick={() => onSave({ displayName, amountEur: euroAmount, createdAt: date, counts, ...(entry ? {} : { kind }) })}
+        className="w-full mt-5 py-3 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
       >
-        {t('common.save')}
+        {t(entry ? 'common.save' : 'names.add.commit')}
       </button>
     </Dialog>
   )
