@@ -331,6 +331,7 @@ const ptBR: Catalogue = {
   'auth.errUnavailable': 'Autenticação indisponível',
   'auth.errUsernameTaken': 'Este nome de usuário já está em uso',
   'auth.errEmailRegistered': 'Este e-mail já está cadastrado. Faça login em vez disso.',
+  'auth.errEmailGoogle': 'Este endereço já tem uma conta que entra com o Google. Use “Continuar com o Google”.',
   'auth.errNoEmail': 'Digite seu endereço de e-mail',
   'auth.confirmSentVerify': 'Enviamos um e-mail com um link de confirmação. Verifique sua caixa de entrada e clique no link para verificar sua conta.',
 
@@ -1570,6 +1571,7 @@ const ptBR: Catalogue = {
   'profile.deleteCode': 'Código de confirmação',
   'profile.deleteCodeSent': 'Enviamos um código de seis dígitos para o seu e-mail. Ele vale por 10 minutos.',
   'profile.deleteWithGoogle': 'Confirme com o Google para excluí-la agora. Os atriums guardados no seu Google Drive continuam lá, seus.',
+  'profile.errOtherGoogle': 'Essa era outra conta do Google. Confirme com a conta que você usou para entrar.',
   'profile.deleteWithPassword': 'Sua senha, para confirmar',
   'profile.resendCode': 'Enviar outro código',
   'profile.resendCodeIn': 'Enviar outro código em {seconds}s',

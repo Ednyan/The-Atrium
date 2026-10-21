@@ -73,7 +73,8 @@ const failed = (code: string, more: object = {}) => Object.assign(new Error(code
 export async function signUp(email: string, username: string, password: string): Promise<void> {
   const { status, body } = await ask('signup', { email, username, ...(await keysFor(email, username, password)), language: currentLanguage() })
   if (status === 200) return
-  if (status === 409) throw failed(body.error === 'username' ? 'USERNAME_TAKEN' : 'EMAIL_TAKEN')
+  // Taken: the username, the address by a Google account (signed in to with Google), or by another account.
+  if (status === 409) throw failed(body.error === 'username' ? 'USERNAME_TAKEN' : body.error === 'google' ? 'EMAIL_GOOGLE' : 'EMAIL_TAKEN')
   if (status === 429) throw failed('TOO_MANY')
   throw failed(status === 503 ? 'CHECK' : 'SIGNUP_FAILED')
 }

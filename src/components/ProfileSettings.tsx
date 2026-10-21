@@ -393,7 +393,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
     try {
       await (await import('../lib/drive')).deleteGoogleAccount(idToken)
     } catch (err: any) {
-      setDeleteError(err?.message || t('profile.errDeleteAccount'))
+      setDeleteError(err?.message === 'OTHER_GOOGLE' ? t('profile.errOtherGoogle') : err?.message || t('profile.errDeleteAccount'))
       setDeleteLoading(false)
       return
     }
@@ -801,7 +801,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                     actualUsername && deleteConfirmText === actualUsername && (
                       <div className="space-y-2">
                         <p className="text-nier-bg/70 text-[0.75rem] leading-relaxed tracking-wide normal-case">{t('profile.deleteWithGoogle')}</p>
-                        <GoogleButton busy={deleteLoading} onCredential={idToken => void handleDeleteGoogleAccount(idToken)} />
+                        <GoogleButton busy={deleteLoading} hint={googleAccount()?.email ?? undefined} onCredential={idToken => void handleDeleteGoogleAccount(idToken)} />
                       </div>
                     )
                   ) : emailAccount ? (

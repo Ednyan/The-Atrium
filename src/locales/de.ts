@@ -330,6 +330,7 @@ const de: Catalogue = {
   'auth.errUnavailable': 'Authentifizierung nicht verfügbar',
   'auth.errUsernameTaken': 'Dieser Benutzername ist bereits vergeben',
   'auth.errEmailRegistered': 'Diese E-Mail-Adresse ist bereits registriert. Bitte melde dich stattdessen an.',
+  'auth.errEmailGoogle': 'Zu dieser Adresse gibt es schon ein Konto, das sich mit Google anmeldet. Nutze stattdessen „Mit Google fortfahren“.',
   'auth.errNoEmail': 'Bitte gib deine E-Mail-Adresse ein',
   'auth.confirmSentVerify': 'Wir haben dir eine E-Mail mit einem Bestätigungslink geschickt. Bitte prüfe dein Postfach und klicke auf den Link, um dein Konto zu verifizieren.',
 
@@ -1569,6 +1570,7 @@ const de: Catalogue = {
   'profile.deleteCode': 'Bestätigungscode',
   'profile.deleteCodeSent': 'Wir haben einen sechsstelligen Code an deine E-Mail-Adresse geschickt. Er gilt 10 Minuten.',
   'profile.deleteWithGoogle': 'Bestätige mit Google, um es jetzt zu löschen. Atrien in deinem Google Drive bleiben dort, deine.',
+  'profile.errOtherGoogle': 'Das war ein anderes Google-Konto. Bestätige mit dem, mit dem du angemeldet bist.',
   'profile.deleteWithPassword': 'Dein Passwort, zur Bestätigung',
   'profile.resendCode': 'Neuen Code schicken',
   'profile.resendCodeIn': 'Neuen Code in {seconds} s',

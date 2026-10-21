@@ -364,6 +364,7 @@ export const en = {
   'auth.errUnavailable': 'Authentication not available',
   'auth.errUsernameTaken': 'Username already taken',
   'auth.errEmailRegistered': 'This email is already registered. Please log in instead.',
+  'auth.errEmailGoogle': 'This address already has an account that signs in with Google. Use “Continue with Google” instead.',
   'auth.errNoEmail': 'Please enter your email address',
   'auth.confirmSentVerify': "We've sent you an email with a confirmation link. Please check your inbox and click the link to verify your account.",
 
@@ -1520,6 +1521,7 @@ export const en = {
   'profile.deleteCode': 'Confirmation code',
   'profile.deleteCodeSent': 'We sent a six-digit code to your email address. It lasts 10 minutes.',
   'profile.deleteWithGoogle': 'Confirm with Google to delete it now. Atriums kept in your Google Drive stay there, yours.',
+  'profile.errOtherGoogle': 'That was another Google account. Confirm with the one you signed in with.',
   'profile.deleteWithPassword': 'Your password, to confirm',
   'profile.resendCode': 'Send another code',
   'profile.resendCodeIn': 'Send another code in {seconds}s',

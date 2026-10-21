@@ -121,8 +121,11 @@ export async function auth(request: Request, env: Env, what: string): Promise<Re
       if (!(await allowedNow(db, `signup:${from}`, SIGNUPS_AN_HOUR))) return answer(429, { error: 'wait' })
       await dropUnconfirmed(db, email, username)
       // An address is one account's: here (an email account's, a Google
-      // account's), or an existing account's in Supabase.
-      if (await db.prepare('select 1 from logins where email = ? collate nocase union all select 1 from accounts where email = ? collate nocase').bind(email, email).first()) return answer(409, { error: 'email' })
+      // account's), or an existing account's in Supabase. A Google account
+      // only once it's finished (a username chosen): one left at its
+      // username screen holds nothing, and goes as this address is confirmed.
+      if (await db.prepare('select 1 from logins where email = ? collate nocase').bind(email).first()) return answer(409, { error: 'email' })
+      if (await db.prepare("select 1 from accounts where email = ? collate nocase and kind = 'google' and username is not null").bind(email).first()) return answer(409, { error: 'google' })
       const existing = await existingAccountFor(env, email)
       if (existing === undefined) return answer(503, { error: 'check' })
       if (existing) return answer(409, { error: 'email' })
@@ -152,6 +155,10 @@ export async function auth(request: Request, env: Env, what: string): Promise<Re
       const checked = await useCode(db, found.account, 'confirm', code)
       if (checked !== 'ok') return answer(checked === 'tries' ? 429 : 400, { error: 'code' })
       await db.prepare('update logins set confirmed_at = ?, updated_at = ? where account = ?').bind(Date.now(), Date.now(), found.account).run()
+      // Its address this account's now: a Google account left unfinished
+      // with it (no username) is let go -- one address, one account.
+      const { results: unfinished } = await db.prepare("select id from accounts where email = ? collate nocase and kind = 'google' and username is null").bind(found.email).all<{ id: string }>()
+      for (const { id } of unfinished) await forgetAccount(db, id, true)
       const account = await accountOf(db, found.account)
       if (!account) return answer(400, { error: 'code' })
       await welcome(env, found.email, account.display_name || account.username || '', asked.language)

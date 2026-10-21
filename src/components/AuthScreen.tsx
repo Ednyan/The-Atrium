@@ -39,6 +39,7 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   // The worker's refusals, by name (lib/emailAccount), said in the page's words.
   const said = (err: any, fallback: string) => ({
     EMAIL_TAKEN: t('auth.errEmailRegistered'),
+    EMAIL_GOOGLE: t('auth.errEmailGoogle'),
     USERNAME_TAKEN: t('auth.errUsernameTaken'),
     TOO_MANY: t('auth.error.tooManyTries'),
     TOO_MANY_TRIES: t('auth.error.tooManyTries'),

@@ -370,6 +370,7 @@ const ja: Catalogue = {
   'auth.errUnavailable': 'いま認証を行えません',
   'auth.errUsernameTaken': 'このユーザー名はすでに使われています',
   'auth.errEmailRegistered': 'このメールアドレスは登録済みです。ログインしてください。',
+  'auth.errEmailGoogle': 'このアドレスには、Google でログインするアカウントがすでにあります。「Google で続行」を使ってください。',
   'auth.errNoEmail': 'メールアドレスを入力してください',
   'auth.confirmSentVerify': '確認リンクを記したメールをお送りしました。受信箱を確認し、リンクをクリックしてアカウントを認証してください。',
 
@@ -1572,6 +1573,7 @@ const ja: Catalogue = {
   'profile.deleteCode': '確認コード',
   'profile.deleteCodeSent': '6 桁のコードをメールアドレスに送りました。有効期限は 10 分です。',
   'profile.deleteWithGoogle': 'Google で確認すると、すぐに削除されます。Google ドライブにある Atrium はそのまま、あなたのものとして残ります。',
+  'profile.errOtherGoogle': '別の Google アカウントでした。ログインに使ったアカウントで確認してください。',
   'profile.deleteWithPassword': '確認のためのパスワード',
   'profile.resendCode': 'コードを再送する',
   'profile.resendCodeIn': '再送まで {seconds} 秒',

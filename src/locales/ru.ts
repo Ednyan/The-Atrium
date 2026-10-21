@@ -333,6 +333,7 @@ const ru: Catalogue = {
   'auth.errUnavailable': 'Аутентификация недоступна',
   'auth.errUsernameTaken': 'Это имя пользователя уже занято',
   'auth.errEmailRegistered': 'Этот email уже зарегистрирован. Войдите вместо регистрации.',
+  'auth.errEmailGoogle': 'У этого адреса уже есть аккаунт, который входит через Google. Используйте «Продолжить с Google».',
   'auth.errNoEmail': 'Введите ваш email',
   'auth.confirmSentVerify': 'Мы отправили вам письмо со ссылкой для подтверждения. Проверьте почту и перейдите по ссылке, чтобы подтвердить аккаунт.',
 
@@ -1572,6 +1573,7 @@ const ru: Catalogue = {
   'profile.deleteCode': 'Код подтверждения',
   'profile.deleteCodeSent': 'Мы отправили шестизначный код на вашу почту. Он действует 10 минут.',
   'profile.deleteWithGoogle': 'Подтвердите через Google, чтобы удалить его сейчас. Атриумы в вашем Google Диске останутся там, ваши.',
+  'profile.errOtherGoogle': 'Это был другой аккаунт Google. Подтвердите тем, через который вы вошли.',
   'profile.deleteWithPassword': 'Ваш пароль для подтверждения',
   'profile.resendCode': 'Отправить новый код',
   'profile.resendCodeIn': 'Новый код через {seconds} с',

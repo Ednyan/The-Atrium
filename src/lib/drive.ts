@@ -275,6 +275,8 @@ async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disc
   if (answer.error === 'existing account') throw new Error('EXISTING_ACCOUNT')
   // Banned by the platform's operator (workers/rooms, people.ts).
   if (answer.error === 'banned') throw new Error('BANNED')
+  // Confirmed with another Google account than this one's (deleting it).
+  if (answer.error === 'confirm') throw new Error('OTHER_GOOGLE')
   if (!response.ok) throw Object.assign(new Error(`Google sign-in ${response.status}: ${answer.error ?? ''}`), { refused: answer.error === 'grant', status: response.status })
   return answer
 }
@@ -305,17 +307,20 @@ async function googleAccounts() {
 }
 const oauth2 = async () => (await googleAccounts()).oauth2
 
-// Google's button calls one handler a page: the latest button's.
+// Google's button calls one handler a page: the latest button's. Set up
+// again only when who it's for changes (`hint`).
 let toCredential: (idToken: string) => void = () => {}
-let buttonsReady = false
+let setUpFor: string | null | undefined
 /** Google's "Sign in with Google" button, drawn by Google (its own frame) in
- *  `box`, in `locale`: one click, and its ID token to `onCredential`. */
-export async function renderGoogleButton(box: HTMLElement, locale: string, onCredential: (idToken: string) => void): Promise<void> {
+ *  `box`, in `locale`: one click, and its ID token to `onCredential`. With
+ *  `hint` (an address), for that Google account alone -- no choosing among
+ *  the browser's: confirming it's really them, the one signed in. */
+export async function renderGoogleButton(box: HTMLElement, locale: string, onCredential: (idToken: string) => void, hint?: string): Promise<void> {
   const { id } = await googleAccounts()
   toCredential = onCredential
-  if (!buttonsReady) {
-    id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', callback: (answer: { credential?: string }) => { if (answer.credential) toCredential(answer.credential) } })
-    buttonsReady = true
+  if (setUpFor !== (hint ?? null)) {
+    id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', ...(hint ? { login_hint: hint } : {}), callback: (answer: { credential?: string }) => { if (answer.credential) toCredential(answer.credential) } })
+    setUpFor = hint ?? null
   }
   id.renderButton(box, { type: 'standard', theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'center', width: Math.min(400, Math.max(200, box.clientWidth)), locale })
 }

@@ -373,6 +373,7 @@ const zh: Catalogue = {
   'auth.errUnavailable': '当前无法进行身份验证',
   'auth.errUsernameTaken': '这个用户名已经有人用了',
   'auth.errEmailRegistered': '这个邮箱已经注册过了，请直接登录。',
+  'auth.errEmailGoogle': '这个地址已经有一个用 Google 登录的账户。请改用“使用 Google 继续”。',
   'auth.errNoEmail': '请输入你的邮箱地址',
   'auth.confirmSentVerify': '我们已向你发送一封邮件，其中有确认链接。请查看收件箱并点击链接以验证账号。',
 
@@ -1575,6 +1576,7 @@ const zh: Catalogue = {
   'profile.deleteCode': '确认码',
   'profile.deleteCodeSent': '我们已经把六位验证码发到你的邮箱，10 分钟内有效。',
   'profile.deleteWithGoogle': '用 Google 确认即可立即删除。保存在你的 Google 云端硬盘中的 Atrium 仍留在那里，归你所有。',
+  'profile.errOtherGoogle': '那是另一个 Google 账户。请用你登录时所用的账户确认。',
   'profile.deleteWithPassword': '请输入密码以确认',
   'profile.resendCode': '重新发送验证码',
   'profile.resendCodeIn': '{seconds} 秒后可重新发送',

@@ -374,6 +374,7 @@ const ko: Catalogue = {
   'auth.errUnavailable': '지금은 인증을 할 수 없어요',
   'auth.errUsernameTaken': '이미 쓰이고 있는 사용자 이름이에요',
   'auth.errEmailRegistered': '이미 가입된 이메일이에요. 로그인해 주세요.',
+  'auth.errEmailGoogle': '이 주소에는 이미 Google로 로그인하는 계정이 있어요. 대신 “Google로 계속하기”를 사용하세요.',
   'auth.errNoEmail': '이메일 주소를 입력해 주세요',
   'auth.confirmSentVerify': '확인 링크를 메일로 보냈어요. 받은편지함에서 링크를 눌러 계정을 인증해 주세요.',
 
@@ -1576,6 +1577,7 @@ const ko: Catalogue = {
   'profile.deleteCode': '확인 코드',
   'profile.deleteCodeSent': '여섯 자리 코드를 메일 주소로 보냈습니다. 10분 동안 유효합니다.',
   'profile.deleteWithGoogle': 'Google로 확인하면 지금 삭제됩니다. Google 드라이브에 보관된 Atrium은 그대로 당신의 것으로 남습니다.',
+  'profile.errOtherGoogle': '다른 Google 계정이었어요. 로그인할 때 쓴 계정으로 확인하세요.',
   'profile.deleteWithPassword': '확인을 위한 비밀번호',
   'profile.resendCode': '코드 다시 보내기',
   'profile.resendCodeIn': '{seconds}초 후 다시 보내기',
