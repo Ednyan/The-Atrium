@@ -11,6 +11,7 @@
 // account keeps them in its Supabase profile.
 
 import { welcome } from './mail'
+import { dropMirror } from './mirror'
 import { fromBase64, replies, whoIs, type Env, type Who } from './who'
 
 const TABLES = [
@@ -50,6 +51,11 @@ const TABLES = [
   'create index if not exists store_files_owner on store_files (owner)',
   'create table if not exists store_shares (file text not null, account text not null, primary key (file, account))',
   'create table if not exists store_appdata (account text not null, name text not null, bytes text not null, updated_at integer not null, primary key (account, name))',
+  // Public Drive atriums' mirrors (src/mirror.ts): their files by Drive id.
+  `create table if not exists mirror_files (
+    lobby text not null, id text not null, parent text, name text not null, folder integer not null,
+    version text not null, size integer not null, updated_at integer not null, primary key (lobby, id))`,
+  'create index if not exists mirror_files_parent on mirror_files (lobby, parent)',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -453,7 +459,9 @@ export async function people(request: Request, env: Env, what: string): Promise<
       const lobby = text('lobby_id', 64)
       if (!lobby) return answer(400, { error: 'body' })
       const done = await db.prepare('delete from public_atriums where lobby_id = ? and owner = ?').bind(lobby, who.id).run()
-      if (!done.meta.changes && await isOperator(env, who, asked.token as string)) await db.prepare('delete from public_atriums where lobby_id = ?').bind(lobby).run()
+      const taken = done.meta.changes || (await isOperator(env, who, asked.token as string) && (await db.prepare('delete from public_atriums where lobby_id = ?').bind(lobby).run()).meta.changes)
+      // Its mirror goes with its listing.
+      if (taken) await dropMirror(env, lobby)
       return answer(200, { ok: true })
     }
 

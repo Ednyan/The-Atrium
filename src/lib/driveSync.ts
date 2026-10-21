@@ -43,6 +43,7 @@ import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { onRoomEvent, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
 import { hostedStore, isHostedId } from './hostedStore'
+import { mirrorList, mirrorPut, mirroredStore } from './mirror'
 
 /** What the sync needs of where an atrium is kept: Google Drive (lib/drive),
  *  the Atrium's own hosted store (lib/hostedStore) -- or a stand-in (the
@@ -101,6 +102,10 @@ export const useHostedStore = (next: DriveStore) => { hosted = next }
 const storeOf = (id: string) => (isHostedId(id) ? hosted : driveStore)
 /** A hosted atrium: one kept in the Atrium's own store, not in Drive. */
 export const isHostedAtrium = (lobbyId: string) => { const kept = allKept()[lobbyId]; return !!kept && isHostedId(kept.roster) }
+// A public Drive atrium's viewer reads it through its mirror first (lib/mirror),
+// while its session runs.
+let mirrored: DriveStore | null = null
+const reading = (id: string) => (mirrored && !isHostedId(id) ? mirrored : storeOf(id))
 // The sync's store: each call made where its id is -- a roster, a folder, a
 // file says which by itself. What isn't by id (Google's window, one's app
 // data) is Drive's; the hosted store's are asked by name where needed.
@@ -111,9 +116,9 @@ const store: DriveStore = {
   createFolder: (name, parent) => (parent ? storeOf(parent) : driveStore).createFolder(name, parent),
   shareByLink: id => storeOf(id).shareByLink(id),
   write: (name, bytes, place) => storeOf('id' in place ? place.id : place.parent).write(name, bytes, place),
-  readByLink: id => storeOf(id).readByLink(id),
-  version: id => storeOf(id).version(id),
-  listByLink: folder => storeOf(folder).listByLink(folder),
+  readByLink: id => reading(id).readByLink(id),
+  version: id => reading(id).version(id),
+  listByLink: folder => reading(folder).listByLink(folder),
   readAppData: name => driveStore.readAppData(name),
   writeAppData: (name, bytes) => driveStore.writeAppData(name, bytes),
   shareWith: (id, to) => storeOf(id).shareWith(id, to),
@@ -365,6 +370,7 @@ export async function sharePreview(lobbyId: string, picture: Blob): Promise<void
     ? await write({ id: kept.preview }).catch(error => { if (/Drive 404/.test(String(error))) return write({ parent: kept.folder }); throw error })
     : await write({ parent: kept.folder })
   keep(lobbyId, { ...kept, preview: file.id, previewVersion: await store.version(file.id) })
+  mirrorOf(lobbyId, { id: file.id, parent: kept.folder, name: PREVIEW, version: allKept()[lobbyId]?.previewVersion, bytes: sealed })
   if (file.id !== kept.preview) await changeRoster(lobbyId, signedInHere(), async roster => ({ roster: { ...roster, preview: file.id } }))
   // Public: its listing too, the picture and the name as they are now.
   if (isPublicAtrium(lobbyId)) await list(lobbyId, await bytesOf(picture)).catch(error => console.warn('[drive] its public listing:', error))
@@ -598,6 +604,7 @@ async function writeRoster(kept: Kept, roster: Roster): Promise<void> {
   }
   // Kept as written: who wrote it needn't download it again.
   keepRoster(kept.roster, written.version ?? await store.version(kept.roster), roster)
+  if (roster.public && !isHostedId(kept.roster)) void mirrorPut(roster.lobbyId, { id: kept.roster, parent: null, name: 'atrium.roster', version: written.version, bytes: asJson(roster) })
 }
 
 // A change to the roster: read fresh, changed, written, and the keys this
@@ -791,6 +798,52 @@ export async function makePublic(lobbyId: string, me: string): Promise<void> {
   const { localDb } = await engine()
   const picture = await localDb.readLocalFileBytes(`local://traces/${lobbyId}/preview.webp`).catch(() => null)
   await list(lobbyId, picture)
+  // Listed: its mirror can be kept now -- everything so far.
+  const kept = allKept()[lobbyId]
+  if (kept && !isHostedId(kept.roster)) await fillMirror(lobbyId, kept.roster).catch(error => console.warn('[drive] its mirror:', error))
+}
+
+// ---------------------------------------------------------------- public atriums' mirrors
+
+// A public Drive atrium's files kept by the Atrium too (lib/mirror), for
+// whoever looks at it: each writer's own writes as they're made (mirrorOf),
+// and the owner's app filling in whatever's missing -- on making it public,
+// and every so often after, for writes an older app or a failed request left
+// out. A hosted atrium needs none: the Atrium has it already.
+const MIRROR_FILL_MS = 10 * 60_000
+
+/** Kept in the mirror too, if the atrium's a public Drive one -- quietly:
+ *  Drive has it anyway. */
+function mirrorOf(lobbyId: string, entry: Parameters<typeof mirrorPut>[1]): void {
+  if (!isHostedAtrium(lobbyId) && isPublicAtrium(lobbyId)) void mirrorPut(lobbyId, entry)
+}
+
+/** Everything of it the mirror lacks, read from Drive and put there: its
+ *  roster first (which says who else may keep it), then each writer's folder
+ *  and files. */
+async function fillMirror(lobbyId: string, rosterId: string): Promise<void> {
+  const rosterBytes = await driveStore.readByLink(rosterId)
+  const roster = fromJson<Roster>(rosterBytes)
+  if (!roster.public) return
+  await mirrorPut(lobbyId, { id: rosterId, parent: null, name: 'atrium.roster', version: await driveStore.version(rosterId), bytes: rosterBytes })
+  for (const writer of writersOf(roster)) {
+    const folder = (await driveStore.listByLink(writer.root)).find(file => file.name === lobbyId)
+    if (!folder) continue
+    await mirrorPut(lobbyId, { id: folder.id, parent: writer.root, name: lobbyId, version: folder.version })
+    await fillFolder(lobbyId, folder.id)
+  }
+}
+async function fillFolder(lobbyId: string, folder: string): Promise<void> {
+  const have = new Map((await mirrorList(lobbyId, folder)).map(entry => [entry.id, entry.version]))
+  for (const file of await driveStore.listByLink(folder)) {
+    // Its files' folder: itself, and what's in it.
+    if (file.name === 'files') {
+      if (!have.has(file.id)) await mirrorPut(lobbyId, { id: file.id, parent: folder, name: 'files', version: file.version })
+      await fillFolder(lobbyId, file.id)
+    } else if (have.get(file.id) !== (file.version || '1')) {
+      await mirrorPut(lobbyId, { id: file.id, parent: folder, name: file.name, version: file.version, bytes: await driveStore.readByLink(file.id) })
+    }
+  }
 }
 /** The owner's: private again -- its keys out of its roster, and a new
  *  generation, so whoever read it while it was public can't read what's
@@ -885,6 +938,8 @@ interface Session {
   looking: number
   // When the store was last looked at, and whether the room was live then.
   lookedAt: number
+  // When the owner's app last filled a public atrium's mirror in.
+  mirrorFilledAt: number
   roomLive: boolean
   stopHearing: () => void
   // Those who asked to be let in and were put off, this visit.
@@ -938,10 +993,11 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
+  mirrored = kept.viewer && !isHostedId(kept.roster) ? mirroredStore(lobbyId, driveStore) : null
   setStatus({ ended: undefined })
   local.listenToLocalWrites(() => {
     window.clearTimeout(s.quiet)
@@ -974,6 +1030,7 @@ export function stopDriveSync(): Promise<void> {
   const s = session
   if (!s) return stopping
   session = null
+  mirrored = null
   window.clearTimeout(s.quiet)
   window.clearInterval(s.looking)
   s.stopHearing()
@@ -1044,6 +1101,7 @@ async function up(s: Session): Promise<void> {
   if (!changes.length) return
   const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
   const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
+  mirrorOf(s.lobbyId, { id: file.id, parent: s.kept.folder, name: `${at}.save`, version: file.version, bytes: sealed })
   merge(s.merged, changes)
   s.last = at
   s.seen.add(file.id)
@@ -1173,6 +1231,11 @@ async function down(s: Session): Promise<void> {
   // Downloads only for what's new: the roster when its version moves, saves
   // not read yet. A look at an atrium nobody has changed downloads nothing.
   const listed = await listWriters(s, roster)
+  // Public, kept in Drive: the owner's app fills its mirror in every so often.
+  if (s.kept.owner && roster.public && !isHostedId(s.kept.roster) && Date.now() - s.mirrorFilledAt > MIRROR_FILL_MS) {
+    s.mirrorFilledAt = Date.now()
+    await fillMirror(s.lobbyId, s.kept.roster).catch(error => console.warn('[drive] its mirror:', error))
+  }
   // The owner's folder holds the snapshot, once one's been made: read when
   // it's changed, and before the saves -- those it holds aren't read.
   const owner = roster.members.find(member => member.role === 'owner')?.user
@@ -1274,6 +1337,7 @@ async function tidy(s: Session, roster: Roster, listed: { user: string; files: L
   const sealed = await sealJson(s.keyring, snapshotOf(s.merged, folded, Date.now() - FORGET_MS))
   const had = mine.find(file => file.name === SNAPSHOT)
   const file = await store.write(SNAPSHOT, sealed, had ? { id: had.id } : { parent: s.kept.folder })
+  mirrorOf(s.lobbyId, { id: file.id, parent: s.kept.folder, name: SNAPSHOT, version: file.version, bytes: sealed })
   s.snapshot = { version: file.version ?? '', folded: new Set(folded) }
   await persist(s)
 }
@@ -1410,7 +1474,10 @@ async function sendFiles(s: Session, urls: string[]): Promise<{ id: string; file
     try {
       const bytes = await s.local.readLocalFileBytes(url)
       if (!bytes) return null
-      const file = await store.write(`${crypto.randomUUID()}.media`, await seal(s.keyring, bytes), { parent: folder })
+      const sealed = await seal(s.keyring, bytes)
+      const name = `${crypto.randomUUID()}.media`
+      const file = await store.write(name, sealed, { parent: folder })
+      mirrorOf(s.lobbyId, { id: file.id, parent: folder, name, version: file.version, bytes: sealed })
       s.present.add(url)
       return { id: url, file: file.id }
     } catch (error) {
