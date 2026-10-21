@@ -315,14 +315,14 @@ let setUpFor: string | null | undefined
  *  `box`, in `locale`: one click, and its ID token to `onCredential`. With
  *  `hint` (an address), for that Google account alone -- no choosing among
  *  the browser's: confirming it's really them, the one signed in. */
-export async function renderGoogleButton(box: HTMLElement, locale: string, onCredential: (idToken: string) => void, hint?: string): Promise<void> {
+export async function renderGoogleButton(box: HTMLElement, locale: string, onCredential: (idToken: string) => void, hint?: string, light = false): Promise<void> {
   const { id } = await googleAccounts()
   toCredential = onCredential
   if (setUpFor !== (hint ?? null)) {
     id.initialize({ client_id: GOOGLE_CLIENT_ID, ux_mode: 'popup', ...(hint ? { login_hint: hint } : {}), callback: (answer: { credential?: string }) => { if (answer.credential) toCredential(answer.credential) } })
     setUpFor = hint ?? null
   }
-  id.renderButton(box, { type: 'standard', theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'center', width: Math.min(400, Math.max(200, box.clientWidth)), locale })
+  id.renderButton(box, { type: 'standard', theme: light ? 'outline' : 'filled_black', size: 'large', text: 'continue_with', shape: 'rectangular', logo_alignment: 'center', width: Math.min(400, Math.max(200, box.clientWidth)), locale })
 }
 
 /** Google's window that asks for Drive (the code flow, which always shows

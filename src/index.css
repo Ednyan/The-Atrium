@@ -1168,6 +1168,22 @@ input[type='color']::-moz-color-swatch { border: none; }
   .donate-room, .donate-rise-left, .donate-rise-right { animation: none; }
 }
 
+/* The landing page's way in: bright, its light rising round it as it's
+   pointed at -- the landing's own, the sign-in page's. */
+.landing-cta {
+  background: rgb(var(--c-strong)); color: rgb(var(--c-ground)); font-weight: 500;
+  transition: box-shadow 0.35s ease, transform 0.2s ease, background-color 0.3s ease;
+}
+.landing-cta:hover:not(:disabled) { box-shadow: 0 0 46px rgb(var(--landing-light) / 0.38); transform: translateY(-1px); }
+.landing-cta:active:not(:disabled) { transform: translateY(1px); }
+[data-landing-theme='light'] .landing-cta:hover:not(:disabled) { box-shadow: 0 10px 30px rgb(var(--c-fg) / 0.22); }
+.landing-cta:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 4px; }
+
+/* The logo's orb, the one warm light: the landing page's closing scene, and
+   the sign-in page standing in it. */
+.landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
+[data-landing-theme='light'] .landing-orb { background: rgb(var(--c-strong)); box-shadow: 0 0 30px 8px rgb(var(--c-fg) / 0.12); }
+
 /* A link in the landing page's way: words with a rule that draws out under
    them. Here rather than in the landing page's own styles, so the donate
    pop-up has it wherever it opens. */

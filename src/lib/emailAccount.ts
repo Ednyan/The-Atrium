@@ -69,8 +69,15 @@ function signedIn(answer: Answer): Shown {
 /** What went wrong, by name, for the page to say. */
 const failed = (code: string, more: object = {}) => Object.assign(new Error(code), more)
 
+/** The rule a new password is held to -- here, as the worker never sees one:
+ *  six characters or more, a lowercase letter, an uppercase letter, a digit
+ *  (what existing accounts' passwords were held to by Supabase). */
+export const strongEnough = (password: string) =>
+  password.length >= 6 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
+
 /** A new account: kept unconfirmed until its code comes back (confirm). */
 export async function signUp(email: string, username: string, password: string): Promise<void> {
+  if (!strongEnough(password)) throw failed('WEAK_PASSWORD')
   const { status, body } = await ask('signup', { email, username, ...(await keysFor(email, username, password)), language: currentLanguage() })
   if (status === 200) return
   // Taken: the username, the address by a Google account (signed in to with Google), or by another account.
@@ -123,6 +130,7 @@ export async function adopt(supabaseToken: string, email: string, username: stri
 /** A forgotten password: the code, and the new one -- signed in, then the
  *  username's key set too (the reset knew the address alone). */
 export async function resetPassword(email: string, code: string, password: string): Promise<void> {
+  if (!strongEnough(password)) throw failed('WEAK_PASSWORD')
   const emailKey = await keyFor(email, password)
   const { status, body } = await ask('reset', { email, code, email_key: emailKey })
   if (status !== 200) throw failed(status === 429 ? 'TOO_MANY_TRIES' : 'WRONG_CODE')
@@ -132,6 +140,7 @@ export async function resetPassword(email: string, code: string, password: strin
 
 /** A new password, with the one it replaces. Every other sign-in ends. */
 export async function changePassword(current: string, next: string): Promise<void> {
+  if (!strongEnough(next)) throw failed('WEAK_PASSWORD')
   const account = workerAccount()
   if (account?.kind !== 'email' || !account.email) throw failed('NOT_SIGNED_IN')
   const { username } = await me()

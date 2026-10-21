@@ -6,7 +6,7 @@ import { useTranslation } from '../lib/i18n'
  *  signing in, or confirming it's really them (deleting a Google account:
  *  `hint`, its address, so it's that Google account and no other). Covered
  *  while `busy`. */
-export default function GoogleButton({ busy, onCredential, hint }: { busy: boolean; onCredential: (idToken: string) => void; hint?: string }) {
+export default function GoogleButton({ busy, onCredential, hint, light = false }: { busy: boolean; onCredential: (idToken: string) => void; hint?: string; light?: boolean }) {
   const { language } = useTranslation()
   const box = useRef<HTMLDivElement>(null)
   const latest = useRef(onCredential)
@@ -15,9 +15,9 @@ export default function GoogleButton({ busy, onCredential, hint }: { busy: boole
     const at = box.current
     if (!at) return
     void import('../lib/drive')
-      .then(drive => drive.renderGoogleButton(at, language, idToken => latest.current(idToken), hint))
+      .then(drive => drive.renderGoogleButton(at, language, idToken => latest.current(idToken), hint, light))
       .catch(error => console.warn('[atrium] the Google button:', error))
-  }, [language, hint])
+  }, [language, hint, light])
   return (
     <div aria-busy={busy} className={`w-full flex justify-center min-h-[44px] ${busy ? 'opacity-50 pointer-events-none' : ''}`}>
       <div ref={box} className="w-full flex justify-center" />

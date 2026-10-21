@@ -231,7 +231,7 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
         setConfirmPassword('')
         setTimeout(() => { setShowPasswordChange(false); setPasswordSuccess(false) }, 2000)
       } catch (err: any) {
-        setPasswordError(err?.message === 'WRONG_PASSWORD' ? t('profile.errWrongCurrent') : err?.message === 'SAME' ? t('profile.errSamePassword') : t('profile.errUpdatePassword'))
+        setPasswordError(err?.message === 'WRONG_PASSWORD' ? t('profile.errWrongCurrent') : err?.message === 'SAME' ? t('profile.errSamePassword') : err?.message === 'WEAK_PASSWORD' ? t('auth.passwordHint') : t('profile.errUpdatePassword'))
       } finally {
         setPasswordLoading(false)
       }

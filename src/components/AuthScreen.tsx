@@ -1,10 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { friendlyAuthError } from '../lib/authErrors'
 import { markSignInStarted } from '../lib/signInIntent'
 import { useTranslation } from '../lib/i18n'
 import { supabase, isDesktop } from '../lib/supabase'
 import { googleOpen } from '../lib/drive'
 import GoogleButton from './GoogleButton'
+import Atmosphere from './Atmosphere'
+import ThemeToggle from './ThemeToggle'
+import { Brackets } from './landing/parts'
+import { DONATE_CUT } from './DonateButton'
+import { useLandingTheme } from '../lib/useLandingTheme'
 import { usernameAvailable } from '../lib/people'
 import { adopt, confirmEmail, resetPassword, sendCode, signIn, signUp, type SignIn } from '../lib/emailAccount'
 
@@ -20,6 +25,8 @@ interface AuthScreenProps {
 
 export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, initialError }: AuthScreenProps) {
   const { t } = useTranslation()
+  // The landing page's own theme: this page is its next room.
+  const theme = useLandingTheme()
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [emailOrUsername, setEmailOrUsername] = useState('')
@@ -46,101 +53,10 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     WAIT: t('auth.error.tooManyTries'),
     CHECK: t('auth.error.usernameLookup'),
     WRONG_CODE: t('auth.error.wrongCode'),
+    WEAK_PASSWORD: t('auth.passwordHint'),
     BANNED: t('auth.error.banned'),
     AUTH_DOWN: t('auth.errUnavailable'),
   } as Record<string, string>)[err?.message] ?? friendlyAuthError(err, fallback)
-
-  // Memoize particle positions (fireflies)
-  const particles = useMemo(() => 
-    [...Array(12)].map((_, i) => ({
-      left: `${(i * 17 + 3) % 96}%`,
-      top: `${(i * 23 + 5) % 94}%`,
-      duration: 8 + (i * 1.5) % 6,
-      delay: i * 0.5,
-    })), []
-  )
-
-  // Memoize background rectangles (trace-like elements)
-  const backgroundRects = useMemo(() => 
-    [...Array(8)].map((_, i) => ({
-      left: `${(i * 19 + 7) % 90}%`,
-      top: `${(i * 31 + 12) % 85}%`,
-      width: 30 + (i * 17) % 80,
-      height: 15 + (i * 13) % 40,
-      rotation: (i * 7) % 15 - 7,
-      delay: i * 0.3,
-    })), []
-  )
-
-  // Background component to avoid repetition
-  const BackgroundElements = () => (
-    <>
-      {/* Animated background grid */}
-      <div 
-        className="absolute inset-0 pointer-events-none opacity-10"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-        }}
-      />
-
-      {/* Background rectangles */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {backgroundRects.map((rect, i) => (
-          <div
-            key={i}
-            className="absolute border border-nier-border/[0.08] bg-nier-border/[0.02]"
-            style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-              transform: `rotate(${rect.rotation}deg)`,
-              animation: `rectFloat ${12 + i % 5}s ease-in-out infinite`,
-              animationDelay: `${rect.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Floating particles */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {particles.map((particle, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-nier-border rounded-full opacity-0"
-            style={{
-              left: particle.left,
-              top: particle.top,
-              animation: `firefly ${particle.duration}s ease-in-out infinite`,
-              animationDelay: `${particle.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* CSS for animations */}
-      <style>{`
-        @keyframes firefly {
-          0% { opacity: 0; transform: translateY(0px) translateX(0px); }
-          10% { opacity: 0.15; }
-          30% { opacity: 0.3; transform: translateY(-20px) translateX(15px); }
-          50% { opacity: 0.25; transform: translateY(-50px) translateX(-10px); }
-          70% { opacity: 0.35; transform: translateY(-30px) translateX(25px); }
-          90% { opacity: 0.1; transform: translateY(-10px) translateX(5px); }
-          100% { opacity: 0; transform: translateY(0px) translateX(0px); }
-        }
-        
-        @keyframes rectFloat {
-          0%, 100% { opacity: 0.6; transform: rotate(var(--rotation, 0deg)) translateY(0px); }
-          50% { opacity: 0.9; transform: rotate(var(--rotation, 0deg)) translateY(-10px); }
-        }
-      `}</style>
-    </>
-  )
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -421,357 +337,272 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
   }
 
+  // The landing page's hall, which this page continues -- its closing scene,
+  // the orb above the words, and the way in under them: its theme, its
+  // light and dust, a way back and the theme's switch along the top.
+  const field = 'w-full bg-transparent border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/45 focus:border-nier-border/70 transition-colors'
+  const label = 'block text-nier-bg/70 text-[11px] tracking-[0.2em] uppercase mb-2'
+  const hint = 'text-nier-bg/60 text-[10px] tracking-wider mt-2 uppercase leading-relaxed'
+  const page = (title: string, children: ReactNode, after?: ReactNode) => (
+    <div data-landing-theme={theme.resolved} className="fixed inset-0 z-50 overflow-y-auto font-mono" style={{ backgroundColor: 'rgb(var(--c-ground))' }}>
+      <Atmosphere />
+      <header className="relative z-10 flex items-center justify-between gap-4 px-5 sm:px-8 h-16">
+        {onBackToLanding ? (
+          <button type="button" onClick={onBackToLanding} className="landing-link text-xs tracking-[0.2em] uppercase">
+            <span aria-hidden="true">◁</span> {t('auth.back')}
+          </button>
+        ) : <span />}
+        <ThemeToggle />
+      </header>
+      <main className="relative z-10 flex justify-center px-5 pt-4 pb-16 sm:pt-10">
+        <div className="w-full max-w-[26rem]">
+          <div className="flex flex-col items-center text-center mb-10">
+            <span aria-hidden="true" className="landing-orb w-4 h-4 rounded-full mb-8" />
+            <p translate="no" className="text-[11px] tracking-[0.35em] uppercase text-nier-bg/60">The Digital Atrium</p>
+            <h1 className="mt-4 text-3xl sm:text-4xl font-extralight tracking-[0.1em] uppercase text-nier-strong text-balance">{title}</h1>
+          </div>
+          <div className="relative">
+            <Brackets />
+            <div className="border border-nier-border/30 p-6 sm:p-8" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
+              {children}
+            </div>
+          </div>
+          {after}
+        </div>
+      </main>
+    </div>
+  )
+  const problem = error && (
+    <p role="alert" className="border px-4 py-3 text-xs tracking-wide leading-relaxed" style={{ borderColor: 'rgb(var(--c-danger) / 0.45)', color: 'rgb(var(--c-danger))' }}>
+      {error}
+    </p>
+  )
+  const commit = (text: string, disabled = false) => (
+    <button type="submit" disabled={loading || disabled} className="landing-cta w-full py-3.5 text-xs tracking-[0.2em] uppercase disabled:opacity-50 disabled:cursor-not-allowed" style={{ clipPath: DONATE_CUT }}>
+      {loading ? `◇ ${t('auth.processing')}` : text}
+    </button>
+  )
+
   // A code mailed: entered here -- a new account's, or a new password's,
   // which takes the new password too. Another can be asked for.
   if (codeFor) {
     const reset = codeFor.purpose === 'reset'
-    const field = 'w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors'
-    return (
-      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
-        {/* Scanline overlay */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
+    return page(t(reset ? 'auth.resetPassword' : 'auth.checkEmail'), (
+      <form onSubmit={handleCode} className="space-y-5">
+        <p className="text-nier-bg/80 text-sm leading-relaxed text-pretty">
+          {t(reset ? 'auth.resetCodeSent' : 'auth.confirmCodeSent', { email: codeFor.email })}
+        </p>
+        <div>
+          <label htmlFor="auth-code" className={label}>{t('auth.code')}</label>
+          <input
+            id="auth-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            className={`${field} tracking-[0.4em]`}
+            placeholder="000000"
+            required
+          />
+        </div>
+        {reset && (
+          <>
+            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder={t('profile.newPassword')} className={field} autoComplete="new-password" required minLength={6} />
+            <input type="password" value={newPasswordAgain} onChange={e => setNewPasswordAgain(e.target.value)} placeholder={t('profile.confirmNewPassword')} className={field} autoComplete="new-password" required minLength={6} />
+            <p className={hint}>{t('auth.passwordHint')}</p>
+          </>
+        )}
+        {problem}
+        {note && <p className="text-nier-bg/70 text-xs tracking-wide">{note}</p>}
+        {commit(t(reset ? 'auth.setNewPassword' : 'auth.confirmCode'), code.length < 6)}
+      </form>
+    ), (
+      <div className="mt-8 flex items-center justify-between gap-4">
+        <button type="button" onClick={() => void sendAnother()} className="landing-link text-xs tracking-wide">◇ {t('profile.resendCode')}</button>
+        <button
+          type="button"
+          onClick={() => {
+            setCodeFor(null)
+            setMode('login')
+            setError('')
           }}
-        />
-
-        <BackgroundElements />
-
-        <form onSubmit={handleCode} className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative z-10 space-y-5">
-          {/* Corner brackets */}
-          <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-          <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-          <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-          <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t(reset ? 'auth.resetPassword' : 'auth.checkEmail')}</h2>
-          <p className="text-nier-bg/80 text-sm leading-relaxed">
-            {t(reset ? 'auth.resetCodeSent' : 'auth.confirmCodeSent', { email: codeFor.email })}
-          </p>
-
-          <div>
-            <label htmlFor="auth-code" className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">{t('auth.code')}</label>
-            <input
-              id="auth-code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className={`${field} tracking-[0.4em]`}
-              placeholder="000000"
-              required
-            />
-          </div>
-
-          {reset && (
-            <>
-              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder={t('profile.newPassword')} className={field} autoComplete="new-password" required minLength={6} />
-              <input type="password" value={newPasswordAgain} onChange={e => setNewPasswordAgain(e.target.value)} placeholder={t('profile.confirmNewPassword')} className={field} autoComplete="new-password" required minLength={6} />
-            </>
-          )}
-
-          {error && (
-            <div className="border border-nier-red/40 bg-nier-red/10 px-4 py-3 text-nier-bg/80 text-xs tracking-wide">
-              ⚠ {error}
-            </div>
-          )}
-          {note && <p className="text-nier-bg/70 text-xs tracking-wide">{note}</p>}
-
-          <button
-            type="submit"
-            disabled={loading || code.length < 6}
-            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? `◇ ${t('auth.processing')}` : t(reset ? 'auth.setNewPassword' : 'auth.confirmCode')}
-          </button>
-
-          <div className="flex items-center justify-between gap-3">
-            <button type="button" onClick={() => void sendAnother()} className="text-nier-bg/75 text-[11px] tracking-wider hover:text-nier-bg transition-colors">
-              ◇ {t('profile.resendCode')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCodeFor(null)
-                setMode('login')
-                setError('')
-              }}
-              className="text-nier-bg/75 text-[11px] tracking-wider hover:text-nier-bg transition-colors"
-            >
-              {t('auth.backToLogin')}
-            </button>
-          </div>
-        </form>
+          className="landing-link text-xs tracking-wide"
+        >
+          {t('auth.backToLogin')}
+        </button>
       </div>
-    )
+    ))
   }
 
-  return (
-    <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
-      {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
-        }}
-      />
-      
-      <BackgroundElements />
-      
-      {/* Corner decorations */}
-      <div className="absolute top-8 left-8 w-12 h-12 border-l border-t border-nier-border/20" />
-      <div className="absolute top-8 right-8 w-12 h-12 border-r border-t border-nier-border/20" />
-      <div className="absolute bottom-8 left-8 w-12 h-12 border-l border-b border-nier-border/20" />
-      <div className="absolute bottom-8 right-8 w-12 h-12 border-r border-b border-nier-border/20" />
-
-      {/* Back to landing button */}
-      {onBackToLanding && (
-        <button
-          onClick={onBackToLanding}
-          className="absolute top-12 left-12 group z-20"
-        >
-          <div className="relative px-4 py-2 border border-nier-border/40 bg-nier-black/80 hover:border-nier-border/80 hover:bg-nier-blackLight transition-all duration-300">
-            {/* Corner accents */}
-            <div className="absolute -top-0.5 -left-0.5 w-2 h-2 border-l border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 border-r border-t border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -bottom-0.5 -left-0.5 w-2 h-2 border-l border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 border-r border-b border-nier-border/60 group-hover:border-nier-bg transition-colors" />
-            
-            <div className="flex items-center gap-3">
-              <span className="text-nier-bg/75 group-hover:text-nier-bg group-hover:-translate-x-1 transition-all duration-300">◁</span>
-              <span className="text-[10px] tracking-[0.2em] uppercase text-nier-bg/75 group-hover:text-nier-bg transition-colors">{t('auth.back')}</span>
-            </div>
-          </div>
-        </button>
+  return page(mode === 'login' ? t('auth.welcome') : mode === 'signup' ? t('auth.createAccount') : t('auth.resetPassword'), (
+    <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword} className="space-y-5">
+      {mode === 'signup' && (
+        <div>
+          <label htmlFor="auth-username" className={label}>{t('auth.username')}</label>
+          <input
+            id="auth-username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className={field}
+            placeholder={t('auth.usernamePlaceholder')}
+            autoComplete="username"
+            required
+            minLength={3}
+            maxLength={20}
+            pattern="[a-zA-Z0-9_]+"
+          />
+          <p className={hint}>{t('auth.usernameHint')}</p>
+        </div>
       )}
 
-      <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative z-10">
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="w-8 h-[1px] bg-gradient-to-r from-transparent to-nier-border/40" />
-            <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-            <div className="w-8 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
-          </div>
-          <h1 className="text-xl text-nier-bg tracking-[0.2em] uppercase">
-            {mode === 'login' ? t('auth.welcome') : mode === 'signup' ? t('auth.createAccount') : t('auth.resetPassword')}
-          </h1>
+      {mode === 'login' ? (
+        <div>
+          <label htmlFor="auth-login" className={label}>{t('auth.emailOrUsername')}</label>
+          <input
+            id="auth-login"
+            type="text"
+            value={emailOrUsername}
+            onChange={(e) => setEmailOrUsername(e.target.value)}
+            className={field}
+            placeholder={t('auth.emailOrUsernamePlaceholder')}
+            autoComplete="username"
+            required
+          />
         </div>
+      ) : (
+        <div>
+          <label htmlFor="auth-email" className={label}>{t('auth.email')}</label>
+          <input
+            id="auth-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={field}
+            placeholder={t('auth.emailPlaceholder')}
+            autoComplete="email"
+            required
+          />
+          {mode === 'forgot' && <p className={hint}>{t('auth.emailForReset')}</p>}
+        </div>
+      )}
 
-        <form onSubmit={mode === 'login' ? handleLogin : mode === 'signup' ? handleSignup : handleForgotPassword} className="space-y-5">
-          {mode === 'signup' && (
-            <div>
-              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                {t('auth.username')}
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder={t('auth.usernamePlaceholder')}
-                required
-                minLength={3}
-                maxLength={20}
-                pattern="[a-zA-Z0-9_]+"
-              />
-              <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                {t('auth.usernameHint')}
-              </p>
-            </div>
+      {mode !== 'forgot' && (
+        <div>
+          <label htmlFor="auth-password" className={label}>{t('auth.password')}</label>
+          <input
+            id="auth-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={field}
+            placeholder="••••••••"
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            required
+            minLength={6}
+          />
+          {mode === 'signup' && <p className={hint}>{t('auth.passwordHint')}</p>}
+        </div>
+      )}
+
+      {mode === 'signup' && (
+        <div>
+          <label htmlFor="auth-password-again" className={label}>{t('auth.confirmPassword')}</label>
+          <input
+            id="auth-password-again"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className={field}
+            placeholder="••••••••"
+            autoComplete="new-password"
+            required
+            minLength={6}
+          />
+          {confirmPassword.length > 0 && confirmPassword !== password && (
+            <p className={hint} style={{ color: 'rgb(var(--c-danger))' }}>{t('auth.passwordsDoNotMatch')}</p>
           )}
+        </div>
+      )}
 
-          {mode === 'login' ? (
-            <div>
-              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                {t('auth.emailOrUsername')}
-              </label>
-              <input
-                type="text"
-                value={emailOrUsername}
-                onChange={(e) => setEmailOrUsername(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder={t('auth.emailOrUsernamePlaceholder')}
-                required
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                {t('auth.email')}
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder={t('auth.emailPlaceholder')}
-                required
-              />
-              {mode === 'forgot' && (
-                <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                  {t('auth.emailForReset')}
-                </p>
-              )}
-            </div>
-          )}
+      {problem}
 
-          {mode !== 'forgot' && (
-            <div>
-              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                {t('auth.password')}
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-              {mode === 'signup' && (
-                <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 uppercase">
-                  {t('auth.passwordHint')}
-                </p>
-              )}
-            </div>
-          )}
+      {commit(mode === 'login' ? t('auth.logIn') : mode === 'signup' ? t('auth.signUp') : t('auth.sendResetLink'))}
 
-          {mode === 'signup' && (
-            <div>
-              <label className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">
-                {t('auth.confirmPassword')}
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-              {confirmPassword.length > 0 && confirmPassword !== password && (
-                <p className="text-[9px] tracking-wider mt-2 uppercase" style={{ color: '#FF6161' }}>
-                  {t('auth.passwordsDoNotMatch')}
-                </p>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className="border border-nier-red/40 bg-nier-red/10 px-4 py-3 text-nier-bg/80 text-xs tracking-wide">
-              ⚠ {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
+      {/* Google, and the way in without an account. Web only: OAuth returns
+          via an HTTP redirect, and the desktop shell has no deep-link handler
+          to catch it -- the same reason Pinterest's OAuth is web-only (see
+          lib/pinterest.ts). Not on the reset screen, where it makes no sense. */}
+      {!isDesktop && mode !== 'forgot' && (
+        <>
+          <div className="flex items-center gap-3 pt-1" aria-hidden="true">
+            <div className="flex-1 h-px" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.14)' }} />
+            <span className="text-nier-bg/60 text-[10px] tracking-[0.3em] uppercase">{t('auth.or')}</span>
+            <div className="flex-1 h-px" style={{ backgroundColor: 'rgb(var(--c-fg) / 0.14)' }} />
+          </div>
+          {googleOpen ? <GoogleButton busy={loading} light={theme.resolved === 'light'} onCredential={idToken => void handleGoogleCredential(idToken)} /> : <button
+            type="button"
             disabled={loading}
-            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleGoogleSignIn}
+            className="w-full py-3 border border-nier-border/40 text-nier-bg text-xs tracking-[0.15em] uppercase transition-colors hover:border-nier-border/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
           >
-            {loading ? `◇ ${t('auth.processing')}` : mode === 'login' ? t('auth.logIn') : mode === 'signup' ? t('auth.signUp') : t('auth.sendResetLink')}
-          </button>
-
-          {/* Google sign-in. Web only: OAuth returns via an HTTP redirect, and
-              the desktop shell has no deep-link handler to catch it -- the same
-              reason Pinterest's OAuth is web-only (see lib/pinterest.ts).
-              Hidden on the reset-password screen, where it makes no sense.
-
-              No profile handling is needed here: the on_auth_user_created
-              trigger creates one either way, falling back to a
-              "user_<id-prefix>" username when the provider supplies none, and
-              App.tsx's onAuthStateChange picks the session up on return. */}
-          {!isDesktop && mode !== 'forgot' && (
-            <>
-              <div className="flex items-center gap-3 pt-1">
-                <div className="flex-1 h-[1px] bg-nier-border/20" />
-                <span className="text-nier-bg/70 text-[9px] tracking-[0.2em] uppercase">or</span>
-                <div className="flex-1 h-[1px] bg-nier-border/20" />
-              </div>
-              {googleOpen ? <GoogleButton busy={loading} onCredential={idToken => void handleGoogleCredential(idToken)} /> : <button
-                type="button"
-                disabled={loading}
-                onClick={handleGoogleSignIn}
-                className="w-full py-3 border border-nier-border/40 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:border-nier-border/80 hover:bg-nier-border/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-              >
-                <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
-                  <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
-                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
-                  <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
-                  <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
-                </svg>
-                {t('auth.continueWithGoogle')}
-              </button>}
-              {onGuest && (
-                <button
-                  type="button"
-                  onClick={onGuest}
-                  className="w-full py-3 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.15em] uppercase transition-all hover:border-nier-border/80 hover:text-nier-bg hover:bg-nier-border/10"
-                >
-                  {t('auth.withoutAccount')}
-                  <span className="block mt-1 text-[10px] tracking-wider normal-case text-nier-bg/60">{t('auth.withoutAccountHint')}</span>
-                </button>
-              )}
-            </>
-          )}
-        </form>
-
-        <div className="mt-6 pt-4 border-t border-nier-border/20 text-center space-y-3">
-          {mode === 'login' && (
+            <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+              <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+              <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+              <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+              <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+            </svg>
+            {t('auth.continueWithGoogle')}
+          </button>}
+          {onGuest && (
             <button
-              onClick={() => {
-                setMode('forgot')
-                setError('')
-              }}
-              className="text-nier-bg/75 text-[10px] tracking-wider hover:text-nier-bg transition-colors block w-full"
+              type="button"
+              onClick={onGuest}
+              className="w-full py-3 border border-nier-border/40 text-nier-bg/80 text-xs tracking-[0.15em] uppercase transition-colors hover:border-nier-border/80 hover:text-nier-strong"
             >
-              ◇ {t('auth.forgotPassword')}
+              {t('auth.withoutAccount')}
+              <span className="block mt-1 text-[10px] tracking-wider normal-case text-nier-bg/60">{t('auth.withoutAccountHint')}</span>
             </button>
           )}
-          <button
-            onClick={() => {
-              if (mode === 'forgot') {
-                setMode('login')
-              } else {
-                setMode(mode === 'login' ? 'signup' : 'login')
-              }
-              setError('')
-              setConfirmPassword('')
-            }}
-            className="text-nier-bg/80 text-[11px] tracking-wider hover:text-nier-bg transition-colors"
-          >
-            {mode === 'login' ? `◇ ${t('auth.noAccount')}` : mode === 'signup' ? `◇ ${t('auth.haveAccount')}` : `◇ ${t('auth.backToLogin')}`}
-          </button>
-          <div className="flex items-center justify-center gap-3">
-            <a
-              href="/privacy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
-            >
-              {t('landing.privacy')}
-            </a>
-            <span className="text-nier-bg/50 text-[9px]">◇</span>
-            <a
-              href="/terms"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-nier-bg/70 hover:text-nier-bg/80 text-[9px] tracking-wider uppercase transition-colors"
-            >
-              {t('landing.terms')}
-            </a>
-          </div>
-        </div>
+        </>
+      )}
+    </form>
+  ), (
+    <div className="mt-8 flex flex-col items-center gap-3 text-center">
+      {mode === 'login' && (
+        <button
+          type="button"
+          onClick={() => {
+            setMode('forgot')
+            setError('')
+          }}
+          className="landing-link text-xs tracking-wide"
+        >
+          ◇ {t('auth.forgotPassword')}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setMode(mode === 'forgot' ? 'login' : mode === 'login' ? 'signup' : 'login')
+          setError('')
+          setConfirmPassword('')
+        }}
+        className="landing-link text-sm tracking-wide"
+      >
+        {mode === 'login' ? `◇ ${t('auth.noAccount')}` : mode === 'signup' ? `◇ ${t('auth.haveAccount')}` : `◇ ${t('auth.backToLogin')}`}
+      </button>
+      <div className="mt-4 flex items-center justify-center gap-3">
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-nier-bg/60 hover:text-nier-strong text-[10px] tracking-[0.15em] uppercase transition-colors">
+          {t('landing.privacy')}
+        </a>
+        <span className="text-nier-bg/40 text-[10px]" aria-hidden="true">◇</span>
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-nier-bg/60 hover:text-nier-strong text-[10px] tracking-[0.15em] uppercase transition-colors">
+          {t('landing.terms')}
+        </a>
       </div>
     </div>
-  )
+  ))
 }

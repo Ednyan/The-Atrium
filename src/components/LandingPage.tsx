@@ -828,14 +828,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
 
         /* The way in: filled with the light, glowing a little under the
            pointer, pressed on click. */
-        .landing-cta {
-          background: rgb(var(--c-strong)); color: rgb(var(--c-ground)); font-weight: 500;
-          transition: box-shadow 0.35s ease, transform 0.2s ease, background-color 0.3s ease;
-        }
-        .landing-cta:hover { box-shadow: 0 0 46px rgb(var(--landing-light) / 0.38); transform: translateY(-1px); }
-        .landing-cta:active { transform: translateY(1px); }
-        [data-landing-theme='light'] .landing-cta:hover { box-shadow: 0 10px 30px rgb(var(--c-fg) / 0.22); }
-        .landing-cta:focus-visible { outline: 1px solid rgb(var(--c-strong)); outline-offset: 4px; }
 
         /* Cells with hairlines between them: the grid's own lines. */
         .landing-bento { background: rgb(var(--c-fg) / 0.16); border: 1px solid rgb(var(--c-fg) / 0.16); }
@@ -855,8 +847,6 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
           border: 1px solid rgb(var(--c-fg) / 0.35); border-bottom-width: 2px;
           font-size: 0.75rem; letter-spacing: 0.08em; color: rgb(var(--c-strong)); white-space: nowrap;
         }
-        .landing-orb { background: rgb(255 255 255); box-shadow: 0 0 24px 6px rgb(var(--landing-light) / 0.55), 0 0 80px 20px rgb(var(--landing-light) / 0.2); }
-        [data-landing-theme='light'] .landing-orb { background: rgb(var(--c-strong)); box-shadow: 0 0 30px 8px rgb(var(--c-fg) / 0.12); }
 
         /* The teaser's controls (landing/parts ClipControls): on the film's black
            in either theme, so light; out of the way while it plays, given a pointer. */
