@@ -6,6 +6,7 @@ import { supabase, isDesktop } from '../lib/supabase'
 import { googleOpen } from '../lib/drive'
 import GoogleButton from './GoogleButton'
 import { usernameAvailable } from '../lib/people'
+import { adopt, confirmEmail, resetPassword, sendCode, signIn, signUp, type SignIn } from '../lib/emailAccount'
 
 interface AuthScreenProps {
   onAuthSuccess: (userId: string, username: string) => void
@@ -27,8 +28,26 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
   const [username, setUsername] = useState('')
   const [error, setError] = useState(initialError ?? '')
   const [loading, setLoading] = useState(false)
-  const [checkEmail, setCheckEmail] = useState(false)
-  const [resetEmailSent, setResetEmailSent] = useState(false)
+  // A code mailed (lib/emailAccount): a new account's address to confirm, or
+  // a forgotten password -- the screen that takes it, and what it takes.
+  const [codeFor, setCodeFor] = useState<{ email: string; purpose: 'confirm' | 'reset' } | null>(null)
+  const [code, setCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordAgain, setNewPasswordAgain] = useState('')
+  const [note, setNote] = useState('')
+
+  // The worker's refusals, by name (lib/emailAccount), said in the page's words.
+  const said = (err: any, fallback: string) => ({
+    EMAIL_TAKEN: t('auth.errEmailRegistered'),
+    USERNAME_TAKEN: t('auth.errUsernameTaken'),
+    TOO_MANY: t('auth.error.tooManyTries'),
+    TOO_MANY_TRIES: t('auth.error.tooManyTries'),
+    WAIT: t('auth.error.tooManyTries'),
+    CHECK: t('auth.error.usernameLookup'),
+    WRONG_CODE: t('auth.error.wrongCode'),
+    BANNED: t('auth.error.banned'),
+    AUTH_DOWN: t('auth.errUnavailable'),
+  } as Record<string, string>)[err?.message] ?? friendlyAuthError(err, fallback)
 
   // Memoize particle positions (fireflies)
   const particles = useMemo(() => 
@@ -168,46 +187,15 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
       // person had just signed up rather than merely arrived.
       markSignInStarted()
 
-      // Sign up user
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: username,
-          },
-          emailRedirectTo: window.location.origin,
-        },
-      })
-
-      if (signupError) {
-        // Check for specific error messages
-        if (signupError.message.includes('already registered')) {
-          setError(t('auth.errEmailRegistered'))
-        } else {
-          throw signupError
-        }
-      } else if (data.user) {
-        // Check if email confirmation is required
-        if (data.session) {
-          // User is auto-confirmed (disabled email confirmation)
-          const { data: profile } = await (supabase
-            .from('profiles') as any)
-            .select('username, display_name')
-            .eq('id', data.user.id)
-            .maybeSingle()
-
-          if (profile) {
-            onAuthSuccess(data.user.id, profile.display_name || profile.username)
-          }
-        } else {
-          // Email confirmation required
-          setCheckEmail(true)
-        }
-      }
+      // An email account, at the worker (docs/DECENTRALIZING.md, phase 10):
+      // kept unconfirmed until the code mailed to its address comes back.
+      await signUp(email.trim(), username, password)
+      setCode('')
+      setNote('')
+      setCodeFor({ email: email.trim(), purpose: 'confirm' })
     } catch (err: any) {
       console.error('Signup error:', err)
-      setError(friendlyAuthError(err, t('auth.error.signUpFailed')))
+      setError(said(err, t('auth.error.signUpFailed')))
     } finally {
       setLoading(false)
     }
@@ -291,13 +279,33 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
 
     try {
-      let loginEmail = emailOrUsername
+      const login = emailOrUsername.trim()
+      markSignInStarted()
+      // The worker first: an email account signs in there (App takes it from
+      // there, as for a Google account); an existing account it knows is
+      // told right, with its address. Out of reach, on to Supabase as ever.
+      let known: SignIn = { kind: 'unknown' }
+      try {
+        known = await signIn(login, password)
+      } catch (err: any) {
+        // Never confirmed: its code screen, and a new code -- the first may have run out.
+        if (err?.message === 'UNCONFIRMED' && err.email) {
+          setCode('')
+          setNote('')
+          setCodeFor({ email: err.email, purpose: 'confirm' })
+          void sendCode(err.email, 'confirm').catch(() => {})
+          return
+        }
+        if (err?.message !== 'AUTH_DOWN') throw err
+      }
+      if (known.kind === 'email') return
+      let loginEmail = known.kind === 'existing' ? known.email : login
 
       // A username: the account's email, given only for its password
       // (email_for_sign_in, hide_emails_1.sql) -- emails are nobody else's to
       // read -- then signed in with it, through Auth as ever.
-      if (!emailOrUsername.includes('@')) {
-        const { data: email, error: lookupError } = await (supabase as any).rpc('email_for_sign_in', { p_username: emailOrUsername, p_password: password })
+      if (known.kind !== 'existing' && !login.includes('@')) {
+        const { data: email, error: lookupError } = await (supabase as any).rpc('email_for_sign_in', { p_username: login, p_password: password })
         if (lookupError) {
           if (/too_many_attempts/.test(lookupError.message ?? '')) throw new Error(t('auth.error.tooManyTries'))
           console.error('Username sign-in:', lookupError)
@@ -307,7 +315,6 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
         loginEmail = email
       }
 
-      markSignInStarted()
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: loginEmail,
         password,
@@ -323,14 +330,51 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
           .eq('id', data.user.id)
           .single()
 
+        // Its credential copied to the worker (lib/emailAccount), for the
+        // cutover -- unless the worker just said it has it.
+        if (known.kind !== 'existing' && data.session && profile?.username) void adopt(data.session.access_token, loginEmail, profile.username, password)
+
         if (profile) {
           onAuthSuccess(data.user.id, profile.display_name || profile.username)
         }
       }
     } catch (err: any) {
-      setError(friendlyAuthError(err, t('auth.error.logInFailed')))
+      setError(said(err, t('auth.error.logInFailed')))
     } finally {
       setLoading(false)
+    }
+  }
+
+  // The code screen's: a new account's address confirmed, or a new
+  // password set -- signed in either way (App takes it from there).
+  const handleCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!codeFor) return
+    setError('')
+    setNote('')
+    if (codeFor.purpose === 'reset') {
+      if (newPassword.length < 6) return setError(t('profile.errPasswordLength'))
+      if (newPassword !== newPasswordAgain) return setError(t('auth.passwordsDoNotMatch'))
+    }
+    setLoading(true)
+    try {
+      markSignInStarted()
+      if (codeFor.purpose === 'confirm') await confirmEmail(codeFor.email, code)
+      else await resetPassword(codeFor.email, code, newPassword)
+    } catch (err: any) {
+      setError(said(err, t('auth.error.wrongCode')))
+    } finally {
+      setLoading(false)
+    }
+  }
+  const sendAnother = async () => {
+    if (!codeFor) return
+    setError('')
+    try {
+      await sendCode(codeFor.email, codeFor.purpose)
+      setNote(t('auth.codeResent'))
+    } catch (err: any) {
+      setError(said(err, t('auth.error.resetEmailFailed')))
     }
   }
 
@@ -352,21 +396,35 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
     }
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
+      // Both are asked, each answering only for its own: the worker mails an
+      // email account a code; Supabase mails an existing account a link (its
+      // password is Supabase's until the cutover, components/PasswordRecovery).
+      const address = email.trim()
+      const supabaseAsked = (async () => (await supabase.auth.resetPasswordForEmail(address, { redirectTo: `${window.location.origin}/reset-password` })).error)()
+        .catch((err: unknown) => err)
+      await sendCode(address, 'reset')
+      // Supabase's refusal (asked too soon, say, or out of reach) said on the
+      // code screen -- shown all the same: the worker's code may be on its way.
+      const resetError = await supabaseAsked
 
-      if (resetError) throw resetError
-
-      setResetEmailSent(true)
+      setCode('')
+      setNewPassword('')
+      setNewPasswordAgain('')
+      setNote('')
+      setCodeFor({ email: address, purpose: 'reset' })
+      if (resetError) setError(said(resetError, t('auth.error.resetEmailFailed')))
     } catch (err: any) {
-      setError(err.message || t('auth.error.resetEmailFailed'))
+      setError(said(err, t('auth.error.resetEmailFailed')))
     } finally {
       setLoading(false)
     }
   }
 
-  if (resetEmailSent) {
+  // A code mailed: entered here -- a new account's, or a new password's,
+  // which takes the new password too. Another can be asked for.
+  if (codeFor) {
+    const reset = codeFor.purpose === 'reset'
+    const field = 'w-full bg-nier-black border border-nier-border/30 px-4 py-3 text-nier-bg text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors'
     return (
       <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
         {/* Scanline overlay */}
@@ -375,68 +433,76 @@ export default function AuthScreen({ onAuthSuccess, onBackToLanding, onGuest, in
             backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
           }}
         />
-        
-        <BackgroundElements />
-        
-        <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative z-10">
-          {/* Corner brackets */}
-          <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-          <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-          <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-          <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-          
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">{t('auth.checkEmail')}</h2>
-          <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
-            {t('auth.resetSent')}
-          </p>
-          <button
-            onClick={() => {
-              setResetEmailSent(false)
-              setMode('login')
-              setEmail('')
-            }}
-            className="w-full py-3 border border-nier-border/60 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg"
-          >
-            {t('auth.backToLogin')}
-          </button>
-        </div>
-      </div>
-    )
-  }
 
-  if (checkEmail) {
-    return (
-      <div className="fixed inset-0 bg-nier-black flex items-center justify-center z-50">
-        {/* Scanline overlay */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
-          }}
-        />
-        
         <BackgroundElements />
-        
-        <div className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative z-10">
+
+        <form onSubmit={handleCode} className="bg-nier-blackLight border border-nier-border/40 p-8 max-w-md w-full mx-4 relative z-10 space-y-5">
           {/* Corner brackets */}
           <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
           <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
           <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
           <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-          
-          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase mb-4">{t('auth.checkEmail')}</h2>
-          <p className="text-nier-bg/80 text-sm leading-relaxed mb-6">
-            {t('auth.confirmSentVerify')}
+
+          <h2 className="text-lg text-nier-bg tracking-[0.15em] uppercase">{t(reset ? 'auth.resetPassword' : 'auth.checkEmail')}</h2>
+          <p className="text-nier-bg/80 text-sm leading-relaxed">
+            {t(reset ? 'auth.resetCodeSent' : 'auth.confirmCodeSent', { email: codeFor.email })}
           </p>
+
+          <div>
+            <label htmlFor="auth-code" className="block text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase mb-2">{t('auth.code')}</label>
+            <input
+              id="auth-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className={`${field} tracking-[0.4em]`}
+              placeholder="000000"
+              required
+            />
+          </div>
+
+          {reset && (
+            <>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder={t('profile.newPassword')} className={field} autoComplete="new-password" required minLength={6} />
+              <input type="password" value={newPasswordAgain} onChange={e => setNewPasswordAgain(e.target.value)} placeholder={t('profile.confirmNewPassword')} className={field} autoComplete="new-password" required minLength={6} />
+            </>
+          )}
+
+          {error && (
+            <div className="border border-nier-red/40 bg-nier-red/10 px-4 py-3 text-nier-bg/80 text-xs tracking-wide">
+              ⚠ {error}
+            </div>
+          )}
+          {note && <p className="text-nier-bg/70 text-xs tracking-wide">{note}</p>}
+
           <button
-            onClick={() => {
-              setCheckEmail(false)
-              setMode('login')
-            }}
-            className="w-full py-3 border border-nier-border/60 text-nier-bg text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-bg hover:text-nier-black hover:border-nier-bg"
+            type="submit"
+            disabled={loading || code.length < 6}
+            className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.15em] uppercase transition-all hover:bg-nier-strong disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('auth.backToLogin')}
+            {loading ? `◇ ${t('auth.processing')}` : t(reset ? 'auth.setNewPassword' : 'auth.confirmCode')}
           </button>
-        </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <button type="button" onClick={() => void sendAnother()} className="text-nier-bg/75 text-[11px] tracking-wider hover:text-nier-bg transition-colors">
+              ◇ {t('profile.resendCode')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCodeFor(null)
+                setMode('login')
+                setError('')
+              }}
+              className="text-nier-bg/75 text-[11px] tracking-wider hover:text-nier-bg transition-colors"
+            >
+              {t('auth.backToLogin')}
+            </button>
+          </div>
+        </form>
       </div>
     )
   }

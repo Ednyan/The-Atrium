@@ -81,7 +81,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
 
   // An existing account on a browser without its grant: its Drive pass from
   // the grant kept here for its Google -- no window at all.
-  if (what === 'resume' && who?.kind === 'supabase') {
+  if (what === 'resume' && who && who.kind !== 'google') {
     for (const googleId of await linkedGoogleIds(env, who.id)) {
       const kept = await googleGrantFor(env, googleId)
       const refresh = kept ? await openFor(key, googleId, kept) : null
@@ -94,7 +94,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
       return answer(200, {
         ...passOf(got),
         account: who,
-        grant: await sealGrant(key, { r: got.refresh_token ?? refresh, a: who.id, k: 'supabase', g: googleId }),
+        grant: await sealGrant(key, { r: got.refresh_token ?? refresh, a: who.id, k: who.kind, g: googleId }),
       })
     }
     return answer(200, { consent: true })
@@ -107,9 +107,9 @@ export async function google(request: Request, env: Env, what: string): Promise<
   if (what === 'disconnect') {
     const grant = typeof asked.grant === 'string' ? await openGrant(key, asked.grant, token, env) : null
     if (grant === 'sign-in') return answer(401, { error: 'sign-in' })
-    if (!grant && who?.kind !== 'supabase') return answer(401, { error: 'grant' })
+    if (!grant && (!who || who.kind === 'google')) return answer(401, { error: 'grant' })
     const googleIds = new Set(grant?.g ? [grant.g] : [])
-    if (who?.kind === 'supabase') for (const googleId of await linkedGoogleIds(env, who.id)) googleIds.add(googleId)
+    if (who && who.kind !== 'google') for (const googleId of await linkedGoogleIds(env, who.id)) googleIds.add(googleId)
     await giveBack(env, key, googleIds, grant?.r ? [grant.r] : [])
     return answer(200, grant?.k === 'google' ? { grant: await sealGrant(key, { a: grant.a, k: grant.k, g: grant.g }) } : {})
   }
@@ -150,7 +150,7 @@ export async function google(request: Request, env: Env, what: string): Promise<
     }
     // Whose Google: as the grant says, or (one from before it said) Google's answer.
     const googleId = grant.g ?? personOf(got?.id_token)?.sub
-    if (googleId && grant.k === 'supabase') await link(env, googleId, grant.a)
+    if (googleId && grant.k !== 'google') await link(env, googleId, grant.a)
     // A Google account that's really an existing account's, never finished:
     // gone, and its person pointed to the account they already have.
     const superseded = grant.k === 'google' ? await supersededBy(env, grant.a, googleId ?? null) : null
@@ -181,7 +181,9 @@ async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, 
   const grantFor = async (account: Who) => (refresh || account.kind === 'google'
     ? { grant: await sealGrant(key, { ...(refresh ? { r: refresh } : {}), a: account.id, k: account.kind, ...(person ? { g: person.sub } : {}) }) }
     : {})
-  if (who?.kind === 'supabase') {
+  // An account of another kind (an existing account, an email account)
+  // connecting Drive with its Google.
+  if (who && who.kind !== 'google') {
     if (person) await link(env, person.sub, who.id)
     return [200, { ...passOf(got), account: who, ...(await grantFor(who)) }]
   }
@@ -193,7 +195,7 @@ async function signedIn(env: Env, key: CryptoKey, who: Who | null, got: Answer, 
     return [200, {
       ...passOf(got),
       existing,
-      ...(await grantFor({ id: existing.account, kind: 'supabase' })),
+      ...(await grantFor({ id: existing.account, kind: existing.kind ?? 'supabase' })),
     }]
   }
   const account: Who = { id: await accountIdFor(person.sub), kind: 'google' }
@@ -305,9 +307,9 @@ async function sealGrant(key: CryptoKey, grant: Grant): Promise<string> {
   return toBase64(new Uint8Array([...iv, ...sealed]))
 }
 
-/** A grant sealed here, and whose: an existing account's only with that
- *  account's sign-in alongside ('sign-in' without it). Null for anything
- *  else. */
+/** A grant sealed here, and whose: an existing account's or an email
+ *  account's only with that account's sign-in alongside ('sign-in' without
+ *  it). Null for anything else. */
 async function openGrant(key: CryptoKey, sealed: string, token: string | null, env: Env): Promise<Grant | 'sign-in' | null> {
   let bytes: Uint8Array
   try {
@@ -322,7 +324,7 @@ async function openGrant(key: CryptoKey, sealed: string, token: string | null, e
     if (grant.k === 'google') return grant
     const who = await whoIs(token, env)
     if (!who) return 'sign-in'
-    return who.kind === 'supabase' && who.id === grant.a ? grant : null
+    return who.kind === grant.k && who.id === grant.a ? grant : null
   } catch {
     // From before accounts (2026-10-16): the refresh token alone, bound to
     // the Supabase account it was given to.

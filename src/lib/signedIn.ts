@@ -1,29 +1,39 @@
-// Who's signed in (docs/DECENTRALIZING.md, phase 6): an existing account, by
-// its Supabase sign-in, or a Google account -- one with no Supabase account
-// at all, signed in through the Atrium's worker (lib/drive), its grant the
-// lasting sign-in and the worker's session what it's known by.
+// Who's signed in (docs/DECENTRALIZING.md, phases 6 and 10): an existing
+// account, by its Supabase sign-in, or an account the Atrium's worker holds,
+// with no Supabase account at all -- a Google account (lib/drive), its grant
+// the lasting sign-in, or an email account (lib/emailAccount), a renewal
+// token -- the worker's session what either is known by.
 
 import { cloudClient } from './supabase'
 
-export interface GoogleAccount { id: string; email: string | null; name: string | null }
+// `kind`: an email account's says so; a Google account's, kept before there
+// were others, doesn't.
+export interface WorkerAccount { id: string; email: string | null; name: string | null; kind?: 'google' | 'email' }
+export type GoogleAccount = WorkerAccount
 const ACCOUNT = 'atrium.account'
-/** Fired on window as a Google account signs in or out -- with why it was
- *  signed out, when that's to be said (detail.reason). */
+/** Fired on window as an account the worker holds signs in or out -- with
+ *  why it was signed out, when that's to be said (detail.reason). */
 export const ACCOUNT_EVENT = 'atrium:account'
 // Why a Google account was signed out, to be said: its Google is an existing
 // account's (the one to sign in to), or it's banned.
 export type SignedOutReason = 'existingAccount' | 'banned'
 
-export function googleAccount(): GoogleAccount | null {
+/** The account the worker holds that's signed in here, of either kind. */
+export function workerAccount(): WorkerAccount | null {
   try {
-    const kept = JSON.parse(localStorage.getItem(ACCOUNT) ?? 'null') as GoogleAccount | null
+    const kept = JSON.parse(localStorage.getItem(ACCOUNT) ?? 'null') as WorkerAccount | null
     return kept && typeof kept.id === 'string' ? kept : null
   } catch {
     return null
   }
 }
-export function keepGoogleAccount(account: GoogleAccount | null, reason?: SignedOutReason): void {
-  const was = googleAccount()?.id ?? null
+/** A Google account, signed in here: its Google is its sign-in. */
+export function googleAccount(): GoogleAccount | null {
+  const account = workerAccount()
+  return account && account.kind !== 'email' ? account : null
+}
+export function keepAccount(account: WorkerAccount | null, reason?: SignedOutReason): void {
+  const was = workerAccount()?.id ?? null
   try {
     if (account) localStorage.setItem(ACCOUNT, JSON.stringify(account))
     else localStorage.removeItem(ACCOUNT)
@@ -35,27 +45,37 @@ export function keepGoogleAccount(account: GoogleAccount | null, reason?: Signed
 }
 
 /** Who's signed in, and the token the worker knows them by -- the
- *  directory, the rooms. Null when no one is (or a Google account's
- *  sign-in has been taken back). */
+ *  directory, the rooms. Null when no one is (or the sign-in of an account
+ *  the worker holds has been taken back). */
 export async function whoIsSignedIn(): Promise<{ id: string; token: string } | null> {
-  const google = googleAccount()
-  if (google) {
-    const token = await (await import('./drive')).workerSession()
-    return token ? { id: google.id, token } : null
+  const account = workerAccount()
+  if (account) {
+    const token = account.kind === 'email'
+      ? await (await import('./emailAccount')).emailSession()
+      : await (await import('./drive')).workerSession()
+    return token ? { id: account.id, token } : null
   }
   const session = (await cloudClient?.auth.getSession())?.data.session
   return session ? { id: session.user.id, token: session.access_token } : null
 }
 export const accountToken = async () => (await whoIsSignedIn())?.token ?? null
 
-// Asked "who's signed in" -- the app asks Supabase's auth everywhere -- a
-// Google account answers for itself. Only getUser: getSession is what
-// Supabase's own requests are signed with, and a Google account has none.
+/** Out, whichever kind of account the worker holds is signed in here. */
+export async function signOutWorkerAccount(): Promise<void> {
+  const account = workerAccount()
+  if (!account) return
+  if (account.kind === 'email') (await import('./emailAccount')).signOutEmail()
+  else (await import('./drive')).signOutGoogle()
+}
+
+// Asked "who's signed in" -- the app asks Supabase's auth everywhere -- an
+// account the worker holds answers for itself. Only getUser: getSession is
+// what Supabase's own requests are signed with, and such an account has none.
 if (cloudClient?.auth) {
   const asked = cloudClient.auth.getUser.bind(cloudClient.auth)
   cloudClient.auth.getUser = async (...args: unknown[]) => {
-    const google = googleAccount()
-    if (!google) return asked(...args)
-    return { data: { user: { id: google.id, email: google.email ?? undefined, app_metadata: {}, user_metadata: { name: google.name } } }, error: null }
+    const account = workerAccount()
+    if (!account) return asked(...args)
+    return { data: { user: { id: account.id, email: account.email ?? undefined, app_metadata: {}, user_metadata: { name: account.name } } }, error: null }
   }
 }

@@ -47,10 +47,11 @@ export interface Env {
   TEST_UPSTREAM?: string
 }
 
-// Who's asking: an account, its kind -- and, an existing account's, its
-// address once Supabase has confirmed it (a Google account's is in the
-// directory, src/people.ts emailOf).
-export interface Who { id: string; kind: 'google' | 'supabase'; email?: string }
+// Who's asking: an account, its kind -- an existing account (Supabase's), a
+// Google account, or an email account (phase 10, src/auth.ts) -- and, an
+// existing account's, its address once Supabase has confirmed it (the others'
+// are in the directory, src/people.ts emailOf).
+export interface Who { id: string; kind: 'google' | 'supabase' | 'email'; email?: string }
 
 /** Where a request to another service goes: there, or -- in a local test --
  *  to its stand-in, by the same address under it. */
@@ -65,10 +66,7 @@ export async function whoIs(token: string | null | undefined, env: Env): Promise
 }
 async function identify(token: string | null | undefined, env: Env): Promise<Who | null> {
   if (!token) return null
-  if (token.startsWith(SESSION)) {
-    const id = await sessionUser(env, token)
-    return id ? { id, kind: 'google' } : null
-  }
+  if (token.startsWith(SESSION)) return sessionUser(env, token)
   try {
     const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY } })
     if (!response.ok) return null
@@ -111,27 +109,29 @@ export const fromUrl = (text: string) => fromBase64(text.replace(/-/g, '+').repl
 
 // ---------------------------------------------------------------- sessions
 
-// The worker's word for who a Google account is, for an hour: signed here
-// and checked here, so a room lets someone in without asking anyone else.
+// The worker's word for who a Google account or an email account is, for an
+// hour: signed here and checked here, so a room lets someone in without
+// asking anyone else. An email account's says so (`k`); a Google account's,
+// as ever, doesn't.
 const SESSION = 'a1.'
 const SESSION_MS = 60 * 60_000
 
-export async function signSession(env: Env, id: string): Promise<{ session: string; until: number }> {
+export async function signSession(env: Env, id: string, kind: 'google' | 'email' = 'google'): Promise<{ session: string; until: number }> {
   const until = Date.now() + SESSION_MS
-  const body = toUrl(new TextEncoder().encode(JSON.stringify({ id, until })))
+  const body = toUrl(new TextEncoder().encode(JSON.stringify({ id, until, ...(kind === 'email' ? { k: 'e' } : {}) })))
   const key = await keyFrom(env.GOOGLE_CLIENT_SECRET!, 'atrium session', 'HMAC', ['sign'])
   const mac = toUrl(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))))
   return { session: `${SESSION}${body}.${mac}`, until }
 }
 
-async function sessionUser(env: Env, token: string): Promise<string | null> {
+async function sessionUser(env: Env, token: string): Promise<Who | null> {
   const [body, mac] = token.slice(SESSION.length).split('.')
   if (!env.GOOGLE_CLIENT_SECRET || !body || !mac) return null
   try {
     const key = await keyFrom(env.GOOGLE_CLIENT_SECRET, 'atrium session', 'HMAC', ['verify'])
     if (!(await crypto.subtle.verify('HMAC', key, fromUrl(mac), new TextEncoder().encode(body)))) return null
-    const { id, until } = JSON.parse(new TextDecoder().decode(fromUrl(body))) as { id?: unknown; until?: unknown }
-    return typeof id === 'string' && typeof until === 'number' && Date.now() < until ? id : null
+    const { id, until, k } = JSON.parse(new TextDecoder().decode(fromUrl(body))) as { id?: unknown; until?: unknown; k?: unknown }
+    return typeof id === 'string' && typeof until === 'number' && Date.now() < until ? { id, kind: k === 'e' ? 'email' : 'google' } : null
   } catch {
     return null
   }

@@ -15,7 +15,7 @@ import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
-import { ACCOUNT_EVENT, googleAccount, type SignedOutReason } from './lib/signedIn'
+import { ACCOUNT_EVENT, workerAccount, type SignedOutReason } from './lib/signedIn'
 import type { DriveEnd } from './lib/driveSync'
 import { readRecentThanksName } from './lib/pendingContribution'
 
@@ -1513,12 +1513,13 @@ function AppInner() {
       if (leave && !ACCOUNT_FREE_ROUTES.has(parseRoute().page)) navigate('/')
     }
 
-    // A Google account (docs/DECENTRALIZING.md, phase 6): no Supabase session
-    // at all. Who it is comes from the directory, through the worker -- and a
-    // username is chosen there first, as an existing account chooses one in
-    // its profile.
-    const loadGoogleAccount = async (signingIn: boolean) => {
-      const account = googleAccount()
+    // An account the worker holds -- a Google account (docs/DECENTRALIZING.md,
+    // phase 6) or an email account (phase 10): no Supabase session at all.
+    // Who it is comes from the directory, through the worker -- and a username
+    // is chosen there first, as an existing account chooses one in its
+    // profile (an email account chose its own as it signed up).
+    const loadWorkerAccount = async (signingIn: boolean) => {
+      const account = workerAccount()
       if (!account) return
       try {
         const entry = await myEntry()
@@ -1536,13 +1537,13 @@ function AppInner() {
       } catch (error) {
         // Its sign-in taken back (lib/drive signs it out, and this hears it),
         // or the worker out of reach: said, and the landing page meanwhile.
-        console.warn('[atrium] the Google account:', error)
+        console.warn('[atrium] the account:', error)
       }
       setLoading(false)
     }
     const onAccount = (event: Event) => {
-      if (googleAccount()) {
-        void loadGoogleAccount(true)
+      if (workerAccount()) {
+        void loadWorkerAccount(true)
         return
       }
       signedOut(true)
@@ -1556,10 +1557,10 @@ function AppInner() {
       }
     }
     window.addEventListener(ACCOUNT_EVENT, onAccount)
-    if (googleAccount()) void loadGoogleAccount(cameFromSignIn)
+    if (workerAccount()) void loadWorkerAccount(cameFromSignIn)
 
     supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (!session?.user && googleAccount()) return
+      if (!session?.user && workerAccount()) return
       if (session?.user && supabase) {
         // Get user profile
         (supabase
@@ -1828,8 +1829,8 @@ function AppInner() {
         }
         loadProfile()
       } else {
-        // No Supabase session is a Google account's ordinary state.
-        if (googleAccount()) return
+        // No Supabase session is the ordinary state of an account the worker holds.
+        if (workerAccount()) return
         // Not on INITIAL_SESSION, which fires on every page load and means
         // "there is no session" -- not "a session just ended". Navigating
         // there threw away the URL of anyone arriving signed out, so every

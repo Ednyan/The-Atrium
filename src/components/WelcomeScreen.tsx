@@ -147,8 +147,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
     localStorage.removeItem('lobby_showBrowser')
 
     await supabase.auth.signOut()
-    // A Google account: its grant and passes (lib/drive).
-    if ((await import('../lib/signedIn')).googleAccount()) (await import('../lib/drive')).signOutGoogle()
+    // An account the worker holds: its grant, or its renewal token, and its passes.
+    await (await import('../lib/signedIn')).signOutWorkerAccount()
 
     // Force navigation to landing page
     goTo('/')

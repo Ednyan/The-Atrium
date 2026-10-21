@@ -56,6 +56,21 @@ const TABLES = [
     lobby text not null, id text not null, parent text, name text not null, folder integer not null,
     version text not null, size integer not null, updated_at integer not null, primary key (lobby, id))`,
   'create index if not exists mirror_files_parent on mirror_files (lobby, parent)',
+  // Email accounts (src/auth.ts): each one's sign-in -- its address, and for
+  // each way of signing in (address, username) the salt its page stretches
+  // the password with and the verifier of what that makes -- its renewal
+  // tokens (by their hash), and the codes mailed to it (by theirs).
+  `create table if not exists logins (
+    account text primary key, email text not null unique collate nocase, seal text not null, rounds integer not null,
+    email_salt text not null, email_verifier text not null, name_salt text, name_verifier text,
+    confirmed_at integer, failures integer not null default 0, locked_until integer, created_at integer not null, updated_at integer not null)`,
+  'create table if not exists refresh_tokens (hash text primary key, account text not null, created_at integer not null, used_at integer not null, expires_at integer not null)',
+  'create index if not exists refresh_tokens_account on refresh_tokens (account)',
+  `create table if not exists auth_codes (account text not null, purpose text not null, hash text not null, sent_at integer not null,
+    expires_at integer not null, tries integer not null default 0, primary key (account, purpose))`,
+  // How often something that mails, or that anyone may ask, has been asked of
+  // late, by whom (src/auth.ts, throttled).
+  'create table if not exists throttle (key text primary key, count integer not null, since integer not null)',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -82,7 +97,7 @@ const SETTINGS: Record<string, (value: unknown) => boolean> = {
 // A display name changes once in this long, as an existing account's does on the web.
 const NAME_EVERY_MS = 15 * 24 * 60 * 60 * 1000
 
-const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
+export const USERNAME = /^[a-zA-Z0-9_]{3,20}$/
 const MOST_IDS = 200
 // Public atriums: how many one account lists, how many the list gives, and
 // how big a picture may be (a card's, WebP).
@@ -136,6 +151,10 @@ export async function link(env: Env, googleId: string, account: string): Promise
 export async function linkedTo(env: Env, googleId: string | null, email: string | null): Promise<Existing | null> {
   if (!env.PEOPLE) return null
   await tablesIn(env.PEOPLE)
+  // An email account's address, confirmed (src/auth.ts): that account -- its password signs in to it.
+  const emailAccount = email ? await env.PEOPLE.prepare(`select l.account from logins l join accounts a on a.id = l.account
+    where l.email = ? collate nocase and l.confirmed_at is not null and a.kind = 'email'`).bind(email).first<{ account: string }>() : null
+  if (emailAccount) return { account: emailAccount.account, how: 'password', kind: 'email' }
   const signedUpWithGoogle = googleId ? await supabaseAnswer(env, 'account_for_google', { p_google_id: googleId }) : null
   const byAddress = email && env.SUPABASE_WORKER_KEY ? await supabaseAnswer(env, 'account_for_email', { p_email: email, p_key: env.SUPABASE_WORKER_KEY }) : null
   const account = signedUpWithGoogle ?? byAddress
@@ -148,7 +167,7 @@ export async function linkedTo(env: Env, googleId: string | null, email: string 
   return { account, how: account === signedUpWithGoogle ? 'google' : 'password' }
 }
 /** An existing account, and how its person signs in to it. */
-export interface Existing { account: string; how: 'google' | 'password' }
+export interface Existing { account: string; how: 'google' | 'password'; kind?: 'email' }
 
 /** A Google account made for someone whose Google is an existing account's
  *  -- made before the worker asked, or by an existing account signing up
@@ -332,7 +351,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         if (who.kind === 'supabase' && (await supabaseUsername(env, who, asked.token as string))?.toLowerCase() !== username.toLowerCase()) return answer(403, { error: 'not yours' })
         const here = await db.prepare('select id from accounts where username = ? collate nocase and id <> ?').bind(username, who.id).first()
         if (here) return answer(409, { error: 'taken' })
-        if (who.kind === 'google') {
+        if (who.kind !== 'supabase') {
           const elsewhere = await takenInSupabase(env, username, null)
           if (elsewhere === null) return answer(503, { error: 'check' })
           if (elsewhere) return answer(409, { error: 'taken' })
@@ -349,7 +368,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         const name = typeof set.display_name === 'string' ? set.display_name.trim().slice(0, 50) : ''
         // A Google account's name, changed once it has one: once in so long
         // (an existing account's comes from its profile, which says).
-        const changing = who.kind === 'google' && !!before?.username && (name || null) !== before.display_name
+        const changing = who.kind !== 'supabase' && !!before?.username && (name || null) !== before.display_name
         if (changing && before?.name_changed_at && Date.now() - before.name_changed_at < NAME_EVERY_MS) {
           return answer(429, { error: 'too soon', until: before.name_changed_at + NAME_EVERY_MS })
         }
@@ -358,7 +377,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
       }
       if ('settings' in set) {
         const patch = set.settings as Record<string, unknown> | null
-        if (who.kind !== 'google') return answer(403, { error: 'settings' })
+        if (who.kind === 'supabase') return answer(403, { error: 'settings' })
         if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return answer(400, { error: 'settings' })
         for (const [key, value] of Object.entries(patch)) if (!SETTINGS[key] || (value !== null && !SETTINGS[key](value))) return answer(400, { error: 'settings', key })
         // Merged as one statement: two settings saved at once both stay.
@@ -536,7 +555,7 @@ function shown(row: Record<string, unknown> | null) {
 /** Whether an existing account has that username (Supabase says yes or no,
  *  add_username_taken.sql) -- `except` that account's own. Null when it
  *  couldn't be asked: the caller says so, and never gives the name. */
-async function takenInSupabase(env: Env, username: string, except: string | null): Promise<boolean | null> {
+export async function takenInSupabase(env: Env, username: string, except: string | null): Promise<boolean | null> {
   try {
     const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/username_taken`, {
       method: 'POST',
@@ -552,7 +571,7 @@ async function takenInSupabase(env: Env, username: string, except: string | null
 
 /** An existing account's username, as its own profile has it -- read with
  *  its own sign-in. */
-async function supabaseUsername(env: Env, who: Who, token: string): Promise<string | null> {
+export async function supabaseUsername(env: Env, who: Who, token: string): Promise<string | null> {
   try {
     const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(who.id)}&select=username`, {
       headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },

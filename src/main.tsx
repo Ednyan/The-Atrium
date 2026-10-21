@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import ToastHost from './components/ToastHost.tsx'
 import FarewellNotice from './components/FarewellNotice.tsx'
+import PasswordRecovery from './components/PasswordRecovery.tsx'
 import StartupFailure from './components/StartupFailure.tsx'
 import './index.css'
 import { localDbReady, isDesktop } from './lib/supabase'
@@ -38,6 +39,7 @@ Promise.all([localDbReady, languageOrNot]).then(() => {
           it that stays mounted across every route. */}
       <ToastHost />
       <FarewellNotice />
+      <PasswordRecovery />
     </React.StrictMode>,
   )
 }).catch((error) => {

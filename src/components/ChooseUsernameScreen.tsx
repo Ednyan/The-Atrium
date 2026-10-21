@@ -157,7 +157,7 @@ export default function ChooseUsernameScreen({ userId, email, google = false, on
         {google && (
           <button
             type="button"
-            onClick={() => void import('../lib/drive').then(drive => drive.signOutGoogle())}
+            onClick={() => void import('../lib/signedIn').then(account => account.signOutWorkerAccount())}
             className="w-full mt-4 text-nier-bg/60 hover:text-nier-bg text-[10px] tracking-[0.15em] uppercase transition-colors"
           >
             {t('welcome.logOut')}

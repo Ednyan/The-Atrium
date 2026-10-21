@@ -9,6 +9,7 @@
 import { renderAtriumEmail } from '../../../supabase/functions/_shared/atriumEmail'
 import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
 import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
+import { CONFIRM_COPY, RESET_COPY } from './authCopy'
 import { emailOf } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
@@ -66,6 +67,16 @@ export async function feedback(request: Request, env: Env): Promise<Response> {
  *  logged. */
 export const welcome = (env: Env, to: string, name: string, language: unknown) => greet(env, to, name, WELCOME_COPY, language)
 export const goodbye = (env: Env, to: string, name: string, language: unknown) => greet(env, to, name, GOODBYE_COPY, language)
+
+/** An email account's code (src/auth.ts): confirming its address, or a
+ *  forgotten password -- in the language its page shows. Never in the way:
+ *  a failure is logged, and another code can be asked for. */
+export async function authCode(env: Env, to: string, purpose: 'confirm' | 'reset', code: string, language: unknown): Promise<void> {
+  const copies = purpose === 'confirm' ? CONFIRM_COPY : RESET_COPY
+  const copy = copies[typeof language === 'string' && language in copies ? language : 'en']
+  const { html, text } = renderAtriumEmail({ heading: copy.heading, body: copy.body, quote: code, footnote: copy.footnote, footer: copy.footer })
+  await send(env, { from: FROM_HELLO, to, subject: copy.subject(code), html, text }).catch(error => console.error('[mail] a code:', error))
+}
 
 interface Greeting { subject: string; heading: string; greeting: (name: string) => string; body: string; action: string; footnote: string; footer: string }
 async function greet(env: Env, to: string, name: string, copies: Record<string, Greeting>, language: unknown): Promise<void> {

@@ -4,7 +4,7 @@
 // for now -- desktop OAuth needs a custom URL scheme/deep-link plugin this
 // app doesn't have yet.
 
-import { googleAccount } from './signedIn'
+import { workerAccount } from './signedIn'
 import { toWorker } from './worker'
 import { cloudClient } from './supabase'
 import { showToast } from './toast'
@@ -241,7 +241,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
     // A Google account's, kept by the worker; the desktop's pairing and an
     // existing account's, by Supabase's function.
-    const { data, error } = !desktopMode && googleAccount()
+    const { data, error } = !desktopMode && workerAccount()
       ? await toWorker('/pinterest/exchange', { code, redirectUri: getPinterestRedirectUri() }, true).then(({ ok, answer }) => ({ data: answer, error: ok ? null : { message: answer?.error } }))
       : await cloudClient.functions.invoke('pinterest-oauth-exchange', {
         body: { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) },
@@ -282,7 +282,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
 export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
   if (isDesktop) return getDesktopPinterestStatus()
-  if (googleAccount()) {
+  if (workerAccount()) {
     const { ok, answer } = await toWorker('/pinterest/status', {}, true).catch(() => ({ ok: false, answer: null }))
     return ok ? { connected: !!answer?.connected, username: answer?.username ?? null } : { connected: false, username: null }
   }
@@ -297,7 +297,7 @@ export async function disconnectPinterest(): Promise<void> {
   // itself: the connection belongs to the web account, and one machine
   // unlinking should not sign the account out everywhere.
   if (isDesktop) return unlinkDesktopPinterest()
-  if (googleAccount()) {
+  if (workerAccount()) {
     await toWorker('/pinterest/disconnect', {}, true)
     return
   }
@@ -333,7 +333,7 @@ async function callPinterestApi(body: Record<string, unknown>): Promise<any> {
   // fetch instead, and reaches the same Edge Function.
   if (isDesktop) return callPinterestApiAsLinkedDesktop(body)
   // A Google account's Pinterest is the worker's (workers/rooms, pinterest).
-  if (googleAccount()) {
+  if (workerAccount()) {
     const { ok, answer } = await toWorker('/pinterest/api', body, true)
     if (!ok || answer?.error) throw new Error(answer?.error || 'Pinterest request failed.')
     return answer

@@ -11,7 +11,7 @@
 // signed in -- see driveToken.)
 import { workerUrl } from './rooms'
 import { cloudClient, isDesktop } from './supabase'
-import { googleAccount, keepGoogleAccount, type GoogleAccount, type SignedOutReason } from './signedIn'
+import { googleAccount, keepAccount, workerAccount, type GoogleAccount, type SignedOutReason } from './signedIn'
 import { currentLanguage, t } from './i18n'
 
 export const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? ''
@@ -126,6 +126,10 @@ type Asker = { user: string; token: string | null; google: boolean }
 async function whoAsks(): Promise<Asker | null> {
   const google = googleAccount()
   if (google) return { user: google.id, token: fresh(session) ? session!.value : null, google: true }
+  // An email account connecting its Google for Drive: as an existing account
+  // does, with its own sign-in (lib/emailAccount).
+  const account = workerAccount()
+  if (account) return { user: account.id, token: await (await import('./emailAccount')).emailSession(), google: false }
   const signedIn = (await cloudClient?.auth.getSession())?.data.session
   return signedIn ? { user: signedIn.user.id as string, token: signedIn.access_token as string, google: false } : null
 }
@@ -260,7 +264,7 @@ export function signOutGoogle(reason?: SignedOutReason): void {
   token = null
   session = null
   keepGrant(null)
-  keepGoogleAccount(null, reason)
+  keepAccount(null, reason)
 }
 
 // A plain request (a string body, no headers of its own): no preflight.
@@ -279,7 +283,7 @@ async function askWorker(what: 'grant' | 'renew' | 'identity' | 'resume' | 'disc
 // one was signed in -- its grant, and its pass.
 function keep(answer: Answer) {
   const account = answer.account
-  if (account?.kind === 'google') keepGoogleAccount({ id: account.id, email: account.email ?? null, name: account.name ?? null })
+  if (account?.kind === 'google') keepAccount({ id: account.id, email: account.email ?? null, name: account.name ?? null })
   if (answer.grant && account) keepGrant({ user: account.id, grant: answer.grant, drive: allowed(answer.scope) })
   renewFailed = false
   took(answer)

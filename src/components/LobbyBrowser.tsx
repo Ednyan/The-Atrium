@@ -39,7 +39,7 @@ import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
 import { googleOpen } from '../lib/drive'
-import { googleAccount } from '../lib/signedIn'
+import { googleAccount, workerAccount } from '../lib/signedIn'
 
 // An atrium in the browser's lists, the same in each (AtriumCard), two to a
 // row where there's room.
@@ -249,7 +249,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [withGoogle, setWithGoogle] = useState(() => !!googleAccount())
   // A guest, or a Google account (phase 6): no atriums in Supabase -- those
   // are an existing account's, until they move to the Atrium's cloud.
-  const noCloud = guest || !!googleAccount()
+  const noCloud = guest || !!workerAccount()
   // Atriums in the Atrium's cloud: for anyone signed in (phase 10).
   const canHost = !isDesktop && !guest
   // One's atriums in the cloud, of the three one may have: hosted ones, and

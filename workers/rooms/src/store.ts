@@ -138,15 +138,7 @@ export async function store(request: Request, env: Env, what: string): Promise<R
       if (!row) return answer(404, { error: 'Drive 404' })
       if (row.owner !== who.id) return answer(403, { error: 'Drive 403: not yours' })
       const gone = await descendants(db, id)
-      for (let at = 0; at < gone.length; at += 100) {
-        const some = gone.slice(at, at + 100)
-        await files.delete(some.map(each => `f/${each}`))
-        const marks = some.map(() => '?').join(',')
-        await db.batch([
-          db.prepare(`delete from store_files where id in (${marks})`).bind(...some),
-          db.prepare(`delete from store_shares where file in (${marks})`).bind(...some),
-        ])
-      }
+      await dropFiles(db, files, gone)
       return answer(200, { removed: gone.length })
     }
 
@@ -192,6 +184,33 @@ const sharedWith = async (db: D1Database, file: string, account: string) =>
   !!(await db.prepare('select 1 from store_shares where file = ? and account = ?').bind(file, account).first())
 
 /** A file or folder and, a folder, everything under it. */
+/** Files gone for good: their bytes, their rows, whom they were shared with. */
+async function dropFiles(db: D1Database, files: R2Bucket, ids: string[]): Promise<void> {
+  for (let at = 0; at < ids.length; at += 100) {
+    const some = ids.slice(at, at + 100)
+    await files.delete(some.map(each => `f/${each}`))
+    const marks = some.map(() => '?').join(',')
+    await db.batch([
+      db.prepare(`delete from store_files where id in (${marks})`).bind(...some),
+      db.prepare(`delete from store_shares where file in (${marks})`).bind(...some),
+    ])
+  }
+}
+
+/** An account deleted: everything it keeps in the hosted store -- its files,
+ *  its app data -- and what it was let write of others'. */
+export async function dropOwnFiles(env: Env, account: string): Promise<void> {
+  const db = env.PEOPLE
+  if (!db) return
+  await tablesIn(db)
+  const { results } = await db.prepare('select id from store_files where owner = ?').bind(account).all<{ id: string }>()
+  if (env.FILES) await dropFiles(db, env.FILES, results.map(row => row.id))
+  await db.batch([
+    db.prepare('delete from store_appdata where account = ?').bind(account),
+    db.prepare('delete from store_shares where account = ?').bind(account),
+  ])
+}
+
 async function descendants(db: D1Database, id: string): Promise<string[]> {
   const all = [id]
   for (let at = 0; at < all.length; at++) {

@@ -14,7 +14,8 @@ import {
 } from '../lib/atriumPreferences'
 import { goTo } from '../lib/route'
 import { daysUntilNameChange, loadMyProfile, saveMyProfile } from '../lib/profile'
-import { googleAccount } from '../lib/signedIn'
+import { googleAccount, workerAccount } from '../lib/signedIn'
+import { adopt, changePassword, deleteEmailAccount } from '../lib/emailAccount'
 import GoogleButton from './GoogleButton'
 
 // The same five the in-atrium panel offers, from the palette the rest of the
@@ -60,8 +61,12 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
   // countdown only stops the button offering something that will be refused.
   const [resendIn, setResendIn] = useState(0)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  // A Google account (lib/signedIn) is deleted on Google's word, not a code.
+  // A Google account (lib/signedIn) is deleted on Google's word, not a code --
+  // and has no password to change. An email account (lib/emailAccount) is
+  // deleted with its password, and changes it at the worker.
   const google = !!googleAccount()
+  const emailAccount = workerAccount()?.kind === 'email'
+  const [deletePassword, setDeletePassword] = useState('')
   const [deleteError, setDeleteError] = useState('')
 
   // The three settings that follow the person rather than the atrium. They
@@ -214,6 +219,25 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       return
     }
 
+    // An email account: the worker checks the current one and sets the new
+    // (lib/emailAccount); every other sign-in of it ends.
+    if (emailAccount) {
+      try {
+        if (currentPassword === newPassword) throw new Error('SAME')
+        await changePassword(currentPassword, newPassword)
+        setPasswordSuccess(true)
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setTimeout(() => { setShowPasswordChange(false); setPasswordSuccess(false) }, 2000)
+      } catch (err: any) {
+        setPasswordError(err?.message === 'WRONG_PASSWORD' ? t('profile.errWrongCurrent') : err?.message === 'SAME' ? t('profile.errSamePassword') : t('profile.errUpdatePassword'))
+      } finally {
+        setPasswordLoading(false)
+      }
+      return
+    }
+
     try {
       // Prove it is the account holder at the keyboard before changing the
       // password. A session left open on a shared machine is enough to change
@@ -246,6 +270,10 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       })
 
       if (updateError) throw updateError
+
+      // The worker's copy of it too (lib/emailAccount), with the sign-in just made.
+      const { data: { session: fresh } } = await supabase.auth.getSession()
+      if (fresh && actualUsername) void adopt(fresh.access_token, email, actualUsername, newPassword)
 
       setPasswordSuccess(true)
       setCurrentPassword('')
@@ -336,6 +364,22 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
       return
     }
 
+    leaveAfterDeletion()
+  }
+
+  // An email account's: its password, once more -- the worker checks it, and
+  // this browser is signed out as it goes (lib/emailAccount).
+  const handleDeleteEmailAccount = async () => {
+    if (!actualUsername || deleteConfirmText !== actualUsername || !deletePassword) return
+    setDeleteError('')
+    setDeleteLoading(true)
+    try {
+      await deleteEmailAccount(deletePassword)
+    } catch (err: any) {
+      setDeleteError(err?.message === 'WRONG_PASSWORD' ? t('profile.errWrongCurrent') : t('profile.errDeleteAccount'))
+      setDeleteLoading(false)
+      return
+    }
     leaveAfterDeletion()
   }
 
@@ -599,8 +643,8 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
           <div className="h-[1px] bg-gradient-to-r from-nier-border/30 via-nier-border/20 to-transparent my-4" />
 
-          {/* Password Change Section - only show on web */}
-          {!isDesktop && (
+          {/* Password Change Section - only on the web, for an account with a password */}
+          {!isDesktop && !google && (
             <>
               <div>
                 <button
@@ -760,6 +804,23 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
                         <GoogleButton busy={deleteLoading} onCredential={idToken => void handleDeleteGoogleAccount(idToken)} />
                       </div>
                     )
+                  ) : emailAccount ? (
+                    // An email account confirms with its password, once its name is typed.
+                    actualUsername && deleteConfirmText === actualUsername && (
+                      <div>
+                        <label htmlFor="delete-account-password" className="block text-nier-bg/75 text-xs tracking-[0.1em] uppercase mb-2">
+                          {t('profile.deleteWithPassword')}
+                        </label>
+                        <input
+                          id="delete-account-password"
+                          type="password"
+                          value={deletePassword}
+                          onChange={(e) => setDeletePassword(e.target.value)}
+                          className="w-full bg-nier-black border border-nier-red/40 text-nier-bg px-3 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-red/60 transition-colors"
+                          autoComplete="current-password"
+                        />
+                      </div>
+                    )
                   ) : !codeSent ? (
                     <button
                       onClick={handleSendDeletionCode}
@@ -812,14 +873,14 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
 
                   <div className="flex gap-2">
                     {!google && <button
-                      onClick={handleDeleteAccount}
-                      disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || !codeSent || deleteCode.length < 6}
+                      onClick={emailAccount ? handleDeleteEmailAccount : handleDeleteAccount}
+                      disabled={deleteLoading || !actualUsername || deleteConfirmText !== actualUsername || (emailAccount ? !deletePassword : !codeSent || deleteCode.length < 6)}
                       className="flex-1 py-2 bg-nier-red/80 text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-red transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       {deleteLoading ? t('profile.deleting') : t('profile.deletePermanently')}
                     </button>}
                     <button
-                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteCode(''); setCodeSent(false); setResendIn(0); setDeleteError('') }}
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteCode(''); setDeletePassword(''); setCodeSent(false); setResendIn(0); setDeleteError('') }}
                       disabled={deleteLoading}
                       className="flex-1 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors disabled:opacity-30"
                     >

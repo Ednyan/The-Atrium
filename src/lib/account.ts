@@ -73,6 +73,12 @@ export async function deleteMyAccount(code: string): Promise<DeleteAccountResult
   if (!cloudClient) return { success: false, error: 'Not connected to the server.' }
 
   try {
+    // Its credential's copy at the worker (lib/emailAccount) goes first,
+    // while there's a session to ask with -- back at the next sign-in if the
+    // deletion doesn't go through.
+    const { data: { session } } = await cloudClient.auth.getSession()
+    if (session) await (await import('./emailAccount')).forgetCopy(session.access_token)
+
     const { data, error } = await cloudClient.functions.invoke('delete-account', {
       body: { code },
     })

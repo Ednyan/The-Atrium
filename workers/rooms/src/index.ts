@@ -15,6 +15,7 @@
 
 import { DurableObject } from 'cloudflare:workers'
 import { google } from './google'
+import { auth } from './auth'
 import { feedback } from './mail'
 import { people, publicPreview } from './people'
 import { store } from './store'
@@ -40,6 +41,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/google/')) return google(request, env, url.pathname.slice('/google/'.length))
+    // Email accounts (phase 10, step 4).
+    if (url.pathname.startsWith('/auth/')) return auth(request, env, url.pathname.slice('/auth/'.length))
     if (url.pathname.startsWith('/people/')) return people(request, env, url.pathname.slice('/people/'.length))
     // The hosted store (phase 10).
     if (url.pathname.startsWith('/store/')) return store(request, env, url.pathname.slice('/store/'.length))

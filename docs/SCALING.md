@@ -175,7 +175,7 @@ None cost money. Each cuts a bill or removes a wall.
 
 | Supabase today | On Cloudflare |
 |---|---|
-| Auth for email accounts | The worker. Accounts in D1, as Google accounts already are, with kind `email`. Passwords hashed with PBKDF2 (WebCrypto). Sign-up confirmation, reset and deletion codes mailed by Resend. Sessions are the worker's own `a1.` sessions, as for Google accounts. Supabase's bcrypt hashes are imported and checked once with a WASM bcrypt, then rehashed. |
+| Auth for email accounts | The worker (built, phase 10 step 4). Accounts in D1, as Google accounts already are, with kind `email`. The page stretches the password (PBKDF2, 600,000 rounds) and the worker keeps a salted SHA-256 of that: the free plan's 10 ms of CPU a request can't hash passwords itself. Confirmation and reset codes mailed by Resend. Sessions are the worker's own `a1.` sessions, renewed from a renewal token. Existing accounts' credentials are copied as they sign in (no bcrypt export). |
 | Postgres tables of cloud atriums | **Each cloud atrium kept by its own room**: the atrium's Durable Object, which is already its live room, keeps its rows in its own SQLite storage. Recommended form: the same as Drive atriums (`lib/driveSync`, `lib/driveFormat`), with the room as the store instead of Drive. A working copy in the browser (the phase 7 engine), saves sent to the room, which merges them, keeps them, and passes them on. Most of the code exists. |
 | Row-level security | The room's own checks: the roster, roles, passwords. Authorization written in code, reviewed as carefully as the policies were. |
 | Storage | R2, at the same paths. Free downloads. |

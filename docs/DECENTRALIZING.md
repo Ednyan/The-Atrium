@@ -1091,12 +1091,44 @@ A hosted atrium is then a Drive atrium whose store is ours:
 3. Public atriums mirrored to the hosted store: their writers' saves and
    files copied there; viewers read there first, Drive second. This is the
    phase 8 R2 mirror.
-4. Email accounts into D1, beside Google accounts:
-   - sign-up, confirmation, sign-in, reset and deletion, by the worker,
-     mailed by Resend;
-   - passwords hashed with PBKDF2;
-   - Supabase's bcrypt hashes imported, checked once, then rehashed;
-   - the worker's own sessions.
+4. Email accounts into D1, beside Google accounts (built 2026-10-21,
+   `workers/rooms/src/auth.ts`, `src/lib/emailAccount.ts`):
+   - Sign-up, a confirmation code, sign-in, staying signed in, a forgotten
+     password (a code), a new password and deletion, by the worker; codes
+     mailed by Resend, in the page's language.
+   - **The password never reaches the worker.** The page stretches it
+     (PBKDF2-SHA256, 600,000 rounds, OWASP's figure) and sends the key; the
+     worker keeps SHA-256 of it under a salt of its own. On Cloudflare's free
+     plan a request has 10 ms of CPU, far short of a proper hash; done in
+     the page, a stolen database still costs 600,000 rounds a guess, per
+     account. No new secret to lose.
+   - Two salts and two verifiers an account: one for its address, one for
+     its username. One salt for both would let anyone confirm "this address
+     is that username's" by asking for both. A login that doesn't exist gets
+     the salt a new one would, from the worker's key, so asking reveals
+     nothing.
+   - Sessions: the worker's `a1.` sessions (marked as an email account's),
+     renewed hourly from a 90-day renewal token kept in the browser.
+   - Five wrong passwords, then a wait that doubles to an hour. Sign-ups and
+     codes throttled per network address (Resend's daily allowance).
+   - **New sign-ups are email accounts from now on** -- at parity with Google
+     accounts, which already live without Supabase: settings, Pinterest,
+     feedback, the relay, the hosted store, Drive (connected as an existing
+     account connects its own).
+   - **Existing accounts stay Supabase's until the cutover**: operator tools,
+     contributions and step 5's moves still need their Supabase session. As
+     each signs in there with its password, its credential is copied to the
+     worker (`adopt`, allowed only with a password sign-in of the last ten
+     minutes, as Supabase's own token says); also on a password change, and
+     after Supabase's reset link (`PasswordRecovery`, which also fixes that
+     link never asking for the new password). So no bcrypt export at all,
+     and no reset for anyone who came back before the cutover. Its deletion
+     removes the copy.
+   - Still at cutover (step 7): those never adopted reset by email; the app
+     treats adopted existing accounts as email accounts; and sign-up stops
+     asking Supabase whether an address or a username is taken
+     (`existingAccountFor`, `takenInSupabase`), or every sign-up would wait
+     on an answer that can't come.
 5. Cloud atriums onto the hosted store, same ids. Done before step 4: cloud
    rows are guarded by Supabase's RLS, and the hosted store already takes
    Supabase sign-ins. The user chose (2026-10-21): hosted atriums for

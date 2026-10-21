@@ -1,0 +1,481 @@
+// Email accounts (docs/DECENTRALIZING.md, phase 10, step 4): signing up and
+// in, staying signed in, a forgotten password, a new one, deletion -- by the
+// worker, its mail by Resend. A Google account's sign-in is Google's
+// (src/google.ts); an email account's is its address (or username) and
+// password, checked here.
+//
+// The password never comes here. The page stretches it -- PBKDF2, 600,000
+// rounds of SHA-256 (OWASP's figure), with a salt of the account's own -- and
+// sends what that makes, the key; kept here is SHA-256 of the key under a salt
+// of the worker's, the verifier. The stretching is the page's because a worker
+// on Cloudflare's free plan has 10 ms of CPU a request, and a proper password
+// hash takes far more: done there, a stolen database still costs 600,000
+// rounds a guess, account by account. The key is as good as the password to
+// whoever holds it -- as a password sent would be -- and travels only here.
+//
+// Two salts an account, two verifiers: one for signing in with its address,
+// one with its username. The salt is the first thing a page asks for, before
+// any password; one salt for both would answer "is this address that
+// username's?" to anyone who asked for both. A login that doesn't exist gets
+// a salt all the same -- made from its name with the worker's key, the very
+// one a new account would get -- so asking says nothing of who has an account.
+//
+// Existing accounts (Supabase's) stay signed in by Supabase until the cutover
+// (step 7): their credential is copied here as they sign in there (adopt), so
+// the cutover needs no export of Supabase's hashes, and no reset for anyone
+// who came back meanwhile. Only a password sign-in of the last minutes may do
+// it: a session alone, stolen, can't set a password here.
+
+import { authCode, goodbye, welcome } from './mail'
+import { forgetAccount, isBanned, supabaseUsername, takenInSupabase, tablesIn, USERNAME } from './people'
+import { dropOwnFiles } from './store'
+import { fromBase64, fromUrl, keyFrom, replies, signSession, toBase64, whoIs, type Env } from './who'
+
+// The page's stretching: its rounds, for accounts made from now on (each
+// login keeps its own, so this can rise).
+const ROUNDS = 600_000
+const SALT_BYTES = 16
+const KEY_BYTES = 32
+// Staying signed in: a renewal token, each use moving its end this far on.
+const STAY_MS = 90 * 24 * 60 * 60_000
+// Codes mailed (confirming an address, a forgotten password): how long one
+// holds, how many tries it takes, and how soon another may be sent.
+const CODE_MS = 15 * 60_000
+const CODE_TRIES = 5
+const CODE_EVERY_MS = 60_000
+// An address never confirmed: its account let go after this, its username free.
+const UNCONFIRMED_MS = 24 * 60 * 60_000
+// Wrong passwords: this many, then a wait that doubles with each more, to this.
+const FREE_TRIES = 5
+const LONGEST_WAIT_MS = 60 * 60_000
+// An existing account's credential copied here: only with a password sign-in this recent.
+const ADOPT_WITHIN_MS = 10 * 60_000
+// Sign-ups and codes asked for, from one address in an hour.
+const HOUR_MS = 60 * 60_000
+const SIGNUPS_AN_HOUR = 5
+const CODES_AN_HOUR = 10
+
+type Form = 'email' | 'name'
+interface Login {
+  account: string; email: string; seal: string; rounds: number
+  email_salt: string; email_verifier: string; name_salt: string | null; name_verifier: string | null
+  confirmed_at: number | null; failures: number; locked_until: number | null; created_at: number
+}
+interface Account { id: string; kind: string; username: string | null; display_name: string | null; email: string | null }
+
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,63}$/
+const formOf = (login: string): Form => (login.includes('@') ? 'email' : 'name')
+const lower = (text: string) => text.trim().toLowerCase()
+
+export async function auth(request: Request, env: Env, what: string): Promise<Response> {
+  const { allowed, answer } = replies(request)
+  if (!allowed) return answer(403, { error: 'origin' })
+  const db = env.PEOPLE
+  // Sessions are signed with the app's secret (who.ts): none, no sign-ins.
+  if (!db || !env.GOOGLE_CLIENT_SECRET) return answer(503, { error: 'not set up' })
+  let asked: Record<string, unknown>
+  try {
+    asked = await request.json()
+  } catch {
+    return answer(400, { error: 'body' })
+  }
+  await tablesIn(db)
+  // Whose network is asking (Cloudflare says), for what's throttled.
+  const from = request.headers.get('CF-Connecting-IP') ?? 'local'
+  const text = (key: string, most: number) => (typeof asked[key] === 'string' && (asked[key] as string).length <= most ? (asked[key] as string).trim() : null)
+  // A key or salt as the page sends it: base64 of exactly so many bytes.
+  const bytes = (key: string, length: number) => {
+    try {
+      const value = typeof asked[key] === 'string' ? fromBase64(asked[key] as string) : null
+      return value && value.length === length ? value : null
+    } catch {
+      return null
+    }
+  }
+  // Signed in, as an email account: a session, and who it's for.
+  const signedIn = async (account: Account, refresh?: string) => ({
+    ...(await signSession(env, account.id, 'email')),
+    refresh: refresh ?? await newRefresh(db, account.id),
+    account: shown(account),
+  })
+
+  switch (what) {
+    // The salt to stretch a password with, for an address or a username.
+    case 'salt': {
+      const login = text('login', 320)
+      if (!login) return answer(400, { error: 'body' })
+      const form = formOf(login)
+      const found = await loginBy(db, login)
+      const salt = form === 'email' ? found?.email_salt : found?.name_salt
+      return answer(200, { salt: salt ?? await saltFor(env, form, login), rounds: found?.rounds ?? ROUNDS })
+    }
+
+    // A new account: its address, its username, and a key for each way of
+    // signing in. Kept unconfirmed until the code mailed to the address comes back.
+    case 'signup': {
+      const email = text('email', 320)
+      const username = text('username', 40)
+      const keys = { email: bytes('email_key', KEY_BYTES), name: bytes('name_key', KEY_BYTES) }
+      const salts = { email: bytes('email_salt', SALT_BYTES), name: bytes('name_salt', SALT_BYTES) }
+      if (!email || !EMAIL.test(email) || !username || !USERNAME.test(username) || !keys.email || !keys.name || !salts.email || !salts.name) return answer(400, { error: 'body' })
+      if (!(await allowedNow(db, `signup:${from}`, SIGNUPS_AN_HOUR))) return answer(429, { error: 'wait' })
+      await dropUnconfirmed(db, email, username)
+      // An address is one account's: here (an email account's, a Google
+      // account's), or an existing account's in Supabase.
+      if (await db.prepare('select 1 from logins where email = ? collate nocase union all select 1 from accounts where email = ? collate nocase').bind(email, email).first()) return answer(409, { error: 'email' })
+      const existing = await existingAccountFor(env, email)
+      if (existing === undefined) return answer(503, { error: 'check' })
+      if (existing) return answer(409, { error: 'email' })
+      if (await db.prepare('select 1 from accounts where username = ? collate nocase').bind(username).first()) return answer(409, { error: 'username' })
+      const elsewhere = await takenInSupabase(env, username, null)
+      if (elsewhere === null) return answer(503, { error: 'check' })
+      if (elsewhere) return answer(409, { error: 'username' })
+      const id = crypto.randomUUID()
+      const seal = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
+      const now = Date.now()
+      await db.batch([
+        db.prepare(`insert into accounts (id, kind, username, email, created_at) values (?, 'email', ?, ?, ?)`).bind(id, username, email, now),
+        db.prepare(`insert into logins (account, email, seal, rounds, email_salt, email_verifier, name_salt, name_verifier, failures, created_at, updated_at)
+          values (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+          .bind(id, email, toBase64(seal), ROUNDS, toBase64(salts.email), await verifierOf(seal, keys.email), toBase64(salts.name), await verifierOf(seal, keys.name), now, now),
+      ])
+      await mailCode(env, db, id, email, 'confirm', asked.language)
+      return answer(200, { ok: true })
+    }
+
+    // The code mailed to a new account's address: confirmed, and signed in.
+    case 'confirm': {
+      const email = text('email', 320), code = text('code', 12)
+      if (!email || !code) return answer(400, { error: 'body' })
+      const found = await loginBy(db, email)
+      if (!found || found.confirmed_at) return answer(400, { error: 'code' })
+      const checked = await useCode(db, found.account, 'confirm', code)
+      if (checked !== 'ok') return answer(checked === 'tries' ? 429 : 400, { error: 'code' })
+      await db.prepare('update logins set confirmed_at = ?, updated_at = ? where account = ?').bind(Date.now(), Date.now(), found.account).run()
+      const account = await accountOf(db, found.account)
+      if (!account) return answer(400, { error: 'code' })
+      await welcome(env, found.email, account.display_name || account.username || '', asked.language)
+      return answer(200, await signedIn(account))
+    }
+
+    // Another code, for an address not confirmed yet -- or for a forgotten
+    // password (`purpose` reset). The same answer whether or not there's
+    // anything to send, and at most one a minute.
+    case 'code': {
+      const email = text('email', 320)
+      const purpose = asked.purpose === 'reset' ? 'reset' : 'confirm'
+      if (!email) return answer(400, { error: 'body' })
+      if (!(await allowedNow(db, `code:${from}`, CODES_AN_HOUR))) return answer(429, { error: 'wait' })
+      const found = await loginBy(db, email)
+      const account = found ? await accountOf(db, found.account) : null
+      // A reset only for an email account's password; an existing account's
+      // is Supabase's until the cutover (its own mail, from there).
+      const fits = found && account && (purpose === 'confirm' ? !found.confirmed_at : found.confirmed_at && account.kind === 'email')
+      if (fits && !(await isBanned(env, found.account))) await mailCode(env, db, found.account, found.email, purpose, asked.language)
+      return answer(200, { ok: true })
+    }
+
+    // A forgotten password: the code mailed, and the new key for signing in
+    // with the address. Its page knows the address alone, so the username's
+    // key is gone till the page sets it, as it does next (with `password`,
+    // and the username this gives). Every other sign-in of the account's ends.
+    case 'reset': {
+      const email = text('email', 320), code = text('code', 12)
+      const keys = { email: bytes('email_key', KEY_BYTES), name: bytes('name_key', KEY_BYTES) }
+      if (!email || !code || !keys.email) return answer(400, { error: 'body' })
+      const found = await loginBy(db, email)
+      const account = found ? await accountOf(db, found.account) : null
+      if (!found || !account || account.kind !== 'email') return answer(400, { error: 'code' })
+      const checked = await useCode(db, found.account, 'reset', code)
+      if (checked !== 'ok') return answer(checked === 'tries' ? 429 : 400, { error: 'code' })
+      await setKeys(db, found, keys)
+      await db.prepare('delete from refresh_tokens where account = ?').bind(found.account).run()
+      return answer(200, await signedIn(account))
+    }
+
+    // Signing in: an address or a username, and the key for it. An email
+    // account gets its session; an existing account is only told it's right
+    // (Supabase signs it in, until the cutover).
+    case 'signin': {
+      const login = text('login', 320)
+      const key = bytes('key', KEY_BYTES)
+      if (!login || !key) return answer(400, { error: 'body' })
+      const found = await loginBy(db, login)
+      if (!found) return answer(401, { error: 'login' })
+      if (found.locked_until && Date.now() < found.locked_until) return answer(429, { error: 'wait', until: found.locked_until })
+      const verifier = formOf(login) === 'email' ? found.email_verifier : found.name_verifier
+      if (!verifier || !same(verifier, await verifierOf(fromBase64(found.seal), key))) {
+        const failures = found.failures + 1
+        const wait = failures < FREE_TRIES ? null : Date.now() + Math.min(LONGEST_WAIT_MS, 60_000 * 2 ** (failures - FREE_TRIES))
+        await db.prepare('update logins set failures = ?, locked_until = ? where account = ?').bind(failures, wait, found.account).run()
+        return answer(401, { error: 'login' })
+      }
+      if (found.failures) await db.prepare('update logins set failures = 0, locked_until = null where account = ?').bind(found.account).run()
+      // Said only to whoever has the password: not confirmed, banned.
+      if (!found.confirmed_at) return answer(403, { error: 'unconfirmed', email: found.email })
+      if (await isBanned(env, found.account)) return answer(403, { error: 'banned' })
+      const account = await accountOf(db, found.account)
+      if (!account) return answer(401, { error: 'login' })
+      if (account.kind !== 'email') return answer(200, { verified: true, account: shown(account) })
+      return answer(200, await signedIn(account))
+    }
+
+    // Staying signed in: a new session for the renewal token, which runs on.
+    case 'renew': {
+      const refresh = text('refresh', 100)
+      if (!refresh) return answer(400, { error: 'body' })
+      const hash = await digest(refresh)
+      const held = await db.prepare('select account, expires_at from refresh_tokens where hash = ?').bind(hash).first<{ account: string; expires_at: number }>()
+      if (!held || Date.now() > held.expires_at) return answer(401, { error: 'renew' })
+      if (await isBanned(env, held.account)) return answer(403, { error: 'banned' })
+      const account = await accountOf(db, held.account)
+      if (!account || account.kind !== 'email') return answer(401, { error: 'renew' })
+      await db.prepare('update refresh_tokens set used_at = ?, expires_at = ? where hash = ?').bind(Date.now(), Date.now() + STAY_MS, hash).run()
+      return answer(200, await signedIn(account, refresh))
+    }
+
+    // Signed out here: the renewal token no use from now on.
+    case 'signout': {
+      const refresh = text('refresh', 100)
+      if (refresh) await db.prepare('delete from refresh_tokens where hash = ?').bind(await digest(refresh)).run()
+      return answer(200, { ok: true })
+    }
+
+    // A new password, with the one it replaces: every other sign-in ends,
+    // this one goes on (a new renewal token).
+    case 'password': {
+      const who = await whoIs(text('token', 2000), env)
+      const old = bytes('key', KEY_BYTES)
+      const keys = { email: bytes('email_key', KEY_BYTES), name: bytes('name_key', KEY_BYTES) }
+      if (!who || who.kind !== 'email') return answer(401, { error: 'sign-in' })
+      if (!old || !keys.email || !keys.name) return answer(400, { error: 'body' })
+      const found = await db.prepare('select * from logins where account = ?').bind(who.id).first<Login>()
+      if (!found || !same(found.email_verifier, await verifierOf(fromBase64(found.seal), old))) return answer(403, { error: 'password' })
+      await setKeys(db, found, keys)
+      await db.prepare('delete from refresh_tokens where account = ?').bind(who.id).run()
+      const account = await accountOf(db, who.id)
+      return account ? answer(200, await signedIn(account)) : answer(401, { error: 'sign-in' })
+    }
+
+    // An existing account's credential, copied here as it signs in to
+    // Supabase -- with a password, minutes ago, as Supabase's own token says
+    // -- or as its password changes there. Its keys made with the salts this
+    // gave for its address and username.
+    case 'adopt': {
+      const token = text('token', 4000)
+      const who = await whoIs(token, env)
+      const keys = { email: bytes('email_key', KEY_BYTES), name: bytes('name_key', KEY_BYTES) }
+      const salts = { email: bytes('email_salt', SALT_BYTES), name: bytes('name_salt', SALT_BYTES) }
+      if (!who || who.kind !== 'supabase' || !who.email) return answer(401, { error: 'sign-in' })
+      if (!keys.email || !keys.name || !salts.email || !salts.name) return answer(400, { error: 'body' })
+      if (!passwordJustNow(token!)) return answer(403, { error: 'recent' })
+      // Its address another login's here: an email account's, confirmed, is
+      // that account's -- Supabase knows nothing of it, and isn't asked to
+      // decide. Anything else holding it (one never confirmed, another
+      // existing account's from before an address changed) gives it up.
+      const other = await db.prepare(`select l.account, l.confirmed_at, a.kind from logins l left join accounts a on a.id = l.account
+        where l.email = ? collate nocase and l.account <> ?`).bind(who.email, who.id).first<{ account: string; confirmed_at: number | null; kind: string | null }>()
+      if (other?.confirmed_at && other.kind === 'email') return answer(409, { error: 'email' })
+      if (other) await forgetLogin(db, other.account)
+      const now = Date.now()
+      const seal = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
+      // Its keys were stretched with the rounds its salts came with: its own, if it has a login here.
+      const rounds = (await db.prepare('select rounds from logins where account = ?').bind(who.id).first<{ rounds: number }>())?.rounds ?? ROUNDS
+      await db.batch([
+        db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, 'supabase', now),
+        db.prepare(`insert into logins (account, email, seal, rounds, email_salt, email_verifier, name_salt, name_verifier, confirmed_at, failures, created_at, updated_at)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          on conflict (account) do update set email = excluded.email, seal = excluded.seal, rounds = excluded.rounds,
+            email_salt = excluded.email_salt, email_verifier = excluded.email_verifier, name_salt = excluded.name_salt,
+            name_verifier = excluded.name_verifier, confirmed_at = excluded.confirmed_at, failures = 0, locked_until = null, updated_at = excluded.updated_at`)
+          .bind(who.id, who.email, toBase64(seal), rounds, toBase64(salts.email), await verifierOf(seal, keys.email), toBase64(salts.name), await verifierOf(seal, keys.name), now, now, now),
+      ])
+      // Its username, as its profile has it, for signing in with: the
+      // directory's row may never have been given one.
+      const username = await supabaseUsername(env, who, token!)
+      if (username) await db.prepare(`update accounts set username = ? where id = ? and username is null
+        and not exists (select 1 from accounts where username = ? collate nocase and id <> ?)`).bind(username, who.id, username, who.id).run()
+      return answer(200, { ok: true })
+    }
+
+    // An existing account deleted (Supabase's delete-account): its
+    // credential here goes with it, before the session that asks does.
+    case 'forget': {
+      const who = await whoIs(text('token', 4000), env)
+      if (!who || who.kind !== 'supabase') return answer(401, { error: 'sign-in' })
+      await forgetLogin(db, who.id)
+      return answer(200, { ok: true })
+    }
+
+    // An email account deleted, on its own say-so: its session, and its
+    // password once more -- so a session left open somewhere can't. Its
+    // directory entry, its files in the Atrium's cloud, its sign-ins: gone.
+    // A goodbye, to the address it had.
+    case 'delete': {
+      const who = await whoIs(text('token', 2000), env)
+      const key = bytes('key', KEY_BYTES)
+      if (!who || who.kind !== 'email') return answer(401, { error: 'sign-in' })
+      if (!key) return answer(400, { error: 'body' })
+      const found = await db.prepare('select * from logins where account = ?').bind(who.id).first<Login>()
+      if (!found || !same(found.email_verifier, await verifierOf(fromBase64(found.seal), key))) return answer(403, { error: 'password' })
+      const account = await accountOf(db, who.id)
+      await dropOwnFiles(env, who.id)
+      await forgetLogin(db, who.id)
+      await forgetAccount(db, who.id)
+      if (account) await goodbyeTo(env, found.email, account, asked.language)
+      return answer(200, { deleted: true })
+    }
+  }
+  return answer(404, { error: 'what' })
+}
+
+// ---------------------------------------------------------------- pieces
+
+const shown = (account: Account) => ({ id: account.id, kind: account.kind, email: account.email, username: account.username, name: account.display_name || account.username })
+
+const loginBy = async (db: D1Database, login: string) => (formOf(login) === 'email'
+  ? db.prepare('select * from logins where email = ? collate nocase').bind(login.trim()).first<Login>()
+  : db.prepare('select l.* from logins l join accounts a on a.id = l.account where a.username = ? collate nocase').bind(login.trim()).first<Login>())
+
+const accountOf = async (db: D1Database, id: string) =>
+  db.prepare('select a.id, a.kind, a.username, a.display_name, coalesce(a.email, l.email) as email from accounts a left join logins l on l.account = a.id where a.id = ?').bind(id).first<Account>()
+
+/** The salt a login has if it's new: its name under the worker's key. */
+async function saltFor(env: Env, form: Form, login: string): Promise<string> {
+  const key = await keyFrom(env.GOOGLE_CLIENT_SECRET!, 'atrium login salt', 'HMAC', ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${form}:${lower(login)}`)))
+  return toBase64(mac.subarray(0, SALT_BYTES))
+}
+
+const digest = async (text: string | Uint8Array) =>
+  toBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', typeof text === 'string' ? new TextEncoder().encode(text) : text)))
+const verifierOf = (seal: Uint8Array, key: Uint8Array) => digest(new Uint8Array([...seal, ...key]))
+
+/** Two verifiers compared without a shortcut: as long whatever's alike. */
+function same(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let differ = 0
+  for (let i = 0; i < a.length; i++) differ |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return differ === 0
+}
+
+/** New keys for an account's password: a new seal, and each way of signing
+ *  in -- the username's none, if none is given (a reset's). */
+async function setKeys(db: D1Database, found: Login, keys: { email: Uint8Array | null; name: Uint8Array | null }): Promise<void> {
+  const seal = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
+  await db.prepare('update logins set seal = ?, email_verifier = ?, name_verifier = ?, failures = 0, locked_until = null, updated_at = ? where account = ?')
+    .bind(toBase64(seal), await verifierOf(seal, keys.email!), keys.name ? await verifierOf(seal, keys.name) : null, Date.now(), found.account).run()
+}
+
+async function newRefresh(db: D1Database, account: string): Promise<string> {
+  const refresh = toBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const now = Date.now()
+  await db.prepare('insert into refresh_tokens (hash, account, created_at, used_at, expires_at) values (?, ?, ?, ?, ?)').bind(await digest(refresh), account, now, now, now + STAY_MS).run()
+  return refresh
+}
+
+/** Six digits, every one as likely. */
+function sixDigits(): string {
+  const cut = 0xffffffff - (0xffffffff % 1_000_000)
+  for (;;) {
+    const [n] = crypto.getRandomValues(new Uint32Array(1))
+    if (n < cut) return String(n % 1_000_000).padStart(6, '0')
+  }
+}
+
+/** A code mailed for an account's address -- unless one went less than a minute ago. */
+async function mailCode(env: Env, db: D1Database, account: string, email: string, purpose: 'confirm' | 'reset', language: unknown): Promise<void> {
+  const held = await db.prepare('select sent_at from auth_codes where account = ? and purpose = ?').bind(account, purpose).first<{ sent_at: number }>()
+  if (held && Date.now() - held.sent_at < CODE_EVERY_MS) return
+  const code = sixDigits()
+  await db.prepare(`insert into auth_codes (account, purpose, hash, sent_at, expires_at, tries) values (?, ?, ?, ?, ?, 0)
+    on conflict (account, purpose) do update set hash = excluded.hash, sent_at = excluded.sent_at, expires_at = excluded.expires_at, tries = 0`)
+    .bind(account, purpose, await digest(`${account}:${purpose}:${code}`), Date.now(), Date.now() + CODE_MS).run()
+  await authCode(env, email, purpose, code, language)
+}
+
+/** A code given back: right (and used up), wrong, or tried too often. */
+async function useCode(db: D1Database, account: string, purpose: 'confirm' | 'reset', code: string): Promise<'ok' | 'wrong' | 'tries'> {
+  const held = await db.prepare('select hash, expires_at, tries from auth_codes where account = ? and purpose = ?').bind(account, purpose).first<{ hash: string; expires_at: number; tries: number }>()
+  if (!held || Date.now() > held.expires_at) return 'wrong'
+  if (held.tries >= CODE_TRIES) return 'tries'
+  if (!same(held.hash, await digest(`${account}:${purpose}:${code.replace(/\s/g, '')}`))) {
+    await db.prepare('update auth_codes set tries = tries + 1 where account = ? and purpose = ?').bind(account, purpose).run()
+    return 'wrong'
+  }
+  await db.prepare('delete from auth_codes where account = ? and purpose = ?').bind(account, purpose).run()
+  return 'ok'
+}
+
+/** Accounts never confirmed that stand in a sign-up's way, let go: any
+ *  holding its address -- whoever confirms the code mailed to it is its owner,
+ *  so a sign-up left unconfirmed can't keep the address from them -- and any
+ *  a day old holding its username. */
+async function dropUnconfirmed(db: D1Database, email: string, username: string): Promise<void> {
+  const { results } = await db.prepare(`select l.account from logins l join accounts a on a.id = l.account
+    where l.confirmed_at is null and (l.email = ? collate nocase or (a.username = ? collate nocase and l.created_at < ?))`)
+    .bind(email, username, Date.now() - UNCONFIRMED_MS).all<{ account: string }>()
+  for (const { account } of results) {
+    await forgetLogin(db, account)
+    await forgetAccount(db, account)
+  }
+}
+
+async function forgetLogin(db: D1Database, account: string): Promise<void> {
+  await db.batch([
+    db.prepare('delete from logins where account = ?').bind(account),
+    db.prepare('delete from refresh_tokens where account = ?').bind(account),
+    db.prepare('delete from auth_codes where account = ?').bind(account),
+  ])
+}
+
+/** An existing account's id for an address, by Supabase (add_account_for_email.sql):
+ *  null for none, undefined where it couldn't say. */
+async function existingAccountFor(env: Env, email: string): Promise<string | null | undefined> {
+  if (!env.SUPABASE_WORKER_KEY) return undefined
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/account_for_email`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_email: email, p_key: env.SUPABASE_WORKER_KEY }),
+    })
+    if (!response.ok) return undefined
+    const account = await response.json()
+    return typeof account === 'string' ? account : null
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether a Supabase token comes from a password sign-in (or a reset's
+ *  link) of the last minutes, as its own claims say. Asked only of a token
+ *  Supabase has just accepted (whoIs). */
+function passwordJustNow(token: string): boolean {
+  try {
+    const claims = JSON.parse(new TextDecoder().decode(fromUrl(token.split('.')[1] ?? ''))) as { amr?: { method?: unknown; timestamp?: unknown }[] }
+    return (claims.amr ?? []).some(entry => (entry.method === 'password' || entry.method === 'recovery') && typeof entry.timestamp === 'number' && Date.now() - entry.timestamp * 1000 < ADOPT_WITHIN_MS)
+  } catch {
+    return false
+  }
+}
+
+const goodbyeTo = (env: Env, email: string, account: Account, language: unknown) =>
+  goodbye(env, email, account.display_name || account.username || '', language)
+
+/** Whether something that mails may be asked again by this address: at most
+ *  `most` times an hour. (Resend sends so many a day; one script mustn't
+ *  spend them.) */
+async function allowedNow(db: D1Database, key: string, most: number): Promise<boolean> {
+  const now = Date.now()
+  const row = await db.prepare('select count, since from throttle where key = ?').bind(key).first<{ count: number; since: number }>()
+  if (!row || now - row.since > HOUR_MS) {
+    await db.batch([
+      db.prepare('delete from throttle where since < ?').bind(now - 24 * HOUR_MS),
+      db.prepare('insert into throttle (key, count, since) values (?, 1, ?) on conflict (key) do update set count = 1, since = excluded.since').bind(key, now),
+    ])
+    return true
+  }
+  if (row.count >= most) return false
+  await db.prepare('update throttle set count = count + 1 where key = ?').bind(key).run()
+  return true
+}

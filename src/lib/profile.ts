@@ -5,7 +5,7 @@
 // its entry in the directory (lib/people): the name public, its colour and
 // themes private there, as its email is (docs/DECENTRALIZING.md, phase 6).
 import { cloudClient, isDesktop } from './supabase'
-import { googleAccount } from './signedIn'
+import { workerAccount } from './signedIn'
 import { myEntry } from './people'
 
 export interface MyProfile { username: string; displayName: string; color: string | null; nameChangedAt: number | null }
@@ -16,7 +16,7 @@ const NAME_EVERY_DAYS = 15
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export async function loadMyProfile(userId: string): Promise<MyProfile | null> {
-  if (googleAccount()) {
+  if (workerAccount()) {
     const entry = await myEntry()
     return { username: entry.username ?? '', displayName: entry.display_name || entry.username || '', color: entry.settings?.player_color ?? null, nameChangedAt: entry.name_changed_at ?? null }
   }
@@ -40,7 +40,7 @@ export function daysUntilNameChange(changedAt: number | null, nextAt = changedAt
 /** The name and colour changed as asked. A name changed too soon is refused
  *  (`NAME_TOO_SOON`, with `until`). */
 export async function saveMyProfile(userId: string, change: { displayName?: string; color?: string }): Promise<void> {
-  if (googleAccount()) {
+  if (workerAccount()) {
     await myEntry({
       ...(change.displayName !== undefined ? { display_name: change.displayName } : {}),
       ...(change.color ? { settings: { player_color: change.color } } : {}),
@@ -64,14 +64,14 @@ export async function saveMyProfile(userId: string, change: { displayName?: stri
 
 /** One's own atrium themes (lib/customThemes), as stored -- unchecked. */
 export async function loadMyThemes(userId: string): Promise<unknown> {
-  if (googleAccount()) return (await myEntry()).settings?.custom_themes ?? []
+  if (workerAccount()) return (await myEntry()).settings?.custom_themes ?? []
   if (!cloudClient) return []
   const { data, error } = await (cloudClient.from('profiles') as any).select('custom_themes').eq('id', userId).maybeSingle()
   if (error) throw error
   return data?.custom_themes ?? []
 }
 export async function saveMyThemes(userId: string, themes: unknown[]): Promise<void> {
-  if (googleAccount()) {
+  if (workerAccount()) {
     await myEntry({ settings: { custom_themes: themes } })
     return
   }

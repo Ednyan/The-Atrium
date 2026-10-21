@@ -27,7 +27,7 @@ export async function pinterest(request: Request, env: Env, what: string): Promi
   }
   const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
   if (!who) return answer(401, { error: 'Not authenticated' })
-  if (who.kind !== 'google') return answer(403, { error: 'An existing account’s Pinterest is Supabase’s' })
+  if (who.kind === 'supabase') return answer(403, { error: 'An existing account’s Pinterest is Supabase’s' })
   await tablesIn(db)
   const key = await keyFrom(env.GOOGLE_CLIENT_SECRET, 'atrium pinterest', 'AES-GCM', ['encrypt', 'decrypt'])
 
