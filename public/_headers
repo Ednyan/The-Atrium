@@ -15,12 +15,12 @@
 #       How a Tauri webview reaches local files and the Rust side. Meaningless
 #       on the web and absent there.
 #
-#   script-src 'unsafe-inline' 'unsafe-eval'
-#       Still on desktop, not on the web. Worth removing -- the web proves Pixi
-#       does not need eval, because @pixi/unsafe-eval is why the web policy can
-#       leave it out -- but it cannot be removed without launching a desktop
-#       build to check, and getting it wrong is a blank window rather than a
-#       degraded one.
+#   script-src
+#       Neither has 'unsafe-inline' or 'unsafe-eval' (the desktop's went in
+#       2026-10: an injected script there could write anywhere on the disk).
+#       The desktop keeps them in devCsp alone, for the dev server's inline
+#       hot-reload preamble. accounts.google.com and apis.google.com are the
+#       web's alone; the desktop signs in to Google another way.
 #
 #   img-src/media-src/frame-src http:
 #       Plain http is allowed on desktop and not here, where

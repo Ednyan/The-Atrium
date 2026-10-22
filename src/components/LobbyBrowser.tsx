@@ -1308,21 +1308,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     setVaultBusy(true)
 
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: vaultPath ?? undefined,
-        title: 'Choose Digital Atrium Vault Folder',
-      })
-
-      if (typeof selected !== 'string') {
-        return
-      }
-
-      const { setVaultBasePath } = await import('../lib/localDb')
-      const nextVaultPath = await setVaultBasePath(selected)
-      setVaultPath(nextVaultPath)
+      const { chooseVaultFolder } = await import('../lib/localDb')
+      const nextVaultPath = await chooseVaultFolder('Choose Digital Atrium Vault Folder')
+      if (nextVaultPath) setVaultPath(nextVaultPath)
     } catch (err) {
       setVaultError(err instanceof Error ? err.message : t('browser.vaultUpdateError'))
     } finally {

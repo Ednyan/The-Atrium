@@ -245,37 +245,51 @@ fn get_vault_base_path(app: tauri::AppHandle) -> Result<String, String> {
     Ok(base_path.to_string_lossy().to_string())
 }
 
+// The vault folder, chosen in the system's own folder dialog -- opened from
+// here, not named by the page. Everything the page may write lands inside the
+// vault (writable, below), so a page that could name the vault could name
+// anywhere: a startup folder, a shell's profile. None when it's cancelled.
 #[tauri::command]
-fn set_vault_base_path(
+async fn choose_vault_folder(
     app: tauri::AppHandle,
-    path: String,
+    window: tauri::WebviewWindow,
+    title: String,
     lock: tauri::State<'_, VaultLock>,
-) -> Result<String, String> {
-    let previous_base_path = current_vault_base_path(&app)?;
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title(title)
+        .set_directory(current_vault_base_path(&app)?)
+        .blocking_pick_folder();
+    let Some(picked) = picked else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    move_vault_to(&app, path, &lock).map(Some)
+}
+
+fn move_vault_to(app: &tauri::AppHandle, base_path: PathBuf, lock: &VaultLock) -> Result<String, String> {
+    let previous_base_path = current_vault_base_path(app)?;
     let previous_live_database = live_database_path(&previous_base_path);
-    let legacy_database = legacy_database_path(&app)?;
+    let legacy_database = legacy_database_path(app)?;
 
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err("Vault folder path cannot be empty".into());
-    }
-
-    let base_path = PathBuf::from(trimmed);
     fs::create_dir_all(&base_path).map_err(|e| e.to_string())?;
     fs::create_dir_all(live_runtime_dir(&base_path)).map_err(|e| e.to_string())?;
 
     // Claimed before a single byte is written, so pointing at a vault another
     // session already has open changes nothing at all -- the setting is not
     // saved, no files are copied, and this session keeps the vault it had.
-    if let Err(e) = claim_vault(&base_path, &lock) {
+    if let Err(e) = claim_vault(&base_path, lock) {
         // Taking the old one back, because claiming released it. Ignored on
         // failure: nothing useful can be done about it here, and the caller
         // needs to hear about the folder they actually chose.
-        let _ = claim_vault(&previous_base_path, &lock);
+        let _ = claim_vault(&previous_base_path, lock);
         return Err(e);
     }
 
-    let settings_path = vault_settings_path(&app)?;
+    let settings_path = vault_settings_path(app)?;
     if let Some(parent) = settings_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -516,9 +530,53 @@ fn dir_size(root: &PathBuf) -> u64 {
     total
 }
 
+// Where the page may write, move and delete: inside the vault, or the app's
+// own folders -- every path it builds starts from one of them. Paths come from
+// the page, and a page made to run a script it shouldn't have must not be able
+// to name anywhere else on the disk (a startup folder, a shell's profile) and
+// have it written. Reading stays open: a live file follows a spreadsheet
+// wherever it is kept.
+fn writable(app: &tauri::AppHandle, path: &str) -> Result<PathBuf, String> {
+    let roots = [
+        current_vault_base_path(app)?,
+        app.path().app_data_dir().map_err(|e| e.to_string())?,
+        app.path().app_config_dir().map_err(|e| e.to_string())?,
+    ];
+    inside(path, &roots)
+}
+
+fn inside(path: &str, roots: &[PathBuf]) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+    let within = path.is_absolute()
+        && !path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        && roots.iter().any(|root| path.starts_with(root));
+    if within {
+        Ok(path)
+    } else {
+        Err(format!("{} is outside the vault", path.display()))
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_inside_the_vault_or_the_apps_folders() {
+        let roots = [PathBuf::from(r"C:\Users\A\Documents\Vault"), PathBuf::from(r"C:\Users\A\AppData\Roaming\atrium")];
+        assert!(inside(r"C:\Users\A\Documents\Vault\Ours__1\media\a.png", &roots).is_ok());
+        assert!(inside(r"c:\Users\A\Documents\Vault\atrium.json", &roots).is_ok());
+        assert!(inside(r"C:\Users\A\AppData\Roaming\atrium\vault-settings.json", &roots).is_ok());
+        assert!(inside(r"C:\Users\A\Documents\Vault\..\..\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\x.bat", &roots).is_err());
+        assert!(inside(r"C:\Users\A\Documents\VaultOther\x", &roots).is_err());
+        assert!(inside(r"C:\Windows\System32\x.dll", &roots).is_err());
+        assert!(inside(r"Vault\x", &roots).is_err());
+    }
+}
+
 #[tauri::command]
-fn write_vault_text_file(path: String, contents: String) -> Result<(), String> {
-    let file_path = PathBuf::from(path);
+fn write_vault_text_file(app: tauri::AppHandle, path: String, contents: String) -> Result<(), String> {
+    let file_path = writable(&app, &path)?;
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -602,7 +660,7 @@ fn extended_path(path: PathBuf) -> PathBuf {
 // with a local:// URL pointing at a file that never got created, so the atrium
 // came back later reading "Missing file". A write path is the wrong place to
 // be strict about wire format.
-fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(PathBuf, Vec<u8>), String> {
+fn split_binary_payload<'a>(app: &tauri::AppHandle, request: &'a tauri::ipc::Request<'a>) -> Result<(PathBuf, Vec<u8>), String> {
     match request.body() {
         tauri::ipc::InvokeBody::Raw(body) => {
             if body.len() < 4 {
@@ -613,7 +671,7 @@ fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(Pat
                 return Err("payload is truncated".to_string());
             }
             let path = std::str::from_utf8(&body[4..4 + path_len]).map_err(|e| e.to_string())?;
-            Ok((PathBuf::from(path), body[4 + path_len..].to_vec()))
+            Ok((writable(app, path)?, body[4 + path_len..].to_vec()))
         }
         tauri::ipc::InvokeBody::Json(value) => {
             let path = value
@@ -627,14 +685,14 @@ fn split_binary_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(Pat
                 .iter()
                 .map(|n| n.as_u64().unwrap_or(0) as u8)
                 .collect::<Vec<u8>>();
-            Ok((PathBuf::from(path), bytes))
+            Ok((writable(app, path)?, bytes))
         }
     }
 }
 
 #[tauri::command]
-fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let (file_path, contents) = split_binary_payload(&request)?;
+fn write_binary_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let (file_path, contents) = split_binary_payload(&app, &request)?;
     let file_path = extended_path(file_path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -658,10 +716,10 @@ fn write_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
 // re-import over an existing path cannot leave the tail of the old file
 // behind the new one.
 #[tauri::command]
-fn append_binary_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+fn append_binary_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
     use std::io::Write;
 
-    let (file_path, contents) = split_binary_payload(&request)?;
+    let (file_path, contents) = split_binary_payload(&app, &request)?;
     let file_path = extended_path(file_path);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -695,8 +753,8 @@ struct VaultWrites(std::sync::Mutex<std::collections::HashMap<String, std::fs::F
 static VAULT_WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[tauri::command]
-fn open_binary_stream(path: String, state: tauri::State<'_, VaultWrites>) -> Result<String, String> {
-    let file_path = extended_path(PathBuf::from(&path));
+fn open_binary_stream(app: tauri::AppHandle, path: String, state: tauri::State<'_, VaultWrites>) -> Result<String, String> {
+    let file_path = extended_path(writable(&app, &path)?);
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -863,9 +921,9 @@ fn file_modified(path: String) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn copy_file_to_path(source_path: String, destination_path: String) -> Result<(), String> {
+fn copy_file_to_path(app: tauri::AppHandle, source_path: String, destination_path: String) -> Result<(), String> {
     let source = extended_path(PathBuf::from(source_path));
-    let destination = extended_path(PathBuf::from(destination_path));
+    let destination = extended_path(writable(&app, &destination_path)?);
 
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -877,13 +935,13 @@ fn copy_file_to_path(source_path: String, destination_path: String) -> Result<()
 }
 
 #[tauri::command]
-fn move_path(source_path: String, destination_path: String) -> Result<(), String> {
-    let source = PathBuf::from(source_path);
+fn move_path(app: tauri::AppHandle, source_path: String, destination_path: String) -> Result<(), String> {
+    let source = writable(&app, &source_path)?;
     if !source.exists() {
         return Ok(());
     }
 
-    let destination = PathBuf::from(destination_path);
+    let destination = writable(&app, &destination_path)?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -900,8 +958,8 @@ fn move_path(source_path: String, destination_path: String) -> Result<(), String
 }
 
 #[tauri::command]
-fn remove_path(path: String) -> Result<(), String> {
-    let target = PathBuf::from(path);
+fn remove_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let target = writable(&app, &path)?;
     if !target.exists() {
         return Ok(());
     }
@@ -914,13 +972,13 @@ fn remove_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
-    let old = PathBuf::from(old_path);
+fn rename_path(app: tauri::AppHandle, old_path: String, new_path: String) -> Result<(), String> {
+    let old = writable(&app, &old_path)?;
     if !old.exists() {
         return Ok(());
     }
 
-    let new = PathBuf::from(new_path);
+    let new = writable(&app, &new_path)?;
     if let Some(parent) = new.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -1668,7 +1726,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_app_data_dir,
             get_vault_base_path,
-            set_vault_base_path,
+            choose_vault_folder,
             prepare_live_database,
             get_or_create_device_id,
             vault_path_exists,

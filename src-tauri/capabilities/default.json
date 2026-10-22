@@ -15,14 +15,7 @@
     "fs:allow-app-read-recursive",
     "fs:allow-appdata-write-recursive",
     "fs:allow-appdata-read-recursive",
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "**" }]
-    },
+    "fs:allow-write-file",
     "core:app:allow-version",
     "updater:default",
     "process:allow-restart",

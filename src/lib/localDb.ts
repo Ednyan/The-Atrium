@@ -82,13 +82,13 @@ export async function getVaultBasePath(): Promise<string> {
   return vaultBasePath
 }
 
-export async function setVaultBasePath(path: string): Promise<string> {
-  const trimmedPath = path.trim()
-  if (!trimmedPath) {
-    throw new Error('Vault folder path cannot be empty')
-  }
-
-  vaultBasePath = await invoke<string>('set_vault_base_path', { path: trimmedPath })
+// A new vault folder, chosen in the system's dialog -- opened by the app's
+// native side, which alone names it (main.rs choose_vault_folder). Null when
+// the dialog is cancelled.
+export async function chooseVaultFolder(title: string): Promise<string | null> {
+  const chosen = await invoke<string | null>('choose_vault_folder', { title })
+  if (!chosen) return null
+  vaultBasePath = chosen
   mediaBasePath = await getLiveMediaBasePath()
   resolvedUrlCache.clear()
   await syncAllLobbiesToVault()

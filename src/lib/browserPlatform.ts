@@ -79,7 +79,7 @@ export async function invoke<T>(command: string, args: any = {}): Promise<T> {
         return { device_id: device, os_user: '' }
       }
       case 'get_vault_base_path':
-      case 'set_vault_base_path': return VAULT
+      case 'choose_vault_folder': return VAULT
       case 'consolidate_runtime_media': return 'nothing to migrate'
       case 'vault_path_exists': return call('exists', { path: args.path })
       case 'write_vault_text_file': return call('write', { path: args.path, bytes: new TextEncoder().encode(args.contents) })
