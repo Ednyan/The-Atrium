@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
+import { toWorker } from '../lib/worker'
 import { Check } from './ShapeStyleControls'
 import {
   SEED_PRESETS,
   clearSeededContributors,
   seedContributors,
 } from '../lib/seedContributors'
+
+// The operator's dashboard, opened from here: only ever loaded by them.
+const OperatorDashboard = lazy(() => import('./OperatorDashboard'))
 
 interface NameApprovalPanelProps {
   onClose: () => void
@@ -41,8 +45,9 @@ interface ContributionFields { displayName: string; amountEur: number; createdAt
 // Moderating the contributors wall.
 //
 // Only the operator ever sees the button that opens this, but that is
-// presentation. The Edge Function behind it re-establishes who is asking on
-// every single request, because a hidden button is not a permission -- anyone
+// presentation. The worker behind it (workers/rooms, contributions.ts) -- or,
+// until the record moves there, the Edge Function -- re-establishes who is
+// asking on every single request, because a hidden button is not a permission -- anyone
 // can call the URL. If this were somehow rendered for someone else they would
 // get an empty list and a 403 for every action.
 const DECIDED_SHOWN = 15
@@ -85,7 +90,21 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
   const [goalSaving, setGoalSaving] = useState(false)
   const [goalSaved, setGoalSaved] = useState(false)
 
+  // Where the record is: the worker's once moved there, Supabase's until then
+  // (the worker says so: 409). Null until the first answer.
+  const [moved, setMoved] = useState<boolean | null>(null)
+  const [moving, setMoving] = useState(false)
+  const [dashboard, setDashboard] = useState(false)
+
   const call = async (action: string, body: Record<string, unknown> = {}) => {
+    const { ok, status, answer } = await toWorker('/contributions/ops', { action, ...body }, true)
+    if (status !== 409) {
+      if (!ok) throw new Error(answer?.error || t('names.requestFailed'))
+      setMoved(true)
+      return answer
+    }
+    setMoved(false)
+
     const baseUrl = import.meta.env.VITE_SUPABASE_URL
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
     const { data: { session } } = await supabase!.auth.getSession()
@@ -119,6 +138,22 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
   }
 
   useEffect(load, [])
+
+  // Supabase's record copied to the worker, which keeps it from then on.
+  const move = async () => {
+    setMoving(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await call('move')
+      setNotice(t('names.moved', { count: result?.copied ?? 0 }))
+      load()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setMoving(false)
+    }
+  }
 
   const run = async (id: string, work: () => Promise<any>) => {
     setBusyId(id)
@@ -190,7 +225,28 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
         <div className="flex items-center gap-3 mb-5">
           <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
           <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('names.title')}</h3>
+          <button
+            type="button"
+            onClick={() => setDashboard(true)}
+            className="ml-auto px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
+          >
+            ◇ {t('ops.open')}
+          </button>
         </div>
+
+        {moved === false && (
+          <div className="mb-5 pb-5 border-b border-nier-border/20">
+            <p className="text-nier-bg/70 text-[9px] tracking-wider leading-relaxed mb-3">{t('names.move.hint')}</p>
+            <button
+              type="button"
+              onClick={move}
+              disabled={moving}
+              className="w-full py-2 bg-nier-bg text-nier-black text-[10px] tracking-[0.15em] uppercase hover:bg-nier-strong transition-colors disabled:opacity-40"
+            >
+              {moving ? t('names.move.moving') : t('names.move.button')}
+            </button>
+          </div>
+        )}
 
         {/* The monthly goal. It used to be a literal inside the SQL view, so
             changing what the gauge fills towards meant editing a migration and
@@ -387,6 +443,12 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
           {t('common.close')}
         </button>
       </div>
+
+      {dashboard && (
+        <Suspense fallback={null}>
+          <OperatorDashboard onClose={() => setDashboard(false)} />
+        </Suspense>
+      )}
 
       {messaging && (
         <MessageDialog
@@ -626,6 +688,7 @@ function RejectDialog({ entry, onCancel, onSend }: {
 
       <p className="text-nier-bg/70 text-[9px] tracking-wider mt-2 leading-relaxed">
         {t('names.reject.note')}
+        {entry.kind === 'monthly' && !entry.refunded && <> {t('names.reject.endsMonthly')}</>}
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2 mt-5">

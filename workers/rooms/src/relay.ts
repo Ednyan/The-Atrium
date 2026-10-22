@@ -23,28 +23,42 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 let usage: { bytes: number; at: number } | null = null
 
-// Bytes the account's relay has sent out over the last 31 days.
-async function relayedBytes(env: Env, accountId: string, token: string): Promise<number> {
-  if (usage && Date.now() - usage.at < USAGE_FRESH_MS) return usage.bytes
-  const day = (ms: number) => JSON.stringify(new Date(ms).toISOString().slice(0, 10))
-  const query = `{ viewer { accounts(filter: { accountTag: ${JSON.stringify(accountId)} }) {
-    callsTurnUsageAdaptiveGroups(filter: { date_geq: ${day(Date.now() - 30 * DAY_MS)}, date_leq: ${day(Date.now())} }, limit: 1) {
-      sum { egressBytes }
-    }
-  } } }`
+/** Cloudflare's analytics (GraphQL) for the account, these fields asked of
+ *  it: what it answers, or why not. Also the operator's dashboard's
+ *  (src/ops.ts). */
+export async function graph(env: Env, fields: string): Promise<any> {
+  if (!env.CF_ACCOUNT_ID || !env.CF_ANALYTICS_TOKEN) throw new Error('CF_ACCOUNT_ID or CF_ANALYTICS_TOKEN is not set')
+  const query = `{ viewer { accounts(filter: { accountTag: ${JSON.stringify(env.CF_ACCOUNT_ID)} }) { ${fields} } } }`
   const response = await fetch(outbound(env, 'https://api.cloudflare.com/client/v4/graphql'), {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${env.CF_ANALYTICS_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
   })
-  const body = await response.json().catch(() => null) as { errors?: unknown[]; data?: { viewer?: { accounts?: { callsTurnUsageAdaptiveGroups?: { sum?: { egressBytes?: unknown } }[] }[] } } } | null
-  if (!response.ok || !body || body.errors?.length) throw new Error(`usage query: ${response.status} ${JSON.stringify(body?.errors ?? body)}`)
+  const body = await response.json().catch(() => null) as { errors?: { message?: string }[]; data?: { viewer?: { accounts?: unknown[] } } } | null
+  if (!response.ok || !body || body.errors?.length) throw new Error(`analytics: ${response.status} ${body?.errors?.map(error => error.message).join('; ') ?? ''}`)
   const accounts = body.data?.viewer?.accounts
-  if (!Array.isArray(accounts) || accounts.length === 0) throw new Error('usage query: no such account')
-  const bytes = Number(accounts[0].callsTurnUsageAdaptiveGroups?.[0]?.sum?.egressBytes ?? 0)
+  if (!Array.isArray(accounts) || accounts.length === 0) throw new Error('analytics: no such account')
+  return accounts[0]
+}
+
+/** Bytes the account's relay has sent out over the last 31 days. */
+export async function relayedBytes(env: Env): Promise<number> {
+  if (usage && Date.now() - usage.at < USAGE_FRESH_MS) return usage.bytes
+  const day = (ms: number) => JSON.stringify(new Date(ms).toISOString().slice(0, 10))
+  const account = await graph(env, `callsTurnUsageAdaptiveGroups(filter: { date_geq: ${day(Date.now() - 30 * DAY_MS)}, date_leq: ${day(Date.now())} }, limit: 1) {
+    sum { egressBytes }
+  }`)
+  const bytes = Number(account.callsTurnUsageAdaptiveGroups?.[0]?.sum?.egressBytes ?? 0)
   if (!Number.isFinite(bytes)) throw new Error('usage query: no number')
   usage = { bytes, at: Date.now() }
   return bytes
+}
+
+/** Where the relay stops, in bytes: RELAY_BUDGET_GB, 800 if unset -- 0 is a
+ *  budget too, the relay switched off. */
+export function relayBudget(env: Env): number {
+  const set = env.RELAY_BUDGET_GB?.trim()
+  return (set && Number(set) >= 0 ? Number(set) : 800) * 1e9
 }
 
 export async function relay(request: Request, env: Env): Promise<Response> {
@@ -59,16 +73,14 @@ export async function relay(request: Request, env: Env): Promise<Response> {
   // Signed-in people only: a pass is a key to the free allowance.
   if (!(await whoIs(typeof asked.token === 'string' ? asked.token : null, env))) return answer(401, { error: 'sign-in' })
 
-  const { CF_TURN_KEY_ID: keyId, CF_TURN_KEY_TOKEN: keyToken, CF_ACCOUNT_ID: accountId, CF_ANALYTICS_TOKEN: analyticsToken } = env
-  if (!keyId || !keyToken || !accountId || !analyticsToken) {
-    console.error('[relay] a CF_* secret is not set')
+  const { CF_TURN_KEY_ID: keyId, CF_TURN_KEY_TOKEN: keyToken } = env
+  if (!keyId || !keyToken) {
+    console.error('[relay] a CF_TURN_* secret is not set')
     return answer(200, { capped: true })
   }
-  // 0 is a budget too: the relay switched off.
-  const setBudget = env.RELAY_BUDGET_GB?.trim()
-  const budget = (setBudget && Number(setBudget) >= 0 ? Number(setBudget) : 800) * 1e9
+  const budget = relayBudget(env)
   try {
-    const used = await relayedBytes(env, accountId, analyticsToken)
+    const used = await relayedBytes(env)
     if (used >= budget) {
       console.warn(`[relay] capped: ${(used / 1e9).toFixed(1)} GB relayed in 31 days`)
       return answer(200, { capped: true })

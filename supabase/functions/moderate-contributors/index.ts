@@ -163,6 +163,22 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true, id: data.id })
       }
 
+      // Everything, for the worker to copy as the record moves to Cloudflare
+      // (phase 10, step 6, workers/rooms/src/contributions.ts 'move'). The
+      // worker asks with the operator's own sign-in, so the addresses go
+      // server to server; the operator is the only one this answers anyway.
+      case 'export': {
+        const entries: unknown[] = []
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await admin.from('contributions').select('*').order('created_at').range(from, from + 999)
+          if (error) throw error
+          entries.push(...(data ?? []))
+          if (!data || data.length < 1000) break
+        }
+        const { data: settings } = await admin.from('atrium_settings').select('monthly_goal_cents').eq('id', true).maybeSingle()
+        return json({ entries, monthlyGoalCents: Number(settings?.monthly_goal_cents ?? 5000) })
+      }
+
       // Off the wall, still counted. Distinct from a rejection: this one was
       // shown and then taken down, and unhide puts it back.
       case 'hide':

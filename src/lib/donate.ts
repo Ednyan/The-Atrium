@@ -1,4 +1,6 @@
-// Starting a contribution: ask the Edge Function for a Checkout URL.
+// Starting a contribution: ask the worker (workers/rooms, contributions.ts)
+// for a Checkout URL -- or, until the operator moves the record off Supabase,
+// the Edge Function, as the worker then says (409).
 //
 // The app holds no Stripe key of any kind, publishable included. It posts an
 // amount and gets back a link. Everything that decides whether money was
@@ -6,41 +8,35 @@
 // signature rather than anything that passed through here.
 
 import type { CurrencyCode } from './currency'
+import { MAX_NAME_LENGTH, nameProblem } from '../../supabase/functions/_shared/contributorName.ts'
+import { workerUrl } from './rooms'
 
+// Each call's Edge Function, and the worker's name for it.
 const FUNCTION_URL = 'create-contribution'
 const STATUS_FUNCTION_URL = 'contribution-status'
+const AT_WORKER: Record<string, string> = { [FUNCTION_URL]: 'checkout', [STATUS_FUNCTION_URL]: 'status' }
 
-// The same rules the function applies, run as the user types so a refused name
-// is refused immediately rather than after paying. The server repeats every one
-// of these -- this copy is courtesy, and is not what enforces anything.
-const BANNED_NAME_PATTERN = /\b(fuck|shit|cunt|nigg|f[a4]g|rape|nazi|hitler)/i
-const URL_LIKE_PATTERN = /(https?:\/\/|www\.|\.(com|net|org|io|xyz)\b)/i
-// Control characters, and the bidi overrides that let text be drawn in an
-// order it was not written in. Checked by code point rather than a regex:
-// the escapes for these are exactly the thing that gets mangled in transit.
-const hasUnrenderableCharacters = (value: string) =>
-  Array.from(value).some(character => {
-    const code = character.codePointAt(0) ?? 0
-    return code < 0x20 || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)
-  })
-const MAX_NAME_LENGTH = 40
+// The rules the worker enforces (supabase/functions/_shared/contributorName),
+// run here as the user types so a refused name is refused before paying.
 
 // Returns a catalogue key rather than a sentence: this runs in lib/, where
 // there is no hook to read the language from, and the caller is the one that
 // can translate. MAX_NAME_LENGTH rides along because the number belongs to
-// this file, not to whoever translates the sentence around it.
+// the rule, not to whoever translates the sentence around it.
 export type NameProblem =
   | { key: 'donate.errNameLength'; max: number }
   | { key: 'donate.errNameBanned' | 'donate.errNameUrl' | 'donate.errNameUnrenderable' }
 
+const PROBLEM_KEYS = {
+  banned: 'donate.errNameBanned',
+  url: 'donate.errNameUrl',
+  unrenderable: 'donate.errNameUnrenderable',
+} as const
+
 export function checkDisplayName(name: string): NameProblem | null {
-  const trimmed = name.trim()
-  if (trimmed.length === 0) return null // staying anonymous is a valid choice
-  if (trimmed.length > MAX_NAME_LENGTH) return { key: 'donate.errNameLength', max: MAX_NAME_LENGTH }
-  if (BANNED_NAME_PATTERN.test(trimmed)) return { key: 'donate.errNameBanned' }
-  if (URL_LIKE_PATTERN.test(trimmed)) return { key: 'donate.errNameUrl' }
-  if (hasUnrenderableCharacters(trimmed)) return { key: 'donate.errNameUnrenderable' }
-  return null
+  const problem = nameProblem(name)
+  if (!problem) return null
+  return problem === 'length' ? { key: 'donate.errNameLength', max: MAX_NAME_LENGTH } : { key: PROBLEM_KEYS[problem] }
 }
 
 export interface ContributionRequest {
@@ -63,7 +59,7 @@ export interface ContributionRequest {
 export async function startContribution(
   request: ContributionRequest,
 ): Promise<{ url: string; sessionId: string } | { error: string }> {
-  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  if (!workerUrl() && (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY)) {
     return { error: 'Contributions are not available in this build.' }
   }
 
@@ -98,16 +94,23 @@ export async function fetchContributionStatus(sessionId: string): Promise<Contri
   }
 }
 
-// Both calls are the same shape: post JSON to a function, carrying the anon key
-// as the project token. Throws only when the request itself failed; a function
-// answering with an error still returns its body, since the message in it is
-// better than anything invented here.
+// Both calls are the same shape: JSON to the worker -- a plain request, so no
+// preflight -- or to a function, carrying the anon key as the project token.
+// Throws only when the request itself failed; an error answered still
+// returns its body, since the message in it is better than anything invented
+// here.
 async function callFunction(name: string, payload: unknown): Promise<any> {
+  const worker = workerUrl()
+  if (worker) {
+    const response = await fetch(`${worker}/contributions/${AT_WORKER[name]}`, { method: 'POST', body: JSON.stringify(payload) })
+    if (response.status !== 409) return answered(response)
+  }
+
   const baseUrl = import.meta.env.VITE_SUPABASE_URL
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
   if (!baseUrl || !anonKey) throw new Error('not configured')
 
-  const response = await fetch(`${baseUrl}/functions/v1/${name}`, {
+  return answered(await fetch(`${baseUrl}/functions/v1/${name}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -115,8 +118,10 @@ async function callFunction(name: string, payload: unknown): Promise<any> {
       Authorization: `Bearer ${anonKey}`,
     },
     body: JSON.stringify(payload),
-  })
+  }))
+}
 
+async function answered(response: Response): Promise<any> {
   const body = await response.json().catch(() => null)
   if (!response.ok && !body?.error) throw new Error(String(response.status))
   return body

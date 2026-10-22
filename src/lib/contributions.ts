@@ -6,13 +6,17 @@
 // First, it cannot go through `supabase`. On desktop that is the SQLite shim
 // (see lib/localDb), which has never heard of these tables and whose query
 // builder would throw rather than return an error -- taking down whatever
-// called it. So this talks to the REST endpoint directly, the same way on both
-// platforms, and the shim is never involved.
+// called it. So this asks the worker (workers/rooms, contributions.ts)
+// directly -- or, until the operator moves the record there and the worker
+// says so (409), Supabase's REST endpoint -- the same way on both platforms,
+// and the shim is never involved.
 //
 // Second, the desktop app is meant to work offline. Nothing here is ever
 // awaited to render: the last values are read from local storage immediately,
 // and a refresh happens in the background when there's a network to do it on.
 // A donor list is not worth a spinner, and is worth even less as an error.
+
+import { workerUrl } from './rooms'
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // hourly while the app is open
 const CACHE_KEY = 'atrium_contributions_cache_v2'
@@ -83,6 +87,17 @@ const EMPTY: ContributionsData = { contributors: [], month: null, fetchedAt: nul
 // rather than treating it as a failure worth reporting.
 const REST_URL = import.meta.env.VITE_SUPABASE_URL
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+// The worker's answer that Supabase still keeps the record.
+const NOT_MOVED = Symbol('not moved')
+async function fromWorker(path: string, signal: AbortSignal): Promise<any> {
+  const url = workerUrl()
+  if (!url) return NOT_MOVED
+  const response = await fetch(`${url}/contributions/${path}`, { signal })
+  if (response.status === 409) return NOT_MOVED
+  if (!response.ok) throw new Error(`${response.status}`)
+  return response.json()
+}
 
 // Contributors are stored as arrays rather than objects.
 //
@@ -188,7 +203,7 @@ function toContributor(row: any): Contributor {
     // Absent on a view that predates the subscription-state migration. Reading
     // that as "not running" is the safe way round: the trace keeps its gradient
     // and simply doesn't claim an active subscription.
-    monthlyActive: row.monthly_active === true,
+    monthlyActive: !!row.monthly_active,
     monthlyEur: row.monthly_eur == null ? null : Number(row.monthly_eur) || 0,
     // Kept as a calendar date. The wall shows a day, never a time, and the
     // rest of an ISO timestamp was a fifth of the offline cache.
@@ -196,7 +211,7 @@ function toContributor(row: any): Contributor {
     contributionCount: Number(row.contribution_count) || 1,
     // Absent on the older view shape, which reads as "no one-off known" -- and
     // draws exactly as the wall did before these columns existed.
-    hasOneTime: row.has_one_time === true,
+    hasOneTime: !!row.has_one_time,
     oneTimeEur: Number(row.one_time_eur) || 0,
     amount7d: row.amount_7d == null ? null : Number(row.amount_7d) || 0,
     amount30d: row.amount_30d == null ? null : Number(row.amount_30d) || 0,
@@ -226,18 +241,20 @@ async function getContributors(signal: AbortSignal): Promise<any[]> {
 // null on any failure -- offline, blocked, no endpoint configured -- because
 // every one of those means the same thing here: keep showing what we had.
 export async function refreshContributions(): Promise<ContributionsData | null> {
-  if (!REST_URL || !ANON_KEY) return null
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const [contributorRows, monthRows] = await Promise.all([
-      getContributors(controller.signal),
-      getJson('contributions_month?select=total_cents,goal_cents,contribution_count', controller.signal),
-    ])
-
-    const month = monthRows?.[0]
+    let wall = await fromWorker('wall', controller.signal)
+    if (wall === NOT_MOVED) {
+      if (!REST_URL || !ANON_KEY) return null
+      const [contributors, monthRows] = await Promise.all([
+        getContributors(controller.signal),
+        getJson('contributions_month?select=total_cents,goal_cents,contribution_count', controller.signal),
+      ])
+      wall = { contributors, month: monthRows?.[0] }
+    }
+    const { contributors: contributorRows, month } = wall
     const data: ContributionsData = {
       contributors: (contributorRows ?? []).map(toContributor).filter((c: Contributor) => c.displayName.length > 0),
       month: month
@@ -264,7 +281,7 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 // Looking somebody up past the cap.
 //
 // contributors_public stops at 2000 rows because that is what can be drawn.
-// contributors_searchable is the same aggregation with no limit, asked one
+// contributors_searchable (the worker's search) is the same aggregation with no limit, asked one
 // narrow question at a time -- which is affordable in a way of downloading
 // every contributor to search locally is not.
 //
@@ -273,12 +290,15 @@ export async function refreshContributions(): Promise<ContributionsData | null> 
 // page had before this, which is the right way to fail.
 export async function searchContributors(query: string): Promise<Contributor[]> {
   const needle = query.trim()
-  if (!REST_URL || !ANON_KEY || needle.length < 2) return []
+  if (needle.length < 2) return []
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
+    const found = await fromWorker(`search?q=${encodeURIComponent(needle)}`, controller.signal)
+    if (found !== NOT_MOVED) return (found ?? []).map(toContributor).filter((c: Contributor) => c.displayName.length > 0)
+    if (!REST_URL || !ANON_KEY) return []
     // PostgREST reads * as the wildcard in an ilike, so the value is encoded
     // rather than interpolated -- a name with a comma or a dot in it would
     // otherwise be read as filter syntax.

@@ -42,6 +42,10 @@ export interface Env {
   // MB (50 if unset).
   FILES?: R2Bucket
   STORE_QUOTA_MB?: string
+  // Contributions (src/contributions.ts): Stripe's restricted key, and the
+  // webhook endpoint's signing secret (secrets).
+  STRIPE_SECRET_KEY?: string
+  STRIPE_WEBHOOK_SECRET?: string
   // A local test's stand-in for every other service on the internet
   // (Resend, Cloudflare's APIs, Pinterest): never set live.
   TEST_UPSTREAM?: string

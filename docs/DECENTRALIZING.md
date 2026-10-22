@@ -1170,6 +1170,34 @@ A hosted atrium is then a Drive atrium whose store is ours:
        their atriums exported as .atrium files before Supabase closes.
 6. Everything else to the worker: Stripe contributions, deletion codes,
    platform admins, `app_changes`, special themes, visits.
+   - **Contributions, built (2026-10-22, `workers/rooms/src/contributions.ts`).**
+     The four Supabase functions' work, under their rules: Checkout and its
+     status, the wall and the month's gauge (contributors_searchable's SQL in
+     D1, kept at the edge for five minutes), Stripe's webhook at
+     `/stripe/webhook`, and the operator's moderation. Refunding a monthly
+     contribution now ends its subscription too.
+     - The switch is one press: until the operator moves the record
+       ("Move contributions to Cloudflare" in the names panel), the worker
+       answers 409 and the app asks Supabase as before. The move copies
+       Supabase's rows (moderate-contributors 'export', asked by the worker
+       with the operator's sign-in, so addresses never reach a page); a
+       payment both recorded takes Supabase's row. Asked again, it adds
+       only what's missing.
+     - The webhook records from the start, so both endpoints overlap
+       safely; the old one is deleted once the move is done.
+     - Operators are kept in D1 (`operators`) as Supabase first vouches for
+       them, so they stay operators past the cutover.
+     - The operator's dashboard (`src/ops.ts`, "Health" in the names
+       panel): Stripe's month beside what was recorded, and every
+       free-plan limit -- requests, CPU, rooms, D1, R2, the relay, Resend's
+       mail -- each asked on its own.
+     - **Needs from the user:** a restricted Stripe key (Checkout Sessions
+       and Charges and Refunds and Subscriptions: write; Payment Intents,
+       Balance and Invoices: read) as `STRIPE_SECRET_KEY`; then the webhook
+       endpoint (`checkout.session.completed`,
+       `checkout.session.async_payment_succeeded`, `invoice.paid`,
+       `charge.refunded`; API version 2026-07-29.dahlia), its secret as
+       `STRIPE_WEBHOOK_SECRET`.
 7. The app off the Supabase client. A month with Supabase read-only, then
    cancel.
 8. Drive atriums on desktop. Separate; the desktop never used Supabase.

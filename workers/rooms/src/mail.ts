@@ -2,11 +2,12 @@
 // the report form's, to support, for either kind of account; and a Google
 // account's welcome, as it chooses its username (src/people.ts), and its
 // goodbye, once it's deleted (src/google.ts) -- an existing account's come
-// from Supabase (supabase/functions/send-welcome, delete-account). The card
+// from Supabase (supabase/functions/send-welcome, delete-account); and the
+// operator's to a contributor (src/contributions.ts). The card
 // and the words are the Supabase functions' own files, the same ones, not
 // copies.
 
-import { renderAtriumEmail } from '../../../supabase/functions/_shared/atriumEmail'
+import { renderAtriumEmail, renderContributorEmail, type ContributorEmail } from '../../../supabase/functions/_shared/atriumEmail'
 import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
 import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
 import { CONFIRM_COPY, RESET_COPY } from './authCopy'
@@ -16,7 +17,8 @@ import { outbound, replies, whoIs, type Env } from './who'
 const SUPPORT = 'thedigitalatrium@gmail.com'
 const FROM_FEEDBACK = 'Digital Atrium <feedback@mail.digitalatrium.org>'
 const FROM_HELLO = 'Digital Atrium <hello@mail.digitalatrium.org>'
-const SITE = 'https://digitalatrium.org'
+const FROM_CONTRIBUTIONS = 'Digital Atrium <contributions@mail.digitalatrium.org>'
+export const SITE = 'https://digitalatrium.org'
 
 interface Mail { from: string; to: string; reply_to?: string; subject: string; html: string; text: string }
 async function send(env: Env, mail: Mail): Promise<boolean> {
@@ -89,4 +91,11 @@ async function greet(env: Env, to: string, name: string, copies: Record<string, 
     footer: copy.footer,
   })
   await send(env, { from: FROM_HELLO, to, subject: copy.subject, html, text }).catch(error => console.error(`[mail] ${copy.subject}:`, error))
+}
+
+/** To someone who contributed (src/contributions.ts), from the operator:
+ *  replies reach support. Whether it went. */
+export function toContributor(env: Env, to: string, subject: string, card: ContributorEmail): Promise<boolean> {
+  return send(env, { from: FROM_CONTRIBUTIONS, to, reply_to: SUPPORT, subject, ...renderContributorEmail(card) })
+    .catch(error => { console.error(`[mail] ${subject}:`, error); return false })
 }

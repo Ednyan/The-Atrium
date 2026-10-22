@@ -21,6 +21,8 @@ import { people, publicPreview } from './people'
 import { store } from './store'
 import { mirror } from './mirror'
 import { pinterest } from './pinterest'
+import { contributions, stripeWebhook } from './contributions'
+import { ops } from './ops'
 import { relay } from './relay'
 import { whoIs, type Env } from './who'
 
@@ -56,6 +58,10 @@ export default {
     if (url.pathname === '/relay') return relay(request, env)
     if (url.pathname === '/feedback') return feedback(request, env)
     if (url.pathname.startsWith('/pinterest/')) return pinterest(request, env, url.pathname.slice('/pinterest/'.length))
+    // Contributions (phase 10, step 6), Stripe's word on them, and the operator's dashboard.
+    if (url.pathname.startsWith('/contributions/')) return contributions(request, env, url.pathname.slice('/contributions/'.length))
+    if (url.pathname === '/stripe/webhook') return stripeWebhook(request, env)
+    if (url.pathname.startsWith('/ops/')) return ops(request, env, url.pathname.slice('/ops/'.length))
     const atrium = url.pathname.match(ATRIUM)?.[1]
     if (!atrium) return new Response('Not found', { status: 404 })
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })

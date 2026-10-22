@@ -71,6 +71,21 @@ const TABLES = [
   // How often something that mails, or that anyone may ask, has been asked of
   // late, by whom (src/auth.ts, throttled).
   'create table if not exists throttle (key text primary key, count integer not null, since integer not null)',
+  // Contributions (phase 10, step 6, src/contributions.ts): Supabase's table,
+  // its times in ms; and the settings it and the rest keep (the monthly goal,
+  // when Stripe last called).
+  `create table if not exists contributions (id text primary key, amount_cents integer not null, currency text not null,
+    settled_eur_cents integer not null, kind text not null, display_name text, name_approved integer not null default 0,
+    name_rejected_reason text, contact_email text, stripe_event_id text unique, stripe_payment_id text, stripe_subscription_id text,
+    refunded integer not null default 0, hidden integer not null default 0, livemode integer not null default 0,
+    counts_toward_goal integer not null default 1, created_at integer not null)`,
+  'create index if not exists contributions_at on contributions (created_at)',
+  'create index if not exists contributions_payment on contributions (stripe_payment_id)',
+  'create index if not exists contributions_subscription on contributions (stripe_subscription_id, created_at)',
+  'create table if not exists settings (key text primary key, value text not null)',
+  // The platform's operators (add_platform_admin.sql), as each is first seen
+  // here: kept for when Supabase can't be asked (isOperator).
+  'create table if not exists operators (account text primary key, at integer not null)',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -236,9 +251,16 @@ export async function isBanned(env: Env, id: string): Promise<boolean> {
   return banned
 }
 
-// The platform's operator (add_platform_admin.sql), as Supabase says --
-// asked with their own sign-in.
-async function isOperator(env: Env, who: Who, token: string): Promise<boolean> {
+// The platform's operator (add_platform_admin.sql): kept here, or -- the
+// first time -- as Supabase says, asked with their own sign-in, and kept here
+// from then on, so they stay one once Supabase is gone (phase 10). An
+// operator's id is their account's whatever its kind, as an existing
+// account's is once its credential has moved (src/auth.ts, adopt).
+export async function isOperator(env: Env, who: Who, token: string): Promise<boolean> {
+  if (env.PEOPLE) {
+    await tablesIn(env.PEOPLE)
+    if (await env.PEOPLE.prepare('select 1 from operators where account = ?').bind(who.id).first()) return true
+  }
   if (who.kind !== 'supabase') return false
   try {
     const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_platform_admin`, {
@@ -246,10 +268,12 @@ async function isOperator(env: Env, who: Who, token: string): Promise<boolean> {
       headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: '{}',
     })
-    return response.ok && (await response.json()) === true
+    if (!response.ok || (await response.json()) !== true) return false
   } catch {
     return false
   }
+  await env.PEOPLE?.prepare('insert into operators (account, at) values (?, ?) on conflict do nothing').bind(who.id, Date.now()).run()
+  return true
 }
 
 /** Whether an account's row is here (a Google account deleted, or taken for
