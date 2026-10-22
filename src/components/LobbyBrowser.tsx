@@ -10,7 +10,7 @@ import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
-import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -502,7 +502,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     if (moved) { void loadLobbies(); void checkCanCreateLobby() }
   }
   const moveLobby = (lobby: LobbyWithOwner) => intoDrive(lobby, async me => {
-    await (await import('../lib/moveToDrive')).moveToDrive(lobby.id, me)
+    if (isHostedAtrium(lobby.id)) await moveHostedToDrive(lobby.id, me)
+    else await (await import('../lib/moveToDrive')).moveToDrive(lobby.id, me)
     showToast(t('browser.drive.moved', { name: lobby.name }))
     loadLobbies()
     checkCanCreateLobby()
@@ -1221,7 +1222,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     const menu: CardAction[] = [
       ...(mine && !viewer ? [{ label: t('browser.rename'), onClick: () => { setEditingLobbyId(lobby.id); setEditingLobbyName(lobby.name) } }] : []),
       ...(mine && lobby.inBrowser && !lobby.inDrive && canDrive ? [{ label: t('browser.drive.convert'), disabled: converting !== null, onClick: () => void toDrive(lobby) }] : []),
-      ...(mine && cloud && canDrive && lobby.ownerUserId === myId ? [{ label: t('browser.drive.move'), disabled: converting !== null, onClick: () => setMoveConfirmId(lobby.id) }] : []),
+      // Into one's own Drive: one's cloud atrium, or one's hosted one.
+      ...(mine && canDrive && (cloud ? lobby.ownerUserId === myId : !!lobby.inDrive && isHostedAtrium(lobby.id) && isDriveOwner(lobby.id))
+        ? [{ label: t('browser.drive.move'), disabled: converting !== null, onClick: () => setMoveConfirmId(lobby.id) }] : []),
       ...(cloud ? [{ label: t('browser.copyId'), onClick: () => copyLobbyId(lobby.id) }] : []),
       // Someone else's Drive atrium is left, not deleted: it isn't theirs to delete.
       ...(mine ? [{ label: lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete'), danger: true, onClick: () => setDeleteConfirmId(lobby.id) }] : []),
@@ -1892,7 +1895,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
       {/* A deletion asked first -- and a move to Drive, which ends in one */}
       {moveConfirmId && (() => {
-        const lobby = userLobbies.find(shown => shown.id === moveConfirmId)
+        const lobby = yours.find(shown => shown.id === moveConfirmId)
         return lobby && (
           <ConfirmBox title={t('browser.drive.moveTitle')} onCancel={() => setMoveConfirmId(null)}>
             <p className="text-nier-bg/75 text-xs tracking-wider mb-6">{t('browser.drive.moveConfirm', { name: lobby.name })}</p>

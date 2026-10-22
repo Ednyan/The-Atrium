@@ -1165,7 +1165,15 @@ A hosted atrium is then a Drive atrium whose store is ours:
        invitation. An invitation is replaced only by its own sender.
      - Public ones made public, visitors reading. Passwords dropped: the
        invite link and asking to join stand in.
-     - "Move to my Drive" brings the people the same way.
+     - "Move to my Drive" brings the people the same way -- for a cloud
+       atrium, and (2026-10-22) for a hosted one: all of it brought into the
+       browser first (every save, every file), kept in Drive as the atrium
+       under the same id, its people invited there and joining by themselves
+       (the worker vouches from the hosted roster, `store.ts` hostedMember),
+       public still, and only then the hosted folder deleted
+       (`driveSync.moveHostedToDrive`; a stop part-way resumes from
+       `atrium.movingToDrive`). Members without Google Drive are invited and
+       join once they connect it.
      - **Held for owners who don't come back (step 5c, 2026-10-22).** The
        operator presses "Hold all" in Developers > Cloud atriums: for each
        atrium left in Supabase, the worker (`src/held.ts`) asks

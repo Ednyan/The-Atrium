@@ -11,6 +11,7 @@
 // account keeps them in its Supabase profile.
 
 import { heldMember } from './held'
+import { hostedMember } from './store'
 import { welcome } from './mail'
 import { dropMirror } from './mirror'
 import { fromBase64, replies, whoIs, type Env, type Who } from './who'
@@ -457,8 +458,10 @@ export async function people(request: Request, env: Env, what: string): Promise<
       const secret = asked.secret === null ? null : text('secret', 2000)
       if (!to || !roster || !lobby || !name || (asked.secret !== null && secret === null)) return answer(400, { error: 'body' })
       // Joining by itself, asked: granted only as cloudMember says -- or, its
-      // atrium held for the sender (src/held.ts), as heldMember does.
-      const auto = asked.auto === true && (await cloudMember(env, asked.token as string, who.id, lobby, to) || await heldMember(db, who.id, lobby, to)) ? 1 : 0
+      // atrium held for the sender (src/held.ts), as heldMember does, or
+      // moving out of the sender's hosted store, as hostedMember does.
+      const auto = asked.auto === true && (await cloudMember(env, asked.token as string, who.id, lobby, to) || await heldMember(db, who.id, lobby, to)
+        || await hostedMember(env, who.id, lobby, to)) ? 1 : 0
       await db.prepare(`insert into invites (id, to_user, from_user, roster, lobby_id, name, secret, created_at, auto) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict (to_user, roster) do update set lobby_id = excluded.lobby_id, name = excluded.name,
         secret = excluded.secret, created_at = excluded.created_at, auto = excluded.auto

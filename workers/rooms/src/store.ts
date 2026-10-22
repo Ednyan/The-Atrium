@@ -180,6 +180,21 @@ const sharedWith = async (db: D1Database, file: string, account: string) =>
   !!(await db.prepare('select 1 from store_shares where file = ? and account = ?').bind(file, account).first())
 
 /** A file or folder and, a folder, everything under it. */
+/** Whether an invitation may join by itself: its atrium was the sender's in
+ *  the hosted store -- one's folder for it is named by its id, its roster in
+ *  it -- and the one it's to is in that roster, a member or invited (a hosted
+ *  atrium moved into its owner's Drive, lib/driveSync moveHostedToDrive). */
+export async function hostedMember(env: Env, from: string, lobby: string, to: string): Promise<boolean> {
+  const db = env.PEOPLE, files = env.FILES
+  if (!db || !files) return false
+  const row = await db.prepare(`select r.id from store_files f join store_files r on r.parent = f.id
+    where f.name = ? and f.owner = ? and f.folder = 1 and r.name = ? and r.folder = 0`).bind(lobby, from, ROSTER).first<{ id: string }>()
+  const object = row && await files.get(`f/${row.id}`)
+  if (!object) return false
+  const roster = await object.json<{ lobbyId?: string; members?: { user: string; role: string }[]; invited?: { user: string }[] }>().catch(() => null)
+  return !!roster && roster.lobbyId === lobby && (!!roster.members?.some(member => member.user === to && member.role !== 'owner') || !!roster.invited?.some(invited => invited.user === to))
+}
+
 /** Files gone for good: their bytes, their rows, whom they were shared with. */
 async function dropFiles(db: D1Database, files: R2Bucket, ids: string[]): Promise<void> {
   for (let at = 0; at < ids.length; at += 100) {

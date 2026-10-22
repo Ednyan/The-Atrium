@@ -831,6 +831,68 @@ export async function deleteDriveAtrium(lobbyId: string): Promise<void> {
   tellRoom(lobbyId)
 }
 
+// ---------------------------------------------------------------- a hosted atrium into Drive
+
+// A hosted atrium on its way into its owner's Drive: its roster and one's
+// folder there, its name, and who was in it -- kept until it's done, so a
+// stop part-way loses nothing: begun again, it carries on where it was.
+const MOVING = 'atrium.movingToDrive'
+interface Moving { roster: string; folder: string; name: string; public: boolean; people: { user: string; name: string; role: Exclude<Role, 'owner'> }[]; blocked: string[] }
+
+/** A hosted atrium moved into its owner's Google Drive (its card's "Move to
+ *  my Drive"): all of it brought into this browser first -- every save, every
+ *  file -- then kept in Drive as the atrium, under the same id, its rows and
+ *  files the owner's now. Its people invited there, joining by themselves
+ *  (the worker vouches from the hosted roster, src/store.ts hostedMember),
+ *  admins as editors (Drive shares by Google address); blocked still; public
+ *  still. Only once Drive has all of it is the hosted one deleted -- and each
+ *  member's app, finding it gone, takes the invitation. */
+export async function moveHostedToDrive(lobbyId: string, me: { id: string; name: string }): Promise<void> {
+  let was = stored<Moving>(MOVING)[lobbyId]
+  if (!was) {
+    const kept = allKept()[lobbyId]
+    if (!kept || !isHostedId(kept.roster)) throw new Error('NOT_HOSTED')
+    const roster = await readRoster(kept.roster)
+    if (memberOf(roster, me.id)?.role !== 'owner') throw new Error('OWNER_ONLY')
+    await withSession(lobbyId, me.id, everyFileHere)
+    const people = [
+      ...roster.members.filter(member => member.role !== 'owner').map(member => ({ user: member.user, name: member.name, role: member.role as Exclude<Role, 'owner'> })),
+      ...roster.invited.map(invited => ({ user: invited.user, name: invited.name, role: invited.role as Exclude<Role, 'owner'> })),
+    ]
+    was = { roster: kept.roster, folder: kept.folder, name: roster.name, public: !!roster.public, people, blocked: roster.blocked }
+    store_(MOVING, { ...stored<Moving>(MOVING), [lobbyId]: was })
+  }
+  // Into Drive -- unless it's there already, from a move begun before.
+  const now = allKept()[lobbyId]
+  if (!now || isHostedId(now.roster)) {
+    keep(lobbyId, null)
+    await keepInDrive(lobbyId, was.name, me)
+  }
+  // Its people, while the hosted roster still says who they were.
+  await addPeople(lobbyId, me.id, was.people, was.blocked)
+  if (was.public && !isPublicAtrium(lobbyId)) await makePublic(lobbyId, me.id)
+  if (!(await driveHasEverything(lobbyId, me.id))) throw new Error('MOVE_INCOMPLETE')
+  // The hosted one let go: one's folder there, its roster and all.
+  await hosted.remove(was.folder).catch(error => { if (!/Drive 404/.test(String(error))) throw error })
+  const after = stored<Moving>(MOVING)
+  delete after[lobbyId]
+  store_(MOVING, after)
+}
+
+/** Every file the atrium's traces have, in this browser's vault -- brought
+ *  in now, however long they'd have waited; any that won't come stops the
+ *  move, to be tried again. */
+async function everyFileHere(s: Session): Promise<void> {
+  const { traces } = await s.local.atriumRows(s.lobbyId)
+  const urls = [...new Set(traces.flatMap(filesOf))]
+  s.retry.clear()
+  await bringFiles(s, urls)
+  await Promise.all(urls.map(url => vaultWriteDone(url)))
+  let missing = 0
+  for (const url of urls) if (!(await s.local.hasLocalFile(url))) missing++
+  if (missing) throw Object.assign(new Error('MOVE_FILES_FAILED'), { count: missing })
+}
+
 // ---------------------------------------------------------------- public (phase 8)
 
 // A public atrium: its keys in its roster, for anyone to read it with, and
