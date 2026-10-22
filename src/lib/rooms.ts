@@ -79,6 +79,17 @@ let inUse: { lobbyId: string; status: RoomStatus; room: RoomChannel } | null = n
 const statusWatchers = new Set<() => void>()
 // Each told what was said and who said it, as the room stamps it.
 const roomListeners = new Map<string, Set<(payload: unknown, sender: string) => void>>()
+// What an atrium's room is called: its id, unless something names it
+// otherwise -- lib/driveSync, from the atrium's key, so that only its people
+// can find it. Its id alone then names its door (DOOR), where someone not in
+// it asks to be.
+let nameOf: (lobbyId: string) => Promise<string> = async lobbyId => lobbyId
+export const nameRoomsBy = (namer: typeof nameOf) => { nameOf = namer }
+/** A room asked for at its door: its id alone, whatever names it. */
+export const DOOR = true
+/** The atrium's room in use moved to what its name is now (a new generation
+ *  of its key): those in the old one gone from here, the new one joined. */
+export const rejoinRoom = (lobbyId: string) => { if (inUse?.lobbyId === lobbyId) inUse.room.rejoin() }
 function setStatus(room: RoomChannel, lobbyId: string, status: RoomStatus | null) {
   // A word said from outside (sayToRoom) isn't the room in use.
   if (room.aside) return
@@ -112,11 +123,11 @@ export function onRoomEvent(event: string, listener: (payload: unknown, sender: 
 
 /** A word to an atrium's room from outside it -- not present in it, hearing
  *  nothing back -- said again every `everyMs`, so whoever comes in later
- *  hears it too, until what this returns is called. */
-export function sayToRoom(lobbyId: string, event: string, payload: unknown, everyMs: number): () => void {
+ *  hears it too, until what this returns is called. At its `door`, if so. */
+export function sayToRoom(lobbyId: string, event: string, payload: unknown, everyMs: number, door = false): () => void {
   const url = roomServer()
   if (!url || typeof WebSocket === 'undefined') return () => {}
-  const room = new RoomChannel(url, lobbyId, () => supabase!.channel(`lobby-${lobbyId}-presence`, {}), true)
+  const room = new RoomChannel(url, lobbyId, name => supabase!.channel(`lobby-${name}-presence`, {}), true, door)
   room.subscribe()
   const say = () => void room.send({ type: 'broadcast', event, payload })
   say()
@@ -127,12 +138,22 @@ export function sayToRoom(lobbyId: string, event: string, payload: unknown, ever
   }
 }
 
+/** At an atrium's door, unseen, while what this returns isn't called: what's
+ *  said there reaches onRoomEvent's listeners, as the room's does. */
+export function listenAtDoor(lobbyId: string): () => void {
+  const url = roomServer()
+  if (!url || typeof WebSocket === 'undefined') return () => {}
+  const room = new RoomChannel(url, lobbyId, name => supabase!.channel(`lobby-${name}-presence`, {}), true, DOOR)
+  room.subscribe()
+  return () => void room.unsubscribe()
+}
+
 /** The atrium's presence channel: its room, or Supabase's channel by the name
  *  and options it always had. */
 export function presenceChannel(lobbyId: string, options: Parameters<NonNullable<typeof supabase>['channel']>[1]): RealtimeChannel {
-  const viaSupabase = () => supabase!.channel(`lobby-${lobbyId}-presence`, options)
+  const viaSupabase = (name: string) => supabase!.channel(`lobby-${name}-presence`, options)
   const url = roomUrl()
-  return (url ? new RoomChannel(url, lobbyId, viaSupabase) : viaSupabase()) as RealtimeChannel
+  return (url ? new RoomChannel(url, lobbyId, viaSupabase) : viaSupabase(lobbyId)) as RealtimeChannel
 }
 
 class RoomChannel {
@@ -152,10 +173,13 @@ class RoomChannel {
   private fallback: RealtimeChannel | null = null
   private readonly url: string
   private readonly lobbyId: string
-  private readonly viaSupabase: () => RealtimeChannel
+  private readonly viaSupabase: (name: string) => RealtimeChannel
+  // What the room is called, as of the last connection (nameOf).
+  private name = ''
 
   // `aside`: a connection of its own beside the room in use, if any (sayToRoom).
-  constructor(url: string, lobbyId: string, viaSupabase: () => RealtimeChannel, readonly aside = false) {
+  // `door`: the atrium's door, not its room.
+  constructor(url: string, lobbyId: string, viaSupabase: (name: string) => RealtimeChannel, readonly aside = false, private readonly door = false) {
     this.url = url.replace(/\/$/, '')
     this.lobbyId = lobbyId
     this.viaSupabase = viaSupabase
@@ -212,6 +236,18 @@ class RoomChannel {
     return this.fallback ? this.fallback.unsubscribe() : 'ok'
   }
 
+  /** Into the room its name says now, out of the one it's in. */
+  rejoin() {
+    const socket = this.socket
+    if (this.closed || this.fallback || !socket) return
+    // Its closing is no failure: nothing waits on it.
+    this.socket = null
+    this.ref = ''
+    socket.close()
+    this.settle([])
+    void this.connect()
+  }
+
   // Whoever this page is signed in as (the room checks the same).
   private userId: string | null = null
 
@@ -221,10 +257,13 @@ class RoomChannel {
 
   private async connect() {
     if (this.closed || this.fallback) return
+    this.name = this.door ? this.lobbyId : await nameOf(this.lobbyId)
     // Whoever's signed in: an existing account's Supabase sign-in, or a
     // Google account's session from the worker (lib/signedIn).
     const who = await whoIsSignedIn()
     const token = who?.token
+    // Another connection made meanwhile (rejoin, twice) is the one kept.
+    if (this.closed || this.socket) return
     this.userId = who?.id ?? null
     if (!token) { this.giveUp(); return }
     // The token as a subprotocol, not in the address, where errors, logs and
@@ -232,7 +271,7 @@ class RoomChannel {
     // throws when the page's policy blocks the address -- is Supabase at once.
     let socket: WebSocket
     try {
-      socket = new WebSocket(`${this.url}/room/${this.lobbyId}`, ['atrium', token])
+      socket = new WebSocket(`${this.url}/room/${this.name}`, ['atrium', token])
     } catch {
       this.giveUp()
       return
@@ -262,8 +301,8 @@ class RoomChannel {
     }
     socket.onclose = () => {
       window.clearTimeout(late)
-      window.clearInterval(this.pinger)
       if (this.socket !== socket || this.closed) return
+      window.clearInterval(this.pinger)
       this.socket = null
       // Never opened, or lost and not had back: Supabase, for the rest of the visit.
       if (!this.opened || ++this.failures > RETRIES) { this.giveUp(); return }
@@ -317,7 +356,7 @@ class RoomChannel {
     if (this.fallback || this.closed) return
     console.info('[atrium] the room could not be reached: presence through Supabase')
     setStatus(this, this.lobbyId, 'gone')
-    const fallback = this.viaSupabase()
+    const fallback = this.viaSupabase(this.name || this.lobbyId)
     for (const { type, event, callback } of this.listeners) (fallback as unknown as Listening).on(type, { event }, callback)
     this.fallback = fallback
     // Those the room had are gone from here; Supabase's own sync brings them back.

@@ -1245,11 +1245,28 @@ A hosted atrium is then a Drive atrium whose store is ours:
        be reached -- to whoever listened: now addressed ones reach their
        account alone, and pages link directly only with the atrium's
        members and invitees (`driveSync.knownMembers`).
-     - Still open: a room is joined by anyone who knows the atrium's id, so
-       presence (names, cursors) shows to them; the fix is rooms named from
-       the atrium's key, with a door room for asking to join. And the free
-       plan's request budget is anyone's to spend: a Cloudflare rate-limiting
-       rule on rooms.digitalatrium.org (one is free) bounds it.
+     - a room was joined by anyone who knew the atrium's id, so presence
+       (names, cursors) showed to them: a Drive or hosted atrium's room is
+       now named from the newest generation of its key
+       (`driveSync.roomNameOf`), which only its people hold -- and someone
+       taken out is left behind, the rest following once they read the
+       roster. Its id alone names its door, where someone not in it asks
+       to be let in, heard by its managers' pages unseen. A kick is obeyed
+       only from an owner or admin (`knownRole`).
+     - Still open: the free plan's request budget is anyone's to spend; a
+       Cloudflare rate-limiting rule on rooms.digitalatrium.org (one is
+       free) bounds it.
+   - **Security review of the app (2026-10-22).** Checked: markup drawn into
+     the page (sheets, charts, decks, fonts), message listeners, embeds,
+     the CSPs, the desktop's capabilities and native commands. Fixed:
+     - a sheet or deck just read from a file was drawn without the check a
+       file read back gets (`asSheetFile`/`asDeckFile`); now the same.
+     - the desktop's native commands wrote, moved and deleted wherever the
+       page named, and the page could name the vault folder: writes are
+       confined to the vault and the app's folders (`main.rs writable`),
+       the vault folder is chosen in a dialog the native side opens, and the
+       fs plugin's write-anywhere grants are gone. Its script-src drops
+       'unsafe-inline' and 'unsafe-eval' (kept in devCsp for the dev server).
 7. The app off the Supabase client. A month with Supabase read-only, then
    cancel.
 8. Drive atriums on desktop. Separate; the desktop never used Supabase.

@@ -35,12 +35,12 @@ import * as drive from './drive'
 import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, publishAtrium, sendInvitation, unpublishAtrium, withdrawInvitation, type Person } from './people'
 import {
   admit, base64ToBytes, bytesToBase64, carried, changesSince, clockTime, clockWho, invitedWritersOf, KeyMissing, keyFromText, keyOf, keyringOf, keyToText, later, manages,
-  memberOf, merge, newAtriumKey, newGeneration, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
+  memberOf, merge, newAtriumKey, newGeneration, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, roomNameFrom, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
   snapshotOf, type Change, type Clock, type DriveSave, type Identity, type Keyring, type Member, type Merged, type Role, type Roster, type Snapshot, type Table,
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
-import { onRoomEvent, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
+import { DOOR, listenAtDoor, nameRoomsBy, onRoomEvent, rejoinRoom, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
 import { hostedSpace, hostedStore, isHostedId } from './hostedStore'
 import { mirrorList, mirrorPut, mirroredStore } from './mirror'
@@ -320,11 +320,27 @@ function keep(lobbyId: string, kept: Kept | null, user = signedInHere()) {
   if (!user) return
   const byAccount = stored<Record<string, Kept>>(KEPT)
   const mine = { ...byAccount[user] }
+  const was = mine[lobbyId] && newest(mine[lobbyId])
   if (kept) mine[lobbyId] = kept
   else delete mine[lobbyId]
   byAccount[user] = mine
   store_(KEPT, byAccount)
+  // A new generation of its key: its people meet somewhere new (roomNameOf).
+  if (kept && was !== undefined && newest(kept) !== was) rejoinRoom(lobbyId)
 }
+const newest = (kept: Kept) => Math.max(-1, ...Object.keys(kept.keys).map(Number))
+
+/** Where an atrium's people meet (lib/rooms): a room named from the newest
+ *  generation of its key, which only they hold -- not whoever knows the
+ *  atrium's id, nor someone taken out of it (a generation is made without
+ *  them). Its id alone names its door, where someone not in it asks to be.
+ *  One not kept here (a cloud atrium): its id. */
+export async function roomNameOf(lobbyId: string): Promise<string> {
+  const kept = allKept()[lobbyId]
+  const n = kept ? newest(kept) : -1
+  return n < 0 ? lobbyId : roomNameFrom(kept.keys[n], lobbyId)
+}
+nameRoomsBy(roomNameOf)
 export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 
 /** Out of a Drive atrium on this browser, for the account signed in: off its
@@ -672,12 +688,14 @@ async function changeRoster(lobbyId: string, me: string, change: (roster: Roster
   // Public: a generation made now is too.
   if (next.roster.public && next.keyring) next.roster = { ...next.roster, public: await keysOf(next.keyring) }
   await writeRoster(kept, next.roster)
+  // Told first, in the room as it's named now: a new generation of the key
+  // moves this page to another (keep), and the rest follow once they read it.
+  tellRoom(lobbyId)
   if (next.keyring) keep(lobbyId, { ...kept, keys: await keysOf(next.keyring) })
   if (session?.lobbyId === lobbyId) {
     session.roster = null
     if (next.keyring) session.keyring = next.keyring
   }
-  tellRoom(lobbyId)
 }
 
 // Everyone in the atrium's room told the roster changed: through the page's
@@ -1097,6 +1115,8 @@ interface Session {
   mirrorFilledAt: number
   roomLive: boolean
   stopHearing: () => void
+  // Listening at the door (lib/rooms), while one may let people in.
+  door: (() => void) | null
   // Those who asked to be let in and were put off, this visit.
   putOff: Set<string>
   // When a save from someone the roster didn't have last made it look again.
@@ -1148,7 +1168,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0, door: null,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
@@ -1170,7 +1190,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
     if (session === s && live && !s.roomLive && s.lookedAt) look()
     s.roomLive = live
   })
-  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster(); stopWatching() }
+  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster(); stopWatching(); s.door?.(); s.door = null }
   look()
   // Each tick a little early must still count: a second's grace.
   s.looking = window.setInterval(() => { if (session === s && Date.now() - s.lookedAt >= lookEvery(s) - 1000) look() }, LOOK_MS)
@@ -1335,7 +1355,11 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   // moves: someone invited makes their key pair in their profile, which the
   // roster doesn't show.
   const roster = s.roster.roster
-  if (manages(memberOf(roster, s.me)?.role) && roster.invited.length) await letIn(s, roster)
+  const managing = manages(memberOf(roster, s.me)?.role)
+  if (managing && roster.invited.length) await letIn(s, roster)
+  // At the door, unseen, for one who may let people in: asked there (askToJoin).
+  if (managing && !s.door && session === s) s.door = listenAtDoor(s.lobbyId)
+  else if (!managing && s.door) { s.door(); s.door = null }
   // As it was read: those just let in are read this look too (by their
   // invitation's folder), and the next look reads the roster written.
   return roster
@@ -1684,7 +1708,7 @@ const ASK_EVERY_MS = 15_000
 
 /** From outside the atrium: asking, again every little while so whoever
  *  comes in later sees it too, until what this returns is called. */
-export const askToJoin = (lobbyId: string) => sayToRoom(lobbyId, ASK_EVENT, {}, ASK_EVERY_MS)
+export const askToJoin = (lobbyId: string) => sayToRoom(lobbyId, ASK_EVENT, {}, ASK_EVERY_MS, DOOR)
 
 /** An owner's or admin's app, inside: who asks, as the room knows them --
  *  not a member, not invited, not blocked, not put off -- shown until let in

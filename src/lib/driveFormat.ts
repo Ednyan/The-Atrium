@@ -34,6 +34,14 @@ export const base64ToBytes = (text: string) => Uint8Array.from(atob(text), ch =>
 /** A key as text, for keeping in this browser. */
 export const keyToText = async (key: CryptoKey) => toBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
 
+/** What an atrium's room is called, from a key (as text) only its people
+ *  hold: its id, and a tag the key alone makes (lib/driveSync roomNameOf). */
+export async function roomNameFrom(keyText: string, lobbyId: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', fromBase64Url(keyText), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const tag = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`atrium room ${lobbyId}`)))
+  return `${lobbyId}-${toBase64Url(tag).slice(0, 22)}`
+}
+
 export async function keyFromText(text: string): Promise<CryptoKey> {
   const raw = fromBase64Url(text)
   if (raw.length !== 32) throw new Error('not an atrium key')
