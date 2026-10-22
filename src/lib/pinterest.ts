@@ -1,12 +1,10 @@
-// Pinterest OAuth connect flow + read API access, proxied through Supabase
-// Edge Functions (pinterest-oauth-exchange, pinterest-api) so the Client
-// Secret and stored access/refresh tokens never reach the browser. Web only
-// for now -- desktop OAuth needs a custom URL scheme/deep-link plugin this
-// app doesn't have yet.
+// Pinterest OAuth connect flow + read API access, proxied through the
+// Atrium's worker (workers/rooms, pinterest) so the Client Secret and stored
+// access/refresh tokens never reach the browser. The desktop connects through
+// the website, which hands it a code to link with (lib/pinterestDesktop).
 
-import { workerAccount } from './signedIn'
 import { toWorker } from './worker'
-import { cloudClient } from './supabase'
+import { workerUrl } from './rooms'
 import { showToast } from './toast'
 import { t } from './i18n'
 import { isDesktop } from './supabase'
@@ -227,7 +225,7 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
     return { handled: true, success: false, error: 'Pinterest sign-in could not be verified. Please try connecting again.' }
   }
 
-  if (!cloudClient) {
+  if (!workerUrl()) {
     return { handled: true, success: false, error: 'Not connected to the server.' }
   }
 
@@ -239,13 +237,10 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
       // Treated as an ordinary connect.
     }
 
-    // A Google account's, kept by the worker; the desktop's pairing and an
-    // existing account's, by Supabase's function.
-    const { data, error } = !desktopMode && workerAccount()
-      ? await toWorker('/pinterest/exchange', { code, redirectUri: getPinterestRedirectUri() }, true).then(({ ok, answer }) => ({ data: answer, error: ok ? null : { message: answer?.error } }))
-      : await cloudClient.functions.invoke('pinterest-oauth-exchange', {
-        body: { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) },
-      })
+    // Kept by the worker (workers/rooms, pinterest): the account's -- or, for a
+    // desktop app, with nobody signed in here, a pairing code for it.
+    const { data, error } = await toWorker('/pinterest/exchange', { code, redirectUri: getPinterestRedirectUri(), ...(desktopMode ? { mode: 'desktop' } : {}) }, !desktopMode)
+      .then(({ ok, answer }) => ({ data: answer, error: ok ? null : { message: answer?.error } }))
     // Cleared only now, not when it was read. The link page is already on
     // screen by this point -- the route is restored before the exchange -- and
     // it decides whether to show "finishing" or the Connect button by whether
@@ -282,14 +277,8 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
 
 export async function getPinterestConnectionStatus(): Promise<{ connected: boolean; username: string | null }> {
   if (isDesktop) return getDesktopPinterestStatus()
-  if (workerAccount()) {
-    const { ok, answer } = await toWorker('/pinterest/status', {}, true).catch(() => ({ ok: false, answer: null }))
-    return ok ? { connected: !!answer?.connected, username: answer?.username ?? null } : { connected: false, username: null }
-  }
-  if (!cloudClient) return { connected: false, username: null }
-  const { data, error } = await cloudClient.rpc('get_pinterest_connection_status')
-  if (error || !data || data.length === 0) return { connected: false, username: null }
-  return { connected: !!data[0].connected, username: data[0].pinterest_username ?? null }
+  const { ok, answer } = await toWorker('/pinterest/status', {}, true).catch(() => ({ ok: false, answer: null }))
+  return ok ? { connected: !!answer?.connected, username: answer?.username ?? null } : { connected: false, username: null }
 }
 
 export async function disconnectPinterest(): Promise<void> {
@@ -297,12 +286,7 @@ export async function disconnectPinterest(): Promise<void> {
   // itself: the connection belongs to the web account, and one machine
   // unlinking should not sign the account out everywhere.
   if (isDesktop) return unlinkDesktopPinterest()
-  if (workerAccount()) {
-    await toWorker('/pinterest/disconnect', {}, true)
-    return
-  }
-  if (!cloudClient) return
-  await cloudClient.rpc('disconnect_pinterest')
+  await toWorker('/pinterest/disconnect', {}, true)
 }
 
 export interface PinterestBoard {
@@ -332,17 +316,10 @@ async function callPinterestApi(body: Record<string, unknown>): Promise<any> {
   // every error check in the caller. It presents its link token over plain
   // fetch instead, and reaches the same Edge Function.
   if (isDesktop) return callPinterestApiAsLinkedDesktop(body)
-  // A Google account's Pinterest is the worker's (workers/rooms, pinterest).
-  if (workerAccount()) {
-    const { ok, answer } = await toWorker('/pinterest/api', body, true)
-    if (!ok || answer?.error) throw new Error(answer?.error || 'Pinterest request failed.')
-    return answer
-  }
-  if (!cloudClient) throw new Error('Not connected to the server.')
-  const { data, error } = await cloudClient.functions.invoke('pinterest-api', { body })
-  if (error) throw new Error(error.message || 'Pinterest request failed.')
-  if (data?.error) throw new Error(data.error)
-  return data
+  // Every account's Pinterest is the worker's (workers/rooms, pinterest).
+  const { ok, answer } = await toWorker('/pinterest/api', body, true)
+  if (!ok || answer?.error) throw new Error(answer?.error || 'Pinterest request failed.')
+  return answer
 }
 
 export async function fetchPinterestBoards(): Promise<PinterestBoard[]> {

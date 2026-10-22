@@ -1,18 +1,17 @@
 // The desktop half of the Pinterest link.
 //
-// Desktop's `supabase` is the local SQLite shim: no auth session, and no
-// .functions at all. So every call here is a plain fetch to the Edge Function
-// URL, carrying the anon key (which is what satisfies Supabase's own JWT check
-// on the way in) and the link token that says which account to act as.
-//
-// The link token is the only credential stored locally, and it buys exactly one
-// thing: read access to that account's Pinterest boards. It is not a session --
-// it cannot touch atriums, contributions, or anything else.
+// The desktop app has no account to sign in with, so its Pinterest is linked
+// through the website: connected there on its behalf, which shows a short
+// code; the code traded here for a link token. Every call is a plain request
+// to the Atrium's worker (workers/rooms, pinterest), carrying that token in
+// its body -- the one credential kept on the device. It buys exactly one
+// thing: read access to that Pinterest's boards. It is not a session -- it
+// cannot touch atriums, contributions, or anything else. A link made before
+// (by Supabase's functions) is taken over by the worker the first time it's used.
+
+import { workerUrl } from './rooms'
 
 const LINK_TOKEN_KEY = 'atrium_pinterest_link_token'
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
 export function getDesktopLinkToken(): string | null {
   try {
@@ -39,38 +38,18 @@ export function clearDesktopLinkToken() {
 }
 
 export function isPinterestDesktopReachable(): boolean {
-  return !!SUPABASE_URL && !!ANON_KEY
+  return !!workerUrl()
 }
 
-async function callFunction(
-  name: string,
-  body: Record<string, unknown>,
-  options: { withLinkToken?: boolean } = {},
-): Promise<any> {
-  if (!SUPABASE_URL || !ANON_KEY) {
-    throw new Error('This build has no server configured.')
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    // Both, because Supabase checks the one and the gateway the other. The
-    // anon key is public by design -- it is already in the web bundle.
-    apikey: ANON_KEY,
-    Authorization: `Bearer ${ANON_KEY}`,
-  }
-
+async function callWorker(what: string, body: Record<string, unknown>, options: { withLinkToken?: boolean } = {}): Promise<any> {
+  const url = workerUrl()
+  if (!url) throw new Error('This build has no server configured.')
+  let link: string | null = null
   if (options.withLinkToken) {
-    const token = getDesktopLinkToken()
-    if (!token) throw new Error('This app is not linked to a Pinterest account yet.')
-    headers['x-atrium-link-token'] = token
+    link = getDesktopLinkToken()
+    if (!link) throw new Error('This app is not linked to a Pinterest account yet.')
   }
-
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
-
+  const res = await fetch(`${url}/pinterest/${what}`, { method: 'POST', body: JSON.stringify({ ...body, ...(link ? { link } : {}) }) })
   const data = await res.json().catch(() => null)
   if (!res.ok || data?.error) {
     throw new Error(data?.error || `Request failed (${res.status}).`)
@@ -78,9 +57,9 @@ async function callFunction(
   return data
 }
 
-// Trades the code shown on the web app for the long-lived token, and keeps it.
+// Trades the code shown on the website for the long-lived token, and keeps it.
 export async function redeemPinterestPairingCode(code: string): Promise<void> {
-  const data = await callFunction('pinterest-desktop-link', { action: 'redeem', code })
+  const data = await callWorker('link', { code })
   if (!data?.token) throw new Error('The server did not return a link token.')
   setDesktopLinkToken(data.token)
 }
@@ -88,10 +67,9 @@ export async function redeemPinterestPairingCode(code: string): Promise<void> {
 export async function getDesktopPinterestStatus(): Promise<{ connected: boolean; username: string | null }> {
   if (!getDesktopLinkToken()) return { connected: false, username: null }
   try {
-    const data = await callFunction('pinterest-desktop-link', { action: 'status' }, { withLinkToken: true })
-    // Revoked on the web, or Pinterest disconnected there. Forgetting the
-    // token here keeps the two ends honest instead of retrying a dead link
-    // on every visit.
+    const data = await callWorker('status', {}, { withLinkToken: true })
+    // Unlinked, or never known: forgetting the token here keeps the two ends
+    // honest instead of retrying a dead link on every visit.
     if (!data?.linked) {
       clearDesktopLinkToken()
       return { connected: false, username: null }
@@ -103,11 +81,11 @@ export async function getDesktopPinterestStatus(): Promise<{ connected: boolean;
   }
 }
 
-// Hands the token back before forgetting it, so the row on the server goes too
-// rather than lingering as access nobody remembers granting.
+// Hands the token back before forgetting it, so the connection on the server
+// goes too rather than lingering as access nobody remembers granting.
 export async function unlinkDesktopPinterest(): Promise<void> {
   try {
-    await callFunction('pinterest-desktop-link', { action: 'unlink' }, { withLinkToken: true })
+    await callWorker('unlink', {}, { withLinkToken: true })
   } catch {
     // Even if the server could not be reached, stop using it locally.
   }
@@ -115,5 +93,5 @@ export async function unlinkDesktopPinterest(): Promise<void> {
 }
 
 export async function callPinterestApiAsLinkedDesktop(body: Record<string, unknown>): Promise<any> {
-  return callFunction('pinterest-api', body, { withLinkToken: true })
+  return callWorker('api', body, { withLinkToken: true })
 }

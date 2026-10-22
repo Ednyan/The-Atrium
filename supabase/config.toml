@@ -46,3 +46,7 @@ verify_jwt = true
 # Verified, and then checked again inside: the operator's alone (platform_admins).
 [functions.export-profiles]
 verify_jwt = true
+
+# Verified, and then checked again inside: the worker's key (account_for_email's hash), or nothing.
+[functions.pinterest-handover]
+verify_jwt = true

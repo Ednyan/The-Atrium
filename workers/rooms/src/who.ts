@@ -82,10 +82,11 @@ async function identify(token: string | null | undefined, env: Env): Promise<Who
   }
 }
 
-// The site's pages, and a local one (a test, or the app run locally). Plain
-// requests (a text body, no headers of their own), so a browser sends them
-// without asking first: one request each.
-const ORIGINS = /^(https:\/\/(www\.)?digitalatrium\.org|http:\/\/(localhost|127\.0\.0\.1):\d+)$/
+// The site's pages, the desktop app's (Tauri's own address: http or https
+// tauri.localhost on Windows, tauri://localhost elsewhere), and a local one (a
+// test, or the app run locally). Plain requests (a text body, no headers of
+// their own), so a browser sends them without asking first: one request each.
+const ORIGINS = /^(https:\/\/(www\.)?digitalatrium\.org|https?:\/\/tauri\.localhost|tauri:\/\/localhost|http:\/\/(localhost|127\.0\.0\.1):\d+)$/
 
 /** Whether a page of the site's is asking, and a JSON answer readable by it. */
 export function replies(request: Request) {
