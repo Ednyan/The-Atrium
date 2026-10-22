@@ -15,19 +15,17 @@
 // Errors are said as Drive says them (404, 403), which the page's sync knows.
 
 import { tablesIn } from './people'
-import { fromBase64, replies, toBase64, whoIs, type Env } from './who'
+import { FILE_NAME as NAME, fromBase64, MOST_FILE_BYTES, replies, sentFile, toBase64, whoIs, type Env } from './who'
 
 // An account's bytes, everything it owns together, unless the worker says
 // otherwise (STORE_QUOTA_MB); one file's, at most.
 const QUOTA_MB = 50
-const MOST_FILE_BYTES = 25 * 1024 * 1024
 // Hosted atriums one owns, at most: each is one roster of one's own.
 const MOST_ATRIUMS = 3
 const ROSTER = 'atrium.roster'
 const atriumsOwned = async (db: D1Database, account: string) =>
   (await db.prepare('select count(*) as n from store_files where owner = ? and name = ? and folder = 0').bind(account, ROSTER).first<{ n: number }>())?.n ?? 0
 const MOST_APPDATA_BYTES = 16 * 1024
-const NAME = /^[^\u0000-\u001f/]{1,200}$/
 // A hosted id: marked, as no Drive id can be (Drive's are letters, digits, - and _).
 const ID = /^h\.[A-Za-z0-9_-]{20,40}$/
 
@@ -65,19 +63,20 @@ export async function store(request: Request, env: Env, what: string): Promise<R
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
 
-  // A file written: as a form (the token, where it goes, the bytes) -- a
-  // plain request, sent without asking first.
+  // A file written: its head (the sign-in, where it goes) and its bytes,
+  // streamed on to R2 (who.ts, sentFile) -- a plain request, sent without
+  // asking first.
   if (what === 'write') {
-    let form: FormData
-    try { form = await request.formData() } catch { return answer(400, { error: 'body' }) }
-    const who = await whoIs(String(form.get('token') ?? ''), env)
+    const sent = await sentFile(request)
+    if (!sent) return answer(400, { error: 'body' })
+    const { head, size, body } = sent
+    const who = await whoIs(String(head.token ?? ''), env)
     if (!who) return answer(401, { error: 'sign-in' })
-    const bytes = form.get('bytes')
-    const name = String(form.get('name') ?? '')
-    const parent = form.get('parent') ? String(form.get('parent')) : null
-    const id = form.get('id') ? String(form.get('id')) : null
-    if (!(bytes instanceof File) || !NAME.test(name) || (!parent === !id)) return answer(400, { error: 'body' })
-    if (bytes.size > MOST_FILE_BYTES) return answer(413, { error: 'too big' })
+    const name = String(head.name ?? '')
+    const parent = head.parent ? String(head.parent) : null
+    const id = head.id ? String(head.id) : null
+    if (!body || !NAME.test(name) || (!parent === !id)) return answer(400, { error: 'body' })
+    if (size > MOST_FILE_BYTES) return answer(413, { error: 'too big' })
     let row: Row | null = null
     if (id) {
       row = await db.prepare('select * from store_files where id = ? and folder = 0').bind(id).first<Row>()
@@ -93,18 +92,15 @@ export async function store(request: Request, env: Env, what: string): Promise<R
     // Whose bytes these are: the file's owner, whoever writes it.
     const owner = row?.owner ?? who.id
     const used = (await db.prepare('select coalesce(sum(size), 0) as used from store_files where owner = ?').bind(owner).first<{ used: number }>())?.used ?? 0
-    if (used - (row?.size ?? 0) + bytes.size > quotaOf(env)) return answer(507, { error: 'quota' })
+    if (used - (row?.size ?? 0) + size > quotaOf(env)) return answer(507, { error: 'quota' })
     const fileId = row?.id ?? newId()
-    // Whole, not streamed: R2 must know a stream's length, which a form's file doesn't say (25 MB at most).
-    await files.put(`f/${fileId}`, await bytes.arrayBuffer())
+    await files.put(`f/${fileId}`, body)
     const now = Date.now()
-    if (row) {
-      await db.prepare('update store_files set version = version + 1, size = ?, name = ?, updated_at = ? where id = ?').bind(bytes.size, name, now, fileId).run()
-    } else {
-      await db.prepare('insert into store_files (id, parent, name, owner, folder, version, size, created_at, updated_at) values (?, ?, ?, ?, 0, 1, ?, ?, ?)')
-        .bind(fileId, parent, name, owner, bytes.size, now, now).run()
-    }
-    const version = (await db.prepare('select version from store_files where id = ?').bind(fileId).first<Row>())?.version ?? 1
+    const written = row
+      ? db.prepare('update store_files set version = version + 1, size = ?, name = ?, updated_at = ? where id = ? returning version').bind(size, name, now, fileId)
+      : db.prepare('insert into store_files (id, parent, name, owner, folder, version, size, created_at, updated_at) values (?, ?, ?, ?, 0, 1, ?, ?, ?) returning version')
+        .bind(fileId, parent, name, owner, size, now, now)
+    const version = (await written.first<Row>())?.version ?? 1
     return answer(200, { id: fileId, version: String(version) })
   }
 

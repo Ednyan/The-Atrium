@@ -10,14 +10,12 @@
 // Gone when it's no longer listed (dropMirror).
 
 import { tablesIn } from './people'
-import { replies, whoIs, type Env } from './who'
+import { FILE_NAME as NAME, MOST_FILE_BYTES, replies, sentFile, whoIs, type Env } from './who'
 
 // One mirrored atrium's bytes, at most.
 const MOST_MB = 200
-const MOST_FILE_BYTES = 25 * 1024 * 1024
 const DRIVE_ID = /^[\w-]{10,128}$/
 const LOBBY = /^[\w-]{1,64}$/
-const NAME = /^[^\u0000-\u001f/]{1,200}$/
 
 interface Entry { id: string; parent: string | null; name: string; folder: number; version: string; size: number }
 
@@ -50,17 +48,20 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
   if (what !== 'put') return answer(404, { error: 'what' })
-  let form: FormData
-  try { form = await request.formData() } catch { return answer(400, { error: 'body' }) }
-  const who = await whoIs(String(form.get('token') ?? ''), env)
+  // Its head (the sign-in, which file of which atrium) and its bytes,
+  // streamed on to R2 (who.ts, sentFile); a folder has none.
+  const sent = await sentFile(request)
+  if (!sent) return answer(400, { error: 'body' })
+  const { head } = sent
+  const who = await whoIs(String(head.token ?? ''), env)
   if (!who) return answer(401, { error: 'sign-in' })
-  const lobby = String(form.get('lobby') ?? ''), id = String(form.get('id') ?? ''), name = String(form.get('name') ?? '')
-  const parent = form.get('parent') ? String(form.get('parent')) : null
-  const version = String(form.get('version') ?? '')
-  const bytes = form.get('bytes')
-  const folder = !(bytes instanceof File)
+  const lobby = String(head.lobby ?? ''), id = String(head.id ?? ''), name = String(head.name ?? '')
+  const parent = head.parent ? String(head.parent) : null
+  const version = String(head.version ?? '')
+  const folder = head.folder === true || !sent.body
   if (!LOBBY.test(lobby) || !DRIVE_ID.test(id) || !NAME.test(name) || (parent && !DRIVE_ID.test(parent)) || !/^[\w.-]{1,64}$/.test(version)) return answer(400, { error: 'body' })
-  if (!folder && bytes.size > MOST_FILE_BYTES) return answer(413, { error: 'too big' })
+  if (!folder && sent.size > MOST_FILE_BYTES) return answer(413, { error: 'too big' })
+  let body = folder ? null : sent.body
 
   // Only a listed atrium's -- and only by its owner, or a member as its
   // mirrored roster has them. Its roster itself: its owner's, or an admin's.
@@ -71,22 +72,25 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
   const isOwner = who.id === listed.owner
   if (id === listed.roster) {
     if (!isOwner && role !== 'admin') return answer(403, { error: 'Drive 403: not the roster’s' })
-    if (folder) return answer(400, { error: 'body' })
+    if (!body) return answer(400, { error: 'body' })
+    // Read whole to be checked -- a roster is small -- and kept as read.
+    const text = await new Response(body).text()
     try {
-      const sent = JSON.parse(new TextDecoder().decode(await bytes.arrayBuffer())) as { members?: unknown }
-      if (!Array.isArray(sent.members)) throw new Error('no members')
+      const roster = JSON.parse(text) as { members?: unknown }
+      if (!Array.isArray(roster.members)) throw new Error('no members')
     } catch {
       return answer(400, { error: 'not a roster' })
     }
+    body = new TextEncoder().encode(text).buffer as ArrayBuffer
   } else if (!isOwner && (!role || role === 'viewer')) {
     return answer(403, { error: 'Drive 403: not in it' })
   }
 
   const had = await db.prepare('select size from mirror_files where lobby = ? and id = ?').bind(lobby, id).first<Entry>()
-  const size = folder ? 0 : bytes.size
+  const size = folder ? 0 : sent.size
   const used = (await db.prepare('select coalesce(sum(size), 0) as used from mirror_files where lobby = ?').bind(lobby).first<{ used: number }>())?.used ?? 0
   if (used - (had?.size ?? 0) + size > MOST_MB * 1024 * 1024) return answer(507, { error: 'quota' })
-  if (!folder) await files.put(`m/${lobby}/${id}`, await bytes.arrayBuffer())
+  if (body) await files.put(`m/${lobby}/${id}`, body)
   await db.prepare(`insert into mirror_files (lobby, id, parent, name, folder, version, size, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)
     on conflict (lobby, id) do update set parent = coalesce(excluded.parent, mirror_files.parent), name = excluded.name, version = excluded.version, size = excluded.size, updated_at = excluded.updated_at`)
     .bind(lobby, id, parent, name, folder ? 1 : 0, version, size, Date.now()).run()

@@ -97,6 +97,12 @@ const ADDED = ['alter table accounts add column settings text', 'alter table acc
   // An invitation that joins by itself (phase 10): one's cloud atrium moved,
   // its people with it -- vouched for by Supabase (cloudMember).
   'alter table invites add column auto integer']
+// A setting kept (the settings table): its value, or null; and one set.
+export const setting = async (db: D1Database, key: string) =>
+  (await db.prepare('select value from settings where key = ?').bind(key).first<{ value: string }>())?.value ?? null
+export const keep = (db: D1Database, key: string, value: string | number) =>
+  db.prepare('insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value').bind(key, String(value))
+
 // Made once per instance of the worker, the first time it's needed.
 let made: Promise<unknown> | null = null
 export const tablesIn = (db: D1Database) => (made ??= (async () => {
@@ -119,7 +125,8 @@ const MOST_IDS = 200
 const MOST_PUBLIC_EACH = 50
 const MOST_PUBLIC_LISTED = 500
 const MOST_PREVIEW_BYTES = 300 * 1024
-const DRIVE_ID = /^[\w-]{10,128}$/
+// A roster's file: a Drive file's id, or the hosted store's (`h.` and its own, src/store.ts).
+const ROSTER_ID = /^(h\.)?[\w-]{10,128}$/
 
 /** A Google account's grant, kept (sealed), replaced, or forgotten (its
  *  access taken back). */
@@ -504,7 +511,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
     // roster it names says whether it really is (lib/driveSync).
     case 'publish': {
       const lobby = text('lobby_id', 64), roster = text('roster', 128), name = text('name', 100)?.trim()
-      if (!lobby || !roster || !DRIVE_ID.test(roster) || !name) return answer(400, { error: 'body' })
+      if (!lobby || !roster || !ROSTER_ID.test(roster) || !name) return answer(400, { error: 'body' })
       let preview: Uint8Array | null = null
       if (typeof asked.preview === 'string') {
         try { preview = fromBase64(asked.preview) } catch { return answer(400, { error: 'preview' }) }

@@ -11,7 +11,7 @@ import { renderAtriumEmail, renderContributorEmail, type ContributorEmail } from
 import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
 import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
 import { CONFIRM_COPY, RESET_COPY } from './authCopy'
-import { emailOf } from './people'
+import { emailOf, keep } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
 const SUPPORT = 'thedigitalatrium@gmail.com'
@@ -29,7 +29,19 @@ async function send(env: Env, mail: Mail): Promise<boolean> {
     body: JSON.stringify(mail),
   })
   if (!response.ok) console.error('[mail] Resend refused it:', response.status, await response.text())
+  await keepCounts(env, response.headers)
   return response.ok
+}
+
+// Resend's count of the mail sent -- today's, this month's -- comes with each
+// email: a key that may only send can't ask for it otherwise. Kept for the
+// operator's Health (src/ops.ts), with when it was had.
+export const MAIL_COUNTS = 'resend.counts'
+async function keepCounts(env: Env, headers: Headers): Promise<void> {
+  const count = (name: string) => (headers.get(name) === null ? null : Number(headers.get(name)))
+  const daily = count('x-resend-daily-quota'), monthly = count('x-resend-monthly-quota')
+  if (!env.PEOPLE || (daily === null && monthly === null)) return
+  await keep(env.PEOPLE, MAIL_COUNTS, JSON.stringify({ daily, monthly, at: Date.now() })).run().catch(error => console.error('[mail] its counts:', error))
 }
 
 /** The report form's, to support. Open to anyone, as the form is; replies go

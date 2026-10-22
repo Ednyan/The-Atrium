@@ -56,15 +56,12 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
     // Shared by its id already, and only its owner shares it on.
     shareByLink: async () => {},
     noResharing: async () => {},
-    // As a form -- the sign-in, where it goes, the bytes -- also a plain request.
+    // A line of JSON -- the sign-in, where it goes -- then the bytes, which
+    // the worker streams on as they come (workers/rooms, who.ts sentFile):
+    // also a plain request.
     write: async (name, bytes, place) => {
-      const form = new FormData()
-      form.set('token', await signedInToken())
-      form.set('name', name)
-      if ('id' in place) form.set('id', place.id)
-      else form.set('parent', place.parent)
-      form.set('bytes', new Blob([bytes as BlobPart]), 'bytes')
-      const response = await fetch(at('write'), { method: 'POST', body: form })
+      const head = JSON.stringify({ token: await signedInToken(), name, ...place })
+      const response = await fetch(at('write'), { method: 'POST', body: new Blob([`${head}\n`, bytes as BlobPart]) })
       if (!response.ok) throw await failed(response)
       return response.json()
     },

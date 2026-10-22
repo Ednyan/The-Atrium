@@ -14,10 +14,11 @@
 // limits fails until then (docs/SCALING.md). Resend's are its own, and it
 // says them.
 
-import { ACTIVE_MS, DEFAULT_GOAL_CENTS, GOAL, LAST_EVENT, MOVED, monthStart, setting, stripe } from './contributions'
-import { isOperator, tablesIn } from './people'
+import { ACTIVE_MS, DEFAULT_GOAL_CENTS, GOAL, LAST_EVENT, MOVED, monthStart, stripe } from './contributions'
+import { MAIL_COUNTS } from './mail'
+import { isOperator, setting, tablesIn } from './people'
 import { graph, relayBudget, relayedBytes } from './relay'
-import { outbound, replies, whoIs, type Env } from './who'
+import { replies, whoIs, type Env } from './who'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const GB = 1e9
@@ -50,8 +51,11 @@ export interface Meter {
   limit: number | null
   unit: 'count' | 'bytes' | 'ms' | 'gbs'
   per: 'day' | 'month' | 'total' | 'request' | '31 days'
-  // Requests that went past it (the CPU's).
+  // Requests stopped for going past it (the CPU's): its only hard edge --
+  // Cloudflare lets a request run over now and then.
   over?: number
+  // When it was counted, if not just now (Resend's, as the last email brought it).
+  at?: number
   error?: string
 }
 type Shown = Omit<Meter, 'used' | 'over' | 'error'>
@@ -210,7 +214,7 @@ function metersOf(env: Env, now: number): Promise<Meter[]> {
     // The worker's CPU a request (p99), against the 10 ms each may use; and how many ran out today.
     [[{ key: 'cpu', limit: 10, unit: 'ms', per: 'request' }], async () => {
       const account = await graph(env, `cpu: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", ${since(today)} }) { quantiles { cpuTimeP99 } }
-        over: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", status: "exceededResources", ${since(today)} }) { sum { requests } }`)
+        over: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", status_in: ["exceededResources", "exceededCpu"], ${since(today)} }) { sum { requests } }`)
       return [{ used: Number(account.cpu?.[0]?.quantiles?.cpuTimeP99 ?? 0) / 1000, over: total(account.over, 'requests') }]
     }],
     [[{ key: 'rooms', limit: 100_000, unit: 'count', per: 'day' }], async () =>
@@ -245,14 +249,14 @@ function metersOf(env: Env, now: number): Promise<Meter[]> {
     }],
     // Where the relay stops giving passes (src/relay.ts), under the 1,000 GB it's free for.
     [[{ key: 'relay', limit: relayBudget(env), unit: 'bytes', per: '31 days' }], async () => [{ used: await relayedBytes(env) }]],
-    // Resend's own count: everything sent with its key, Supabase's mail too.
+    // Resend's own count of everything sent with its key, Supabase's mail
+    // too -- as the worker's last email brought it (src/mail.ts): today's
+    // over a rolling 24 hours, the month's since the 1st.
     [[{ key: 'mailDay', limit: 100, unit: 'count', per: 'day' }, { key: 'mailMonth', limit: 3000, unit: 'count', per: 'month' }], async () => {
-      if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not set')
-      const response = await fetch(outbound(env, 'https://api.resend.com/usage'), { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } })
-      const body = await response.json().catch(() => null) as any
-      if (!response.ok) throw new Error(`Resend: ${response.status} ${body?.message ?? ''}`.trim())
-      const { daily, monthly } = body?.usage?.emails ?? body?.emails ?? {}
-      return [{ used: Number(daily?.used ?? 0), limit: daily?.limit ?? null }, { used: Number(monthly?.used ?? 0), limit: monthly?.limit ?? null }]
+      const kept = env.PEOPLE && await setting(env.PEOPLE, MAIL_COUNTS)
+      if (!kept) throw new Error('No email sent by the worker since this was set up: Resend gives its counts with each one.')
+      const { daily, monthly, at } = JSON.parse(kept) as { daily: number | null; monthly: number | null; at: number }
+      return [{ used: daily ?? 0, at }, { used: monthly ?? 0, at }]
     }],
   ]
   return Promise.all(readings.map(async ([shown, read]) => {

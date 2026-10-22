@@ -15,7 +15,7 @@
 import { nameProblem as problemOf, MAX_NAME_LENGTH } from '../../../supabase/functions/_shared/contributorName'
 import { BASE_CURRENCY, currencyByCode, isAllowedStep, isCurrencyCode, minorPerUnit } from '../../../supabase/functions/_shared/currencies'
 import { SITE, toContributor } from './mail'
-import { isOperator, tablesIn } from './people'
+import { isOperator, keep, setting, tablesIn } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
 const STRIPE_VERSION = '2026-07-29.dahlia'
@@ -59,11 +59,6 @@ export async function stripe(env: Env, method: 'GET' | 'POST' | 'DELETE', path: 
   if (!response.ok) throw Object.assign(new Error(body?.error?.message ?? `Stripe ${method} ${path}: ${response.status}`), { status: response.status })
   return body
 }
-
-export const setting = async (db: D1Database, key: string) =>
-  (await db.prepare('select value from settings where key = ?').bind(key).first<{ value: string }>())?.value ?? null
-const keep = (db: D1Database, key: string, value: string | number) =>
-  db.prepare('insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value').bind(key, String(value))
 
 // Moved once and for good: remembered by the instance once it is.
 let moved = false

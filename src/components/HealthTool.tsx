@@ -18,7 +18,10 @@ interface Meter {
   limit: number | null
   unit: 'count' | 'bytes' | 'ms' | 'gbs'
   per: 'day' | 'month' | 'total' | 'request' | '31 days'
+  // Requests stopped for going past it (the CPU's).
   over?: number
+  // When it was counted, if not just now.
+  at?: number
   error?: string
 }
 interface Day { date: string; value: number }
@@ -206,7 +209,10 @@ function MeterRow({ meter }: { meter: Meter }) {
   const { t } = useTranslation()
   const f = useFormat()
   const { per, name } = useMeterNames()
-  const share = meter.limit && meter.used !== undefined ? meter.used / meter.limit : 0
+  const ratio = meter.limit && meter.used !== undefined ? meter.used / meter.limit : 0
+  // A limit that lets a request past it now and then (the CPU's) is reached
+  // only once requests are stopped; until then, past it is only near.
+  const share = meter.over === undefined ? ratio : meter.over > 0 ? 1 : Math.min(ratio, NEAR)
   const fill = share >= AT ? DANGER : share >= NEAR ? AMBER : 'rgb(var(--c-fg) / 0.7)'
   return (
     <div data-meter={meter.key}>
@@ -225,10 +231,12 @@ function MeterRow({ meter }: { meter: Meter }) {
         <p className="text-[10px] tracking-wide mt-1 break-words" style={{ color: DANGER }}>{meter.error}</p>
       ) : meter.limit !== null && (
         <div className="h-[3px] mt-1.5 bg-nier-border/20">
-          <div className="h-full" style={{ width: `${Math.min(100, share * 100)}%`, background: fill }} />
+          <div className="h-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: fill }} />
         </div>
       )}
       {!!meter.over && <p className="text-[10px] tracking-wide mt-1" style={{ color: DANGER }}>{t('ops.ranOut', { count: f.number(meter.over) })}</p>}
+      {meter.over === 0 && ratio >= 1 && <p className="text-[10px] tracking-wide mt-1 text-nier-bg/65 leading-relaxed">{t('health.noneStopped')}</p>}
+      {meter.at && meter.error === undefined && <p className="text-[10px] tracking-wide mt-1 text-nier-bg/55">{t('health.countedAt', { time: f.when(meter.at) })}</p>}
     </div>
   )
 }

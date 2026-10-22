@@ -18,15 +18,12 @@ export interface Mirrored { id: string; name: string; version: string }
 export async function mirrorPut(lobbyId: string, entry: { id: string; parent: string | null; name: string; version?: string; bytes?: Uint8Array }): Promise<boolean> {
   const token = await accountToken().catch(() => null)
   if (!token) return false
-  const form = new FormData()
-  form.set('token', token)
-  form.set('lobby', lobbyId)
-  form.set('id', entry.id)
-  form.set('name', entry.name)
-  form.set('version', entry.version || '1')
-  if (entry.parent) form.set('parent', entry.parent)
-  if (entry.bytes) form.set('bytes', new Blob([entry.bytes as BlobPart]), 'bytes')
-  const response = await fetch(at('put'), { method: 'POST', body: form }).catch(() => null)
+  // A line of JSON -- the sign-in, which file it is -- then its bytes, a
+  // folder none (workers/rooms, who.ts sentFile).
+  const head = JSON.stringify({ token, lobby: lobbyId, id: entry.id, name: entry.name, version: entry.version || '1',
+    ...(entry.parent ? { parent: entry.parent } : {}), ...(entry.bytes ? {} : { folder: true }) })
+  const body = new Blob(entry.bytes ? [`${head}\n`, entry.bytes as BlobPart] : [`${head}\n`])
+  const response = await fetch(at('put'), { method: 'POST', body }).catch(() => null)
   return !!response?.ok
 }
 

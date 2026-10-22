@@ -98,6 +98,65 @@ export function replies(request: Request) {
   return { allowed, answer }
 }
 
+// ---------------------------------------------------------------- files sent
+
+// A file the hosted store or a mirror is sent (src/store.ts, src/mirror.ts):
+// 25 MB at most, its name anything but a path or control characters.
+export const MOST_FILE_BYTES = 25 * 1024 * 1024
+export const FILE_NAME = /^[^\u0000-\u001f/]{1,200}$/
+const MOST_HEAD_BYTES = 16 * 1024
+
+/** A file as a page sends it: a line of JSON first -- the sign-in, where it
+ *  goes -- then its bytes, in one plain request. The bytes are handed on as
+ *  they arrive, a stream of known length for R2, never parsed or copied
+ *  whole: a big file costs next to no CPU (the free plan allows 10 ms).
+ *  Null if the head can't be read. */
+export async function sentFile(request: Request): Promise<{ head: Record<string, unknown>; size: number; body: ReadableStream | ArrayBuffer | null } | null> {
+  // ponytail: the form pages sent before (multipart, parsed whole) -- drop once no open page can send it.
+  if ((request.headers.get('Content-Type') ?? '').startsWith('multipart/form-data')) {
+    const form = await request.formData().catch(() => null)
+    if (!form) return null
+    const bytes = form.get('bytes')
+    const head = Object.fromEntries([...form.entries()].filter(([key]) => key !== 'bytes').map(([key, value]) => [key, String(value)]))
+    return { head, size: bytes instanceof File ? bytes.size : 0, body: bytes instanceof File ? await bytes.arrayBuffer() : null }
+  }
+  const total = Number(request.headers.get('Content-Length'))
+  if (!request.body || !Number.isFinite(total)) return null
+  const reader = request.body.getReader()
+  let held = new Uint8Array(0)
+  for (;;) {
+    const end = held.indexOf(10)
+    if (end >= 0) {
+      let head: Record<string, unknown>
+      try { head = JSON.parse(new TextDecoder().decode(held.subarray(0, end))) } catch { return null }
+      if (!head || typeof head !== 'object') return null
+      const size = total - end - 1
+      if (size < 0) return null
+      const { readable, writable } = new FixedLengthStream(size)
+      const rest = held.subarray(end + 1)
+      // The rest, passed on as it comes -- while whoever asked checks who's sending it.
+      void (async () => {
+        const writer = writable.getWriter()
+        try {
+          if (rest.length) await writer.write(rest)
+          for (let part = await reader.read(); !part.done; part = await reader.read()) await writer.write(part.value)
+          await writer.close()
+        } catch (error) {
+          await writer.abort(error).catch(() => {})
+        }
+      })()
+      return { head, size, body: readable }
+    }
+    if (held.length > MOST_HEAD_BYTES) return null
+    const part = await reader.read()
+    if (part.done) return null
+    const joined = new Uint8Array(held.length + part.value.length)
+    joined.set(held)
+    joined.set(part.value, held.length)
+    held = joined
+  }
+}
+
 // ---------------------------------------------------------------- keys
 
 /** A key made from the app's secret, by what it's for: a new secret makes
@@ -106,8 +165,19 @@ export const keyFrom = async (secret: string, label: string, algorithm: 'AES-GCM
   crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${label}\n${secret}`)),
     algorithm === 'HMAC' ? { name: 'HMAC', hash: 'SHA-256' } : 'AES-GCM', false, usages)
 
-export const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
-export const fromBase64 = (text: string) => Uint8Array.from(atob(text), c => c.charCodeAt(0))
+// In slices, and by a plain loop: spreading a large array into one call
+// overflows it, and a callback per byte is CPU the free plan doesn't have.
+export const toBase64 = (bytes: Uint8Array) => {
+  let text = ''
+  for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000))
+  return btoa(text)
+}
+export const fromBase64 = (text: string) => {
+  const raw = atob(text)
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
+}
 const toUrl = (bytes: Uint8Array) => toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 export const fromUrl = (text: string) => fromBase64(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4))
 
