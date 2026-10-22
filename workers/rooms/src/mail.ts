@@ -11,10 +11,13 @@ import { renderAtriumEmail, renderContributorEmail, type ContributorEmail } from
 import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
 import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
 import { CONFIRM_COPY, RESET_COPY } from './authCopy'
-import { emailOf, keep } from './people'
+import { allowedNow, emailOf, keep, tablesIn } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
 const SUPPORT = 'thedigitalatrium@gmail.com'
+// The report form's mail, at most: from one network, and from everyone, an hour.
+const FEEDBACK_AN_HOUR = 5
+const FEEDBACK_ALL_AN_HOUR = 30
 const FROM_FEEDBACK = 'Digital Atrium <feedback@mail.digitalatrium.org>'
 const FROM_HELLO = 'Digital Atrium <hello@mail.digitalatrium.org>'
 const FROM_CONTRIBUTIONS = 'Digital Atrium <contributions@mail.digitalatrium.org>'
@@ -51,6 +54,13 @@ export async function feedback(request: Request, env: Env): Promise<Response> {
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
   if (!env.RESEND_API_KEY) return answer(503, { error: 'not set up' })
+  // So many an hour from a network, and from everyone: a script mustn't spend
+  // the day's mail, which sign-up and reset codes need.
+  if (env.PEOPLE) {
+    await tablesIn(env.PEOPLE)
+    const from = request.headers.get('CF-Connecting-IP') ?? 'local'
+    if (!(await allowedNow(env.PEOPLE, `feedback:${from}`, FEEDBACK_AN_HOUR)) || !(await allowedNow(env.PEOPLE, 'feedback:all', FEEDBACK_ALL_AN_HOUR))) return answer(429, { error: 'Too many reports just now. Try again in a while.' })
+  }
   let asked: Record<string, unknown>
   try {
     asked = await request.json()

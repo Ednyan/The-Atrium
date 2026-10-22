@@ -1219,6 +1219,37 @@ A hosted atrium is then a Drive atrium whose store is ours:
        `checkout.session.async_payment_succeeded`, `invoice.paid`,
        `charge.refunded`; API version 2026-07-29.dahlia), its secret as
        `STRIPE_WEBHOOK_SECRET`.
+   - **The rest of step 6 (2026-10-22):** special themes (`themes.ts`,
+     copied from Supabase once), each account's visit order (`visits`),
+     the operator check (`/ops/operator`), existing accounts' profiles
+     (taken in on first sight or all at once from Developers > Cloud
+     atriums, `export-profiles`; changes copied back to Supabase until the
+     cutover, as its sign-in still reads them), and Pinterest for every
+     account and the desktop (`pinterest-handover` hands Supabase's
+     connections and desktop links over once). Left for step 7, being
+     those accounts' Supabase side: their sign-in, deletion, welcome, bans
+     and username sign-in.
+   - **Security review of the worker (2026-10-22).** Checked: who may call
+     each route and what it can learn or change; sessions, codes and
+     lockouts; Google's ID tokens; the store's and mirror's ownership;
+     CORS; every query bound. Fixed:
+     - the report form spent Resend's day unthrottled (now 5 an hour a
+       network, 30 an hour in all);
+     - a reset code could be guessed ~7,200 times a day from many networks
+       (now 8 codes, 40 tries, a day an account);
+     - one account could spend the day's D1 writes (now 3,000 writes an
+       hour an account to the store and mirrors);
+     - Checkout pages 30 an hour a network; the webhook refuses what's far
+       too big to be an event before reading it;
+     - a room handed every direct connection's offer -- where its sender can
+       be reached -- to whoever listened: now addressed ones reach their
+       account alone, and pages link directly only with the atrium's
+       members and invitees (`driveSync.knownMembers`).
+     - Still open: a room is joined by anyone who knows the atrium's id, so
+       presence (names, cursors) shows to them; the fix is rooms named from
+       the atrium's key, with a door room for asking to join. And the free
+       plan's request budget is anyone's to spend: a Cloudflare rate-limiting
+       rule on rooms.digitalatrium.org (one is free) bounds it.
 7. The app off the Supabase client. A month with Supabase read-only, then
    cancel.
 8. Drive atriums on desktop. Separate; the desktop never used Supabase.

@@ -27,7 +27,7 @@
 // it: a session alone, stolen, can't set a password here.
 
 import { authCode, goodbye, welcome } from './mail'
-import { forgetAccount, isBanned, supabaseUsername, takenInSupabase, tablesIn, USERNAME } from './people'
+import { forgetAccount, isBanned, supabaseUsername, takenInSupabase, tablesIn, USERNAME, allowedNow } from './people'
 import { dropOwnFiles } from './store'
 import { fromBase64, fromUrl, keyFrom, replies, signSession, toBase64, whoIs, type Env } from './who'
 
@@ -43,6 +43,11 @@ const STAY_MS = 90 * 24 * 60 * 60_000
 const CODE_MS = 15 * 60_000
 const CODE_TRIES = 5
 const CODE_EVERY_MS = 60_000
+// And so many a day an account, from however many networks: each new code
+// starts its tries again, so this is what bounds guessing one -- 8 codes, 40
+// tries, against a million.
+const CODES_A_DAY = 8
+const DAY_MS = 24 * 60 * 60 * 1000
 // An address never confirmed: its account let go after this, its username free.
 const UNCONFIRMED_MS = 24 * 60 * 60_000
 // Wrong passwords: this many, then a wait that doubles with each more, to this.
@@ -394,6 +399,7 @@ function sixDigits(): string {
 async function mailCode(env: Env, db: D1Database, account: string, email: string, purpose: 'confirm' | 'reset', language: unknown): Promise<void> {
   const held = await db.prepare('select sent_at from auth_codes where account = ? and purpose = ?').bind(account, purpose).first<{ sent_at: number }>()
   if (held && Date.now() - held.sent_at < CODE_EVERY_MS) return
+  if (!(await allowedNow(db, `codes:${account}`, CODES_A_DAY, DAY_MS))) return
   const code = sixDigits()
   await db.prepare(`insert into auth_codes (account, purpose, hash, sent_at, expires_at, tries) values (?, ?, ?, ?, ?, 0)
     on conflict (account, purpose) do update set hash = excluded.hash, sent_at = excluded.sent_at, expires_at = excluded.expires_at, tries = 0`)
@@ -469,20 +475,4 @@ function passwordJustNow(token: string): boolean {
 const goodbyeTo = (env: Env, email: string, account: Account, language: unknown) =>
   goodbye(env, email, account.display_name || account.username || '', language)
 
-/** Whether something that mails may be asked again by this address: at most
- *  `most` times an hour. (Resend sends so many a day; one script mustn't
- *  spend them.) */
-async function allowedNow(db: D1Database, key: string, most: number): Promise<boolean> {
-  const now = Date.now()
-  const row = await db.prepare('select count, since from throttle where key = ?').bind(key).first<{ count: number; since: number }>()
-  if (!row || now - row.since > HOUR_MS) {
-    await db.batch([
-      db.prepare('delete from throttle where since < ?').bind(now - 24 * HOUR_MS),
-      db.prepare('insert into throttle (key, count, since) values (?, 1, ?) on conflict (key) do update set count = 1, since = excluded.since').bind(key, now),
-    ])
-    return true
-  }
-  if (row.count >= most) return false
-  await db.prepare('update throttle set count = count + 1 where key = ?').bind(key).run()
-  return true
-}
+

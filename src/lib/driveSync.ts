@@ -616,6 +616,17 @@ async function invite(to: string, roster: Roster, rosterId: string, secret: Uint
 
 // ---------------------------------------------------------------- members: adding, roles, removing
 
+/** Who's in an atrium kept here, as its roster was last read here: its
+ *  members and those invited -- whom one's page may connect with directly
+ *  (hooks/usePresence), an offer saying where one can be reached. Null for
+ *  one not kept here (a cloud atrium's people are its own matter). */
+export function knownMembers(lobbyId: string): Set<string> | null {
+  const kept = allKept()[lobbyId]
+  if (!kept) return null
+  const roster = rostersKept()[kept.roster]?.roster
+  return new Set(roster ? [...roster.members.map(member => member.user), ...roster.invited.map(invited => invited.user)] : [])
+}
+
 /** The roster as it stands, and one's role in it. */
 export async function driveMembers(lobbyId: string, me: string): Promise<{ roster: Roster; role: Role | null }> {
   const kept = allKept()[lobbyId]

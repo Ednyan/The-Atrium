@@ -15,7 +15,7 @@
 import { nameProblem as problemOf, MAX_NAME_LENGTH } from '../../../supabase/functions/_shared/contributorName'
 import { BASE_CURRENCY, currencyByCode, isAllowedStep, isCurrencyCode, minorPerUnit } from '../../../supabase/functions/_shared/currencies'
 import { SITE, toContributor } from './mail'
-import { isOperator, keep, setting, tablesIn } from './people'
+import { allowedNow, isOperator, keep, setting, tablesIn } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
 const STRIPE_VERSION = '2026-07-29.dahlia'
@@ -26,6 +26,9 @@ export const ACTIVE_MS = 50 * DAY_MS
 // What the wall can draw, and a search shows.
 const WALL_MOST = 10_000
 const SEARCH_MOST = 40
+const CHECKOUTS_AN_HOUR = 30
+// Stripe's events are a few KB; anything far bigger isn't one, and isn't read.
+const MOST_EVENT_BYTES = 512 * 1024
 // How long the wall is kept at the edge before it's worked out again.
 const WALL_FRESH_S = 300
 // Supabase's monthly_goal_cents default, until one is set or moved.
@@ -85,7 +88,11 @@ export async function contributions(request: Request, env: Env, what: string): P
   if (!(await isMoved(db))) return open(409, { error: 'not moved' })
   if (what === 'wall' && request.method === 'GET') return wall(db)
   if (what === 'search' && request.method === 'GET') return search(db, new URL(request.url).searchParams.get('q') ?? '')
-  if (what === 'checkout' && request.method === 'POST') return checkout(request, env)
+  if (what === 'checkout' && request.method === 'POST') {
+    // So many Checkout pages an hour from a network: past any honest giver.
+    if (!(await allowedNow(db, `checkout:${request.headers.get('CF-Connecting-IP') ?? 'local'}`, CHECKOUTS_AN_HOUR))) return open(429, { error: 'Too many tries just now. Try again in a while.' })
+    return checkout(request, env)
+  }
   if (what === 'status' && request.method === 'POST') return status(request, env)
   return open(404, { error: 'no such thing' })
 }
@@ -265,8 +272,9 @@ export async function stripeWebhook(request: Request, env: Env): Promise<Respons
     console.error('[contributions] STRIPE_WEBHOOK_SECRET or STRIPE_SECRET_KEY is not set')
     return new Response('not set up', { status: 503 })
   }
+  if (Number(request.headers.get('Content-Length') ?? 0) > MOST_EVENT_BYTES) return new Response('too big', { status: 413 })
   const raw = await request.text()
-  if (!(await signed(raw, request.headers.get('stripe-signature') ?? '', env.STRIPE_WEBHOOK_SECRET))) return new Response('bad signature', { status: 400 })
+  if (raw.length > MOST_EVENT_BYTES || !(await signed(raw, request.headers.get('stripe-signature') ?? '', env.STRIPE_WEBHOOK_SECRET))) return new Response('bad signature', { status: 400 })
   const event = JSON.parse(raw)
   const db = env.PEOPLE
   await tablesIn(db)

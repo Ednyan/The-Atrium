@@ -14,7 +14,7 @@
 //
 // Errors are said as Drive says them (404, 403), which the page's sync knows.
 
-import { tablesIn } from './people'
+import { tablesIn, allowedNow, WRITES_AN_HOUR } from './people'
 import { FILE_NAME as NAME, fromBase64, MOST_FILE_BYTES, replies, sentFile, toBase64, whoIs, type Env } from './who'
 
 // An account's bytes, everything it owns together, unless the worker says
@@ -72,6 +72,7 @@ export async function store(request: Request, env: Env, what: string): Promise<R
     const { head, size, body } = sent
     const who = await whoIs(String(head.token ?? ''), env)
     if (!who) return answer(401, { error: 'sign-in' })
+    if (!(await allowedNow(db, `writes:${who.id}`, WRITES_AN_HOUR))) return answer(429, { error: 'busy' })
     const name = String(head.name ?? '')
     const parent = head.parent ? String(head.parent) : null
     const id = head.id ? String(head.id) : null
@@ -108,6 +109,8 @@ export async function store(request: Request, env: Env, what: string): Promise<R
   try { asked = await request.json() } catch { return answer(400, { error: 'body' }) }
   const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
   if (!who) return answer(401, { error: 'sign-in' })
+  // What changes something, as many times an hour as any honest use: the free plan's rows are everyone's.
+  if (what !== 'usage' && !(what === 'appdata' && typeof asked.bytes !== 'string') && !(await allowedNow(db, `writes:${who.id}`, WRITES_AN_HOUR))) return answer(429, { error: 'busy' })
   const text = (key: string, test: RegExp) => (typeof asked[key] === 'string' && test.test(asked[key] as string) ? asked[key] as string : null)
 
   switch (what) {

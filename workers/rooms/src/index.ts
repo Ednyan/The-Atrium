@@ -128,8 +128,12 @@ export class Room extends DurableObject<Env> {
       this.toOthers(ws, { t: 'leave', id: seat.user, ref: seat.ref })
     } else if (message.t === 'b' && typeof message.e === 'string') {
       // Stamped with who really sent it: the page checks a broadcast's
-      // claimed sender against this.
-      this.toOthers(ws, { t: 'b', e: message.e, p: message.p, u: seat.user })
+      // claimed sender against this. One addressed to someone (`to`, their
+      // user/page -- a direct connection's offer or answer, which says where
+      // the sender can be reached) goes to that account's pages alone, never
+      // to whoever else is listening.
+      const to = (message.p as { to?: unknown } | null)?.to
+      this.toOthers(ws, { t: 'b', e: message.e, p: message.p, u: seat.user }, typeof to === 'string' ? to.split('/')[0] : undefined)
     }
   }
 
@@ -143,10 +147,11 @@ export class Room extends DurableObject<Env> {
     try { ws.close() } catch { /* closed */ }
   }
 
-  private toOthers(from: WebSocket, message: object) {
+  private toOthers(from: WebSocket, message: object, onlyUser?: string) {
     const text = JSON.stringify(message)
     for (const ws of this.ctx.getWebSockets()) {
       if (ws === from) continue
+      if (onlyUser !== undefined && (ws.deserializeAttachment() as Seat | null)?.user !== onlyUser) continue
       try { ws.send(text) } catch { /* going */ }
     }
   }

@@ -6,6 +6,7 @@ import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '
 import { Mesh, PAGE, askForRelay, canLink, forgetPaths, livePositions, reportPath, userOf, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import { presenceChannel } from '../lib/rooms'
+import { knownMembers } from '../lib/driveSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -204,8 +205,12 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
     // Everyone here; and of them, the places that can be connected to directly
     // -- every page of theirs (a version from before `page` can't be).
     const everyone = () => Object.keys(channel.presenceState()).filter(key => key !== userId && isValidUserKey(key))
+    // Directly linked only with those in the atrium (its roster, lib/driveSync):
+    // an introduction says where a page can be reached, and someone who only
+    // knows the atrium's address -- or views a public one -- isn't told that.
+    const linkable = (user: string) => { const members = knownMembers(lobbyId); return !members || members.has(user) }
     const roster = () => Object.entries(channel.presenceState())
-      .filter(([key]) => key !== userId && isValidUserKey(key))
+      .filter(([key]) => key !== userId && isValidUserKey(key) && linkable(key))
       .flatMap(([key, presences]) => (presences as { link?: boolean; page?: unknown }[])
         .filter(presence => presence.link !== false && typeof presence.page === 'string')
         .map(presence => `${key}/${presence.page}`))
@@ -288,7 +293,7 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
       })
       // An introduction for a direct connection (lib/peers), from a place.
       .on('broadcast', { event: 'rtc' }, ({ payload }: { payload: any }) => {
-        if (payload && typeof payload.from === 'string' && isValidUserKey(userOf(payload.from)) && typeof payload.sdp === 'string' && (payload.kind === 'offer' || payload.kind === 'answer')) {
+        if (payload && typeof payload.from === 'string' && isValidUserKey(userOf(payload.from)) && linkable(userOf(payload.from)) && typeof payload.sdp === 'string' && (payload.kind === 'offer' || payload.kind === 'answer')) {
           void mesh?.signal(payload.from, payload as Signal)
         }
       })

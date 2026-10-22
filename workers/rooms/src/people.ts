@@ -113,6 +113,30 @@ const ADDED = ['alter table accounts add column settings text', 'alter table acc
   'alter table invites add column auto integer',
   // An existing account's Supabase profile taken in (phase 10, step 6): when.
   'alter table accounts add column from_supabase integer']
+/** Whether something may be asked again under this key (a network's address,
+ *  an account): at most `most` times in `windowMs` (an hour). Resend sends
+ *  so many a day, and the free plan writes so many rows: one script mustn't
+ *  spend them for everyone. */
+export async function allowedNow(db: D1Database, key: string, most: number, windowMs = 60 * 60 * 1000): Promise<boolean> {
+  const now = Date.now()
+  const row = await db.prepare('select count, since from throttle where key = ?').bind(key).first<{ count: number; since: number }>()
+  if (!row || now - row.since > windowMs) {
+    await db.batch([
+      db.prepare('delete from throttle where since < ?').bind(now - 48 * 60 * 60 * 1000),
+      db.prepare('insert into throttle (key, count, since) values (?, 1, ?) on conflict (key) do update set count = 1, since = excluded.since').bind(key, now),
+    ])
+    return true
+  }
+  if (row.count >= most) return false
+  await db.prepare('update throttle set count = count + 1 where key = ?').bind(key).run()
+  return true
+}
+
+// What one account may write in an hour (the hosted store, mirrors): far
+// past any honest use -- an atrium saved every few seconds all hour -- and
+// far short of the free plan's 100,000 rows a day.
+export const WRITES_AN_HOUR = 3000
+
 // A setting kept (the settings table): its value, or null; and one set.
 export const setting = async (db: D1Database, key: string) =>
   (await db.prepare('select value from settings where key = ?').bind(key).first<{ value: string }>())?.value ?? null
