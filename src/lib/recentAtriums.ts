@@ -8,19 +8,17 @@
 // the whole story on desktop, where a vault lives on one machine and the order
 // is expected to be that machine's.
 //
-// The web app additionally mirrors it to `lobby_visits`, so somebody signing in
-// from another browser finds the order they left. Every call to that table is
-// behind `!isDesktop`: writing it needs `.upsert()`, and the SQLite shim
-// implements `insert` and nothing resembling it -- a missing method there
-// throws a TypeError rather than returning an error, escapes the `if (error)`
-// check, and takes down the calling function, which here would be the atrium
-// browser itself.
+// The web app additionally keeps it with the account, at the Atrium's worker
+// (workers/rooms, people.ts 'visits'; it was Supabase's lobby_visits, which
+// the worker takes in once), so somebody signing in from another browser
+// finds the order they left. Not on the desktop, whose order is its own.
 //
 // Remote is merged INTO local rather than read alongside it, so there is still
 // exactly one thing the sort consults and no question of which wins. The merge
 // keeps whichever timestamp is later.
 
-import { supabase, isLocalData } from './supabase'
+import { isLocalData } from './supabase'
+import { toWorker } from './worker'
 
 const KEY = 'lobby_recentAtriums'
 
@@ -111,21 +109,11 @@ export function sortByLastVisited<T>(items: T[], idOf: (item: T) => string): T[]
  * entering an atrium.
  */
 async function pushVisit(lobbyId: string) {
-  if (isLocalData || !supabase) return
+  if (isLocalData) return
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase
-      .from('lobby_visits')
-      .upsert(
-        { user_id: user.id, lobby_id: lobbyId, visited_at: new Date().toISOString() },
-        // Both halves of the primary key. Without naming it the upsert inserts
-        // a second row per visit instead of replacing the one that is there.
-        { onConflict: 'user_id,lobby_id' },
-      )
+    await toWorker('/people/visits', { visits: { [lobbyId]: Date.now() } }, true)
   } catch {
-    // Offline, signed out, or the table has not been created yet. The local
-    // order stands.
+    // Offline or signed out. The local order stands.
   }
 }
 
@@ -137,23 +125,17 @@ async function pushVisit(lobbyId: string) {
  * visit made in another browser arrives.
  */
 export async function mergeRemoteVisits(): Promise<void> {
-  if (isLocalData || !supabase) return
+  if (isLocalData) return
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data, error } = await supabase
-      .from('lobby_visits')
-      .select('lobby_id,visited_at')
-      .eq('user_id', user.id)
-    if (error || !Array.isArray(data)) return
+    const { ok, answer } = await toWorker<Visits>('/people/visits', {}, true)
+    if (!ok || !answer || typeof answer !== 'object') return
 
     const visits = read()
     let changed = false
-    for (const row of data) {
-      const at = Date.parse(row.visited_at)
-      if (!Number.isFinite(at)) continue
-      if (at > (visits[row.lobby_id] ?? 0)) {
-        visits[row.lobby_id] = at
+    for (const [lobbyId, at] of Object.entries(answer)) {
+      if (typeof at !== 'number' || !Number.isFinite(at)) continue
+      if (at > (visits[lobbyId] ?? 0)) {
+        visits[lobbyId] = at
         changed = true
       }
     }

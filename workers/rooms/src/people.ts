@@ -94,6 +94,12 @@ const TABLES = [
     taken_at integer not null, released_at integer)`,
   'create index if not exists held_atriums_owner on held_atriums (owner)',
   'create table if not exists held_files (lobby text not null, idx integer not null, url text not null, size integer, state text, primary key (lobby, idx))',
+  // The developer's special themes (src/themes.ts), and when each account last
+  // opened each atrium -- the atrium browser's order, the same on every browser
+  // (phase 10, step 6: both were Supabase's).
+  `create table if not exists special_themes (id text primary key, name text not null, mode text not null, theme_settings text not null,
+    starts_on text, ends_on text, hidden integer not null default 0, preset text, updated_at integer not null)`,
+  'create table if not exists visits (account text not null, lobby_id text not null, at integer not null, primary key (account, lobby_id))',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -104,7 +110,9 @@ const ADDED = ['alter table accounts add column settings text', 'alter table acc
   'alter table accounts add column hosted_root text',
   // An invitation that joins by itself (phase 10): one's cloud atrium moved,
   // its people with it -- vouched for by Supabase (cloudMember).
-  'alter table invites add column auto integer']
+  'alter table invites add column auto integer',
+  // An existing account's Supabase profile taken in (phase 10, step 6): when.
+  'alter table accounts add column from_supabase integer']
 // A setting kept (the settings table): its value, or null; and one set.
 export const setting = async (db: D1Database, key: string) =>
   (await db.prepare('select value from settings where key = ?').bind(key).first<{ value: string }>())?.value ?? null
@@ -123,6 +131,9 @@ const SETTINGS: Record<string, (value: unknown) => boolean> = {
   player_color: value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value),
   custom_themes: value => Array.isArray(value) && value.length <= 12 && JSON.stringify(value).length <= 32_000,
 }
+// The atriums whose last visit is kept for an account, as the browser keeps them.
+const MOST_VISITS = 200
+const DAY_MS = 24 * 60 * 60 * 1000
 // A display name changes once in this long, as an existing account's does on the web.
 const NAME_EVERY_MS = 15 * 24 * 60 * 60 * 1000
 
@@ -379,8 +390,18 @@ export async function people(request: Request, env: Env, what: string): Promise<
       // Google account's is made as it signs in (google.ts, meet): gone --
       // deleted, or taken for a duplicate -- a session from before can't make
       // it again.
-      if (who.kind === 'supabase') await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
-      else if (!await accountKept(db, who.id)) return answer(401, { error: 'gone' })
+      if (who.kind === 'supabase') {
+        await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
+        // Its profile taken in once, with its own sign-in: from then on its row here is the record.
+        const taken = await db.prepare('select from_supabase from accounts where id = ?').bind(who.id).first<{ from_supabase: number | null }>()
+        if (!taken?.from_supabase) {
+          const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(who.id)}&select=${PROFILE_COLUMNS}`, {
+            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${asked.token as string}` },
+          }).catch(() => null)
+          const rows = response?.ok ? await response.json().catch(() => null) as SupabaseProfile[] | null : null
+          if (rows?.[0]) await takeProfile(db, rows[0]).run()
+        }
+      } else if (!await accountKept(db, who.id)) return answer(401, { error: 'gone' })
       const set = (asked.set ?? {}) as Record<string, unknown>
       const before = await db.prepare('select username, display_name, name_changed_at from accounts where id = ?').bind(who.id).first<{ username: string | null; display_name: string | null; name_changed_at: number | null }>()
       if ('username' in set) {
@@ -405,9 +426,8 @@ export async function people(request: Request, env: Env, what: string): Promise<
       }
       if ('display_name' in set) {
         const name = typeof set.display_name === 'string' ? set.display_name.trim().slice(0, 50) : ''
-        // A Google account's name, changed once it has one: once in so long
-        // (an existing account's comes from its profile, which says).
-        const changing = who.kind !== 'supabase' && !!before?.username && (name || null) !== before.display_name
+        // A name, changed once the account has one: once in so long.
+        const changing = !!before?.username && (name || null) !== before.display_name
         if (changing && before?.name_changed_at && Date.now() - before.name_changed_at < NAME_EVERY_MS) {
           return answer(429, { error: 'too soon', until: before.name_changed_at + NAME_EVERY_MS })
         }
@@ -416,7 +436,6 @@ export async function people(request: Request, env: Env, what: string): Promise<
       }
       if ('settings' in set) {
         const patch = set.settings as Record<string, unknown> | null
-        if (who.kind === 'supabase') return answer(403, { error: 'settings' })
         if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return answer(400, { error: 'settings' })
         for (const [key, value] of Object.entries(patch)) if (!SETTINGS[key] || (value !== null && !SETTINGS[key](value))) return answer(400, { error: 'settings', key })
         // Merged as one statement: two settings saved at once both stay.
@@ -468,6 +487,58 @@ export async function people(request: Request, env: Env, what: string): Promise<
         where invites.from_user = excluded.from_user`)
         .bind(crypto.randomUUID(), to, who.id, roster, lobby, name, secret, Date.now(), auto).run()
       return answer(200, { ok: true, auto: !!auto })
+    }
+
+    // Every existing account's profile taken in at once, the operator's (step
+    // 6): asked of Supabase's export-profiles with their own sign-in. Rows
+    // here that took theirs in already are left as they are.
+    case 'profiles': {
+      if (!(await isOperator(env, who, asked.token as string))) return answer(403, { error: 'Not allowed' })
+      if (who.kind !== 'supabase') return answer(400, { error: 'Sign in with the operator account Supabase knows.' })
+      const response = await fetch(`${env.SUPABASE_URL}/functions/v1/export-profiles`, {
+        method: 'POST',
+        headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${asked.token as string}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const exported = await response.json().catch(() => null) as { profiles?: SupabaseProfile[]; error?: string } | null
+      if (!response.ok || !Array.isArray(exported?.profiles)) return answer(502, { error: `Supabase: ${exported?.error ?? response.status}` })
+      let taken = 0
+      // ponytail: batches of 50, each its own transaction -- one that fails is put right by asking again.
+      for (let at = 0; at < exported.profiles.length; at += 50) {
+        for (const result of await db.batch(exported.profiles.slice(at, at + 50).map(profile => takeProfile(db, profile)))) taken += result.meta.changes ?? 0
+      }
+      return answer(200, { profiles: exported.profiles.length, taken })
+    }
+
+    // When one last opened each atrium, merged: what's given (the later of the
+    // two times for each), and all of it back, the latest 200. An existing
+    // account's, from Supabase's lobby_visits once, with its own sign-in.
+    case 'visits': {
+      const adopted = `visits.${who.id}`
+      if (who.kind === 'supabase' && !(await setting(db, adopted))) {
+        const response = await fetch(`${env.SUPABASE_URL}/rest/v1/lobby_visits?user_id=eq.${who.id}&select=lobby_id,visited_at`, {
+          headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${asked.token as string}` },
+        }).catch(() => null)
+        const rows = response?.ok ? await response.json().catch(() => null) as { lobby_id: string; visited_at: string }[] | null : null
+        if (Array.isArray(rows)) {
+          await db.batch([
+            ...rows.filter(row => typeof row.lobby_id === 'string' && Number.isFinite(Date.parse(row.visited_at))).slice(0, MOST_VISITS).map(row =>
+              db.prepare('insert into visits (account, lobby_id, at) values (?, ?, ?) on conflict (account, lobby_id) do update set at = max(visits.at, excluded.at)')
+                .bind(who.id, row.lobby_id, Date.parse(row.visited_at))),
+            keep(db, adopted, Date.now()),
+          ])
+        }
+      }
+      const given = asked.visits && typeof asked.visits === 'object' ? Object.entries(asked.visits as Record<string, unknown>) : []
+      const fine = given.filter((entry): entry is [string, number] => /^[\w-]{1,64}$/.test(entry[0]) && typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] <= Date.now() + DAY_MS)
+      if (fine.length) {
+        await db.batch([
+          ...fine.slice(0, MOST_VISITS).map(([lobby, at]) => db.prepare('insert into visits (account, lobby_id, at) values (?, ?, ?) on conflict (account, lobby_id) do update set at = max(visits.at, excluded.at)').bind(who.id, lobby, at)),
+          db.prepare('delete from visits where account = ? and lobby_id not in (select lobby_id from visits where account = ? order by at desc limit ?)').bind(who.id, who.id, MOST_VISITS),
+        ])
+      }
+      const { results } = await db.prepare('select lobby_id, at from visits where account = ? order by at desc limit ?').bind(who.id, MOST_VISITS).all<{ lobby_id: string; at: number }>()
+      return answer(200, Object.fromEntries(results.map(row => [row.lobby_id, row.at])))
     }
 
     // One's invitations, the newest first, with who sent each.
@@ -592,6 +663,34 @@ function shown(row: Record<string, unknown> | null) {
   if (!row) return null
   const json = (value: unknown) => (typeof value === 'string' ? JSON.parse(value) : null)
   return { ...row, drive_key: json(row.drive_key), ...('settings' in row ? { settings: json(row.settings) ?? {} } : {}) }
+}
+
+// An existing account's Supabase profile (supabase/functions/export-profiles).
+const PROFILE_COLUMNS = 'id,username,display_name,display_name_last_changed,player_color,custom_themes,username_chosen'
+interface SupabaseProfile {
+  id: string; username?: unknown; display_name?: unknown; display_name_last_changed?: unknown; player_color?: unknown; custom_themes?: unknown; username_chosen?: unknown
+}
+
+/** An existing account's Supabase profile, kept in its row here -- once:
+ *  from then on the row is the record, and whatever it had already stays.
+ *  Its username only if it chose one (a profile's auto-made one isn't), and
+ *  only if no other account here has it; its colour and themes as the
+ *  settings' rules allow them. */
+function takeProfile(db: D1Database, profile: SupabaseProfile) {
+  const chosen = profile.username_chosen !== false && typeof profile.username === 'string' && USERNAME.test(profile.username) ? profile.username : null
+  const changed = typeof profile.display_name_last_changed === 'string' ? Date.parse(profile.display_name_last_changed) : NaN
+  const name = typeof profile.display_name === 'string' ? profile.display_name.trim().slice(0, 50) || null : null
+  const settings = Object.fromEntries(([['player_color', profile.player_color], ['custom_themes', profile.custom_themes]] as const)
+    .filter(([key, value]) => value != null && SETTINGS[key](value)))
+  const now = Date.now()
+  return db.prepare(`insert into accounts (id, kind, username, display_name, name_changed_at, settings, created_at, from_supabase)
+    values (?1, 'supabase', case when exists (select 1 from accounts where username = ?2 collate nocase and id <> ?1) then null else ?2 end, ?3, ?4, ?5, ?6, ?6)
+    on conflict (id) do update set
+      username = coalesce(accounts.username, case when exists (select 1 from accounts a where a.username = ?2 collate nocase and a.id <> ?1) then null else ?2 end),
+      display_name = coalesce(accounts.display_name, ?3), name_changed_at = coalesce(accounts.name_changed_at, ?4),
+      settings = json_patch(?5, coalesce(accounts.settings, '{}')), from_supabase = ?6
+    where accounts.from_supabase is null`)
+    .bind(profile.id, chosen, name, Number.isFinite(changed) ? changed : null, JSON.stringify(settings), now)
 }
 
 /** Whether an existing account has that username (Supabase says yes or no,

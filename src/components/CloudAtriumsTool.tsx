@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { heldList, holdAtrium, type Held, type Remaining } from '../lib/held'
+import { toWorker } from '../lib/worker'
 import { Brackets, Heading } from './landing/parts'
 
 const BUTTON = 'px-3 py-1.5 border border-nier-border/30 text-nier-bg/80 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/70 hover:text-nier-strong transition-colors disabled:opacity-30'
@@ -29,6 +30,23 @@ export default function CloudAtriumsTool() {
   const [log, setLog] = useState<string[]>([])
   const load = () => heldList().then(setList, e => setError(e.message))
   useEffect(() => { void load() }, [])
+
+  // Every existing account's profile taken in by the worker (step 6): each is
+  // as it signs in anyway; this is for those who haven't. Asked again, only
+  // those not taken in yet are.
+  const [profiles, setProfiles] = useState('')
+  const copyProfiles = async () => {
+    setRunning(true)
+    setProfiles('')
+    try {
+      const { ok, answer } = await toWorker<{ profiles: number; taken: number; error?: string }>('/people/profiles', {}, true)
+      setProfiles(ok ? t('cloud.profilesDone', { count: answer!.profiles, taken: answer!.taken }) : `✕ ${answer?.error ?? t('names.requestFailed')}`)
+    } catch (e: any) {
+      setProfiles(`✕ ${e.message}`)
+    } finally {
+      setRunning(false)
+    }
+  }
 
   const day = (at: number | string) => new Date(at).toLocaleDateString(language, { day: 'numeric', month: 'short', year: 'numeric' })
   const owned = (list?.remaining ?? []).filter(atrium => atrium.owner_user_id)
@@ -82,6 +100,12 @@ export default function CloudAtriumsTool() {
             {log.map((line, i) => <li key={i}>{line}</li>)}
           </ul>
         )}
+      </Panel>
+
+      <Panel title={t('cloud.profiles')}>
+        <p className="text-nier-bg/75 text-xs leading-relaxed mb-4">{t('cloud.profilesHint')}</p>
+        <button type="button" onClick={() => void copyProfiles()} disabled={running} className={BUTTON}>{t('cloud.copyProfiles')}</button>
+        {profiles && <p role="status" className="mt-3 text-nier-bg/80 text-xs">{profiles}</p>}
       </Panel>
 
       <Panel title={t('cloud.held')}>

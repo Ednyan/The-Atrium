@@ -42,3 +42,7 @@ verify_jwt = true
 # Verified, and then checked again inside: the operator's alone (platform_admins).
 [functions.hold-atriums]
 verify_jwt = true
+
+# Verified, and then checked again inside: the operator's alone (platform_admins).
+[functions.export-profiles]
+verify_jwt = true

@@ -1,16 +1,17 @@
-// Whether the signed-in account is the platform's operator -- Red Puer
-// (is_platform_admin, add_platform_admin.sql). Never on the desktop, which has
-// no account; false when signed out, offline, or the function isn't there.
+// Whether the signed-in account is the platform's operator -- Red Puer --
+// as the Atrium's worker says (workers/rooms, people.ts isOperator: kept
+// there, Supabase's add_platform_admin.sql vouching the first time), for any
+// kind of account. Never on the desktop, which has no account; false when
+// signed out or offline.
 
-import { cloudClient, isDesktop } from './supabase'
+import { isDesktop } from './supabase'
+import { toWorker } from './worker'
 
-// The account's, so always asked of the cloud: inside a browser atrium,
-// `supabase` is its engine, which has no such function.
 export async function checkPlatformAdmin(): Promise<boolean> {
-  if (isDesktop || !cloudClient) return false
+  if (isDesktop) return false
   try {
-    const { data } = await (cloudClient as any).rpc('is_platform_admin')
-    return data === true
+    const { ok, answer } = await toWorker<{ operator?: boolean }>('/ops/operator', {}, true)
+    return ok && answer?.operator === true
   } catch {
     return false
   }

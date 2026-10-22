@@ -73,6 +73,8 @@ export async function ops(request: Request, env: Env, what: string): Promise<Res
   const token = typeof asked.token === 'string' ? asked.token : null
   const who = await whoIs(token, env)
   if (!who) return answer(401, { error: 'Not signed in' })
+  // Whether one is the operator: what the app asks to show one the operator's tools.
+  if (what === 'operator') return answer(200, { operator: await isOperator(env, who, token!) })
   if (!(await isOperator(env, who, token!))) return answer(403, { error: 'Not allowed' })
   const now = Date.now()
   if (what === 'money') return answer(200, { at: now, money: await part(() => moneyOf(env, now, false)) })

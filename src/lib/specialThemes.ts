@@ -7,13 +7,14 @@
 // and removed in Developers > Special themes, by the platform operator alone
 // (add_special_themes.sql, special_themes_hidden.sql).
 //
-// Kept in the web database for both apps: read there by anyone, the desktop
-// too, which asks it over plain REST (its own database is the vault). A copy
-// is kept on the device, so the presets and a new atrium's theme don't wait
-// on the network, and still know the last ones seen offline.
+// Kept by the Atrium's worker for both apps (workers/rooms, src/themes.ts):
+// read there by anyone, the desktop too. A copy is kept on the device, so the
+// presets and a new atrium's theme don't wait on the network, and still know
+// the last ones seen offline.
 
 import { useSyncExternalStore } from 'react'
-import { supabase } from './supabase'
+import { workerUrl } from './rooms'
+import { toWorker } from './worker'
 import type { ThemeSettings } from '../types/database'
 import type { ThemeMode } from './customThemes'
 import { isMonthDay, seasonalTheme, shownOn } from './season'
@@ -39,7 +40,6 @@ export const refOf = (t: SpecialTheme) => (t.preset ? `preset:${t.preset}` : `sp
 // ---- The list ---------------------------------------------------------------------
 
 const COPY_KEY = 'atrium.specialThemes'
-const FIELDS = 'id,name,mode,theme_settings,starts_on,ends_on,hidden,preset'
 
 function asSpecialThemes(rows: unknown): SpecialTheme[] {
   if (!Array.isArray(rows)) return []
@@ -130,11 +130,11 @@ const REFRESH_MS = 60 * 60 * 1000
 let loading: Promise<void> | null = null
 let loadedAt = 0
 export function loadSpecialThemes(again = false): Promise<void> {
-  const url = import.meta.env.VITE_SUPABASE_URL, key = import.meta.env.VITE_SUPABASE_ANON_KEY
-  if (!url || !key) return Promise.resolve()
+  const url = workerUrl()
+  if (!url) return Promise.resolve()
   if (loading && !again && Date.now() - loadedAt < REFRESH_MS) return loading
   loadedAt = Date.now()
-  loading = fetch(`${url}/rest/v1/special_themes?select=${FIELDS}&order=starts_on`, { headers: { apikey: key, Authorization: `Bearer ${key}` } })
+  loading = fetch(`${url}/themes`)
     .then(async response => {
       if (!response.ok) return
       const next = asSpecialThemes(await response.json())
@@ -151,20 +151,28 @@ export async function seasonalThemeNow(): Promise<SpecialTheme | null> {
   return seasonalTheme(themes, new Date())
 }
 
-// ---- Changes: the operator's, on the web (RLS refuses anyone else) -----------------
+// ---- Changes: the operator's (the worker refuses anyone else) ---------------------
+
+// What the worker said, or null if it took it.
+async function asked(what: 'save' | 'delete', body: object): Promise<string | null> {
+  try {
+    const { ok, answer } = await toWorker(`/themes/${what}`, body, true)
+    return ok ? null : answer?.error || (what === 'save' ? 'Could not save' : 'Could not delete')
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
 
 export async function saveSpecialTheme(theme: SpecialTheme): Promise<string | null> {
-  if (!supabase) return 'No database'
-  const { error } = await (supabase.from('special_themes') as any).upsert({ ...asRow(theme), updated_at: new Date().toISOString() })
-  if (error) return error.message || 'Could not save'
+  const error = await asked('save', { theme: asRow(theme) })
+  if (error) return error
   publish(themes.some(t => t.id === theme.id) ? themes.map(t => (t.id === theme.id ? theme : t)) : [...themes, theme])
   return null
 }
 
 export async function deleteSpecialTheme(id: string): Promise<string | null> {
-  if (!supabase) return 'No database'
-  const { error } = await (supabase.from('special_themes') as any).delete().eq('id', id)
-  if (error) return error.message || 'Could not delete'
+  const error = await asked('delete', { id })
+  if (error) return error
   publish(themes.filter(t => t.id !== id))
   return null
 }
