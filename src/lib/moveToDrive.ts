@@ -78,10 +78,11 @@ export async function moveToDrive(lobbyId: string, me: { id: string; name: strin
   }, me, hosted)
 }
 
-/** One held for its owner (lib/held) made a hosted atrium, as moving it
- *  from Supabase would have: its people invited back, joining by themselves
- *  (the worker vouches from what's held), and then no longer held. */
-export async function restoreHeld(lobbyId: string, me: { id: string; name: string }): Promise<void> {
+/** One held for its owner (lib/held) made a hosted atrium -- or, `hosted`
+ *  false, kept in their Google Drive -- as moving it from Supabase would
+ *  have: its people invited back, joining by themselves (the worker vouches
+ *  from what's held), and then no longer held. */
+export async function restoreHeld(lobbyId: string, me: { id: string; name: string }, hosted = true): Promise<void> {
   const { readHeld, heldDone } = await import('./held')
   const part = async (name: 'manifest' | 'atrium') => {
     const response = await readHeld(lobbyId, name)
@@ -100,7 +101,7 @@ export async function restoreHeld(lobbyId: string, me: { id: string; name: strin
     },
     people: async () => manifest,
     release: () => heldDone(lobbyId),
-  }, me, true)
+  }, me, hosted)
 }
 
 async function place(source: Source, me: { id: string; name: string }, hosted: boolean): Promise<void> {

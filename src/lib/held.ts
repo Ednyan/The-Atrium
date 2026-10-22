@@ -44,5 +44,35 @@ export async function readHeld(id: string, part: 'manifest' | 'atrium' | number)
   return fetch(`${workerUrl()}/held/read`, { method: 'POST', body: JSON.stringify({ token, id, part }) })
 }
 
+/** One held for oneself, as an .atrium file to keep (lib/atriumFile's
+ *  format): its rows, its files inside it -- one gone already left as its
+ *  address. Still held after: a copy, not a move. */
+export async function heldAtriumFile(id: string): Promise<Blob> {
+  const [{ atriumEnvelope }, { readAsDataUrl, ATRIUM_FILE_TYPE }] = await Promise.all([import('./atriumDownload'), import('./atriumFile')])
+  const part = async (name: 'manifest' | 'atrium') => {
+    const response = await readHeld(id, name)
+    if (!response.ok) throw new Error(`HELD_${name.toUpperCase()}_${response.status}`)
+    return response.json()
+  }
+  const manifest = await part('manifest') as { files: string[] }
+  const { lobby, traces, layers, links, locations } = await part('atrium') as Record<string, any>
+  const inside = new Map<string, string>()
+  for (const [idx, url] of manifest.files.entries()) {
+    const response = await readHeld(id, idx).catch(() => null)
+    if (response?.ok) inside.set(url, await readAsDataUrl(await response.blob()))
+  }
+  const rows = (traces as Record<string, any>[]).map(row => ({ ...row, media_url: inside.get(row.media_url) ?? row.media_url, image_url: inside.get(row.image_url) ?? row.image_url }))
+  const envelope = atriumEnvelope('Digital Atrium Web', { name: lobby.name, theme_settings: lobby.theme_settings ?? null, is_public: !!lobby.is_public, max_players: lobby.max_players ?? 50 },
+    layers, locations, rows, links)
+  return new Blob([JSON.stringify(envelope)], { type: ATRIUM_FILE_TYPE })
+}
+
+/** Whether an atrium is held, waiting for its owner -- asked by anyone
+ *  opening its old address. */
+export async function isHeld(id: string): Promise<boolean> {
+  const response = await fetch(`${workerUrl()}/held/is/${encodeURIComponent(id)}`).catch(() => null)
+  return !!response?.ok && (await response.json().catch(() => null))?.held === true
+}
+
 /** Made a hosted atrium: no longer held. */
 export const heldDone = (id: string) => ask('done', { id }).then(() => {})

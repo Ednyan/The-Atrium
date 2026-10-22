@@ -1317,7 +1317,9 @@ function AppInner() {
           .single()
         
         if (lobbyError || !lobby) {
-          setLobbyAccessError('Atrium not found')
+          // Held for its owner (lib/held), waiting for them to bring it back: said so.
+          const held = await (await import('./lib/held')).isHeld(route.lobbyId).catch(() => false)
+          setLobbyAccessError(held ? 'held' : 'Atrium not found')
           setVerifyingAccess(false)
           return
         }
@@ -2256,6 +2258,7 @@ function AppInner() {
     // Show error if access denied
     if (lobbyAccessError) {
       const isPasswordError = lobbyAccessError === 'password_required'
+      const isHeld = lobbyAccessError === 'held'
       return (
         // A locked door, said plainly.
         //
@@ -2283,6 +2286,14 @@ function AppInner() {
                 <p className="text-nier-bg/70 text-xs leading-relaxed">
                   {t('locked.passwordHow')}
                 </p>
+              </>
+            ) : isHeld ? (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
+                  <h2 className="text-nier-strong text-lg tracking-[0.12em] uppercase leading-none">{t('locked.heldTitle')}</h2>
+                </div>
+                <p className="text-nier-bg/80 text-sm leading-relaxed">{t('locked.held')}</p>
               </>
             ) : (
               <>

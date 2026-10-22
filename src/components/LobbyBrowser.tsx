@@ -475,14 +475,49 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // Those held for one by the Atrium since (lib/held: the operator holds
   // what's left in Supabase for owners who hadn't come back) come in the
   // same way, after.
+  // One that can't come back yet -- no room for it in one's hosted space --
+  // is shown as waiting (heldWaiting), why, and what else it can do.
   const triedMoving = useRef(new Set<string>())
+  const [heldWaiting, setHeldWaiting] = useState<{ id: string; name: string; reason: string }[]>([])
   const moveToHosted = async (owned: { id: string; name: string }[], me: { id: string; name: string }) => {
     const { moveToDrive, restoreHeld } = await import('../lib/moveToDrive')
     await moveIn(owned, me, (id, who) => moveToDrive(id, who, true))
     const held = await (await import('../lib/held')).myHeld().catch(() => [])
-    await moveIn(held.map(lobby => ({ id: lobby.lobby_id, name: lobby.name })), me, restoreHeld)
+    await moveIn(held.map(lobby => ({ id: lobby.lobby_id, name: lobby.name })), me, restoreHeld,
+      (lobby, reason) => setHeldWaiting(shown => [...shown.filter(one => one.id !== lobby.id), { ...lobby, reason }]))
   }
-  const moveIn = async (lobbies: { id: string; name: string }[], me: { id: string; name: string }, move: (id: string, me: { id: string; name: string }) => Promise<void>) => {
+  // A held one again, by hand: into one's hosted space, or into one's Drive.
+  const bringBack = async (lobby: { id: string; name: string }, toDrive: boolean) => {
+    setConverting(lobby.id)
+    try {
+      if (toDrive) await ensureSignedIn()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error(t('browser.errNotAuthenticated'))
+      await (await import('../lib/moveToDrive')).restoreHeld(lobby.id, { id: user.id, name: username || 'You' }, !toDrive)
+      setHeldWaiting(shown => shown.filter(one => one.id !== lobby.id))
+      showToast(t(toDrive ? 'browser.drive.moved' : 'browser.cloud.moved', { name: lobby.name }))
+      void loadLobbies()
+      void checkCanCreateLobby()
+    } catch (err) {
+      setHeldWaiting(shown => shown.map(one => (one.id === lobby.id ? { ...one, reason: driveProblem(err) } : one)))
+    } finally {
+      setConverting(null)
+    }
+  }
+  // Kept as a file, whatever happens to it here: still held after.
+  const downloadHeld = async (lobby: { id: string; name: string }) => {
+    setConverting(lobby.id)
+    try {
+      const [{ heldAtriumFile }, { saveFile, fileNameOf }] = await Promise.all([import('../lib/held'), import('../lib/fileSave')])
+      await saveFile(await heldAtriumFile(lobby.id), `${fileNameOf(lobby.name)}.atrium`, { name: 'Atrium', extensions: ['atrium'] })
+    } catch (err) {
+      setHeldWaiting(shown => shown.map(one => (one.id === lobby.id ? { ...one, reason: driveProblem(err) } : one)))
+    } finally {
+      setConverting(null)
+    }
+  }
+  const moveIn = async (lobbies: { id: string; name: string }[], me: { id: string; name: string }, move: (id: string, me: { id: string; name: string }) => Promise<void>,
+    onFail?: (lobby: { id: string; name: string }, reason: string) => void) => {
     const waiting = lobbies.filter(lobby => !triedMoving.current.has(lobby.id))
     if (!waiting.length) return
     waiting.forEach(lobby => triedMoving.current.add(lobby.id))
@@ -495,7 +530,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         showToast(t('browser.cloud.moved', { name: lobby.name }))
       } catch (err) {
         console.warn('[cloud] not moved yet:', lobby.id, err)
-        setError(t('browser.cloud.notMoved', { name: lobby.name, reason: driveProblem(err) }))
+        if (onFail) onFail(lobby, driveProblem(err))
+        else setError(t('browser.cloud.notMoved', { name: lobby.name, reason: driveProblem(err) }))
       }
     }
     setConverting(null)
@@ -1632,6 +1668,38 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               </button>
             )}
           </section>
+
+          {/* Held for one, not back yet: why, and what it can do instead */}
+          {heldWaiting.length > 0 && (
+            <section data-held-waiting="">
+              <div className="flex items-baseline gap-3 mb-4">
+                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.held.title')}</span>
+                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
+              </div>
+              <div className="space-y-3">
+                {heldWaiting.map(lobby => {
+                  const button = 'px-3 py-2 border border-nier-border/40 text-nier-bg/85 text-[10px] tracking-[0.15em] uppercase hover:border-nier-border/80 hover:text-nier-strong transition-colors disabled:opacity-40'
+                  return (
+                    <div key={lobby.id} data-held={lobby.id} className="border border-nier-border/40 p-4" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.6)' }}>
+                      <div className="flex items-center gap-2 mb-2 min-w-0">
+                        <span className="text-nier-strong text-sm truncate">{lobby.name}</span>
+                        <span className="shrink-0 px-1.5 py-0.5 border border-nier-border/40 text-[9px] tracking-[0.15em] uppercase text-nier-bg/70">{t('browser.held.tag')}</span>
+                      </div>
+                      <p className="text-nier-bg/75 text-xs leading-relaxed">{t('browser.held.why')}</p>
+                      <p className="text-nier-bg/90 text-[11px] leading-relaxed mt-1.5"><span aria-hidden="true" style={{ color: 'rgb(var(--c-amber))' }}>△</span> {lobby.reason}</p>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button type="button" disabled={converting !== null} onClick={() => void bringBack(lobby, false)} className={button}>
+                          {converting === lobby.id ? `${t('common.loading')}…` : t('browser.held.again')}
+                        </button>
+                        {canDrive && <button type="button" disabled={converting !== null} onClick={() => void bringBack(lobby, true)} className={button}>{t('browser.drive.move')}</button>}
+                        <button type="button" disabled={converting !== null} onClick={() => void downloadHeld(lobby)} className={button}>{t('browser.held.download')}</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Your Atriums */}
           {yours.length > 0 && (

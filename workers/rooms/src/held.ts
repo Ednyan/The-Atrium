@@ -17,6 +17,7 @@
 //   mine     an owner's held atriums
 //   read     its manifest, rows or a file, to its owner (or the operator)
 //   done     its owner's: made a hosted atrium, so no longer held
+//   is/<id>  anyone's: whether it's held, for its old address to say so
 
 import { isOperator, tablesIn, UUID } from './people'
 import { replies, whoIs, type Env } from './who'
@@ -32,6 +33,15 @@ interface Manifest {
 }
 
 export async function held(request: Request, env: Env, what: string): Promise<Response> {
+  // Whether one is held: for anyone at its old address, who's told it's
+  // waiting for its owner rather than that it isn't there. Nothing else of it.
+  const asking = what.match(/^is\/([0-9a-f-]{36})$/i)?.[1]
+  if (asking && request.method === 'GET') {
+    if (!env.PEOPLE) return Response.json({ held: false }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+    await tablesIn(env.PEOPLE)
+    const row = await env.PEOPLE.prepare('select 1 from held_atriums where lobby_id = ? and released_at is not null').bind(asking.toLowerCase()).first()
+    return Response.json({ held: !!row }, { headers: { 'Access-Control-Allow-Origin': '*' } })
+  }
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
   const db = env.PEOPLE, files = env.FILES
