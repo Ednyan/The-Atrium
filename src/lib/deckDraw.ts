@@ -207,7 +207,8 @@ export function deckFile(url: string): Promise<DeckData | null> {
   }
   return file
 }
-export const keepDeckFile = (url: string, data: DeckData) => { files.set(url, Promise.resolve(data)) }
+// One just made: set right as one read back is, as it's drawn into the page the same way.
+export const keepDeckFile = (url: string, data: DeckData) => { files.set(url, Promise.resolve(asDeckFile(data))) }
 
 // A picture of a deck's, as something an <image> can show: the address as it
 // is when the web has it, else its file read once a visit.

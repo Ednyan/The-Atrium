@@ -386,5 +386,6 @@ export function sheetFile(url: string): Promise<SheetData | ChartData | null> {
   return file
 }
 
-// A file just made, known before it's been written anywhere it could be read back from.
-export const keepSheetFile = (url: string, data: SheetData | ChartData) => { files.set(url, Promise.resolve(data)) }
+// A file just made, known before it's been written anywhere it could be read back from --
+// set right as a file read back is, as it's drawn into the page the same way.
+export const keepSheetFile = (url: string, data: SheetData | ChartData) => { files.set(url, Promise.resolve(asSheetFile(data))) }

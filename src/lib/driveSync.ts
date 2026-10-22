@@ -627,6 +627,14 @@ export function knownMembers(lobbyId: string): Set<string> | null {
   return new Set(roster ? [...roster.members.map(member => member.user), ...roster.invited.map(invited => invited.user)] : [])
 }
 
+/** Someone's role in an atrium kept here, as its roster was last read here;
+ *  null if they have none -- or if it isn't kept here. */
+export function knownRole(lobbyId: string, user: string): Role | null {
+  const kept = allKept()[lobbyId]
+  const roster = kept && rostersKept()[kept.roster]?.roster
+  return roster ? memberOf(roster, user)?.role ?? null : null
+}
+
 /** The roster as it stands, and one's role in it. */
 export async function driveMembers(lobbyId: string, me: string): Promise<{ roster: Roster; role: Role | null }> {
   const kept = allKept()[lobbyId]

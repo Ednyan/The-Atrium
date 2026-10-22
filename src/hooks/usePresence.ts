@@ -6,7 +6,7 @@ import { CHANNEL_EVERY_MS, channelBatches, receiveLaser, setLaserSender } from '
 import { Mesh, PAGE, askForRelay, canLink, forgetPaths, livePositions, reportPath, userOf, type Live, type Signal } from '../lib/peers'
 import { RESTART_MS } from '../lib/playback'
 import { presenceChannel } from '../lib/rooms'
-import { knownMembers } from '../lib/driveSync'
+import { knownMembers, knownRole } from '../lib/driveSync'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const isValidUserKey = (key: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
@@ -297,7 +297,11 @@ export function usePresence(lobbyId: string | null, onKicked?: (blacklisted: boo
           void mesh?.signal(payload.from, payload as Signal)
         }
       })
-      .on('broadcast', { event: 'kicked' }, ({ payload }: { payload: any }) => {
+      .on('broadcast', { event: 'kicked' }, ({ payload, sender }: { payload: any; sender?: string }) => {
+        // Only from whoever manages the atrium -- its roster's owner or an
+        // admin, the room saying who really sent it: anyone else in the room
+        // can't send someone away.
+        if (knownMembers(lobbyId) !== null && !['owner', 'admin'].includes(knownRole(lobbyId, sender ?? '') ?? '')) return
         if (payload && payload.targetUserId === userId) {
           // Stop being present the moment the removal lands, not when the
           // notice is acknowledged. Leaving is deliberately deferred so the

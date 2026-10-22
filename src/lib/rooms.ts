@@ -302,7 +302,8 @@ class RoomChannel {
       const payload = message.p as { userId?: unknown; from?: unknown }
       const claimed = typeof payload.userId === 'string' ? payload.userId : typeof payload.from === 'string' ? userOf(payload.from) : null
       if (claimed !== null && claimed !== message.u) return
-      this.emit('broadcast', message.e, { type: 'broadcast', event: message.e, payload: message.p })
+      // With who really sent it, for a message whose sender is what matters (a kick).
+      this.emit('broadcast', message.e, { type: 'broadcast', event: message.e, payload: message.p, sender: message.u })
       roomListeners.get(message.e)?.forEach(listener => listener(message.p, message.u))
     }
   }
