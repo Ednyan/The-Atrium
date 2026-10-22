@@ -1187,10 +1187,13 @@ A hosted atrium is then a Drive atrium whose store is ours:
        safely; the old one is deleted once the move is done.
      - Operators are kept in D1 (`operators`) as Supabase first vouches for
        them, so they stay operators past the cutover.
-     - The operator's dashboard (`src/ops.ts`, "Health" in the names
-       panel): Stripe's month beside what was recorded, and every
-       free-plan limit -- requests, CPU, rooms, D1, R2, the relay, Resend's
-       mail -- each asked on its own.
+     - Health (`src/ops.ts`): in full in Developers > Health -- Stripe's
+       month beside what was recorded, its last 30 days and movements, and
+       whether the key may do each thing asked of it; every free-plan limit
+       today and over 30 days (requests, CPU, rooms, D1, R2, the relay,
+       Resend's mail); the worker's secrets, set or not; how much the
+       Atrium is used -- each asked on its own. The names panel keeps the
+       month's money in a few lines.
      - **Needs from the user:** a restricted Stripe key (Checkout Sessions
        and Charges and Refunds and Subscriptions: write; Payment Intents,
        Balance and Invoices: read) as `STRIPE_SECRET_KEY`; then the webhook

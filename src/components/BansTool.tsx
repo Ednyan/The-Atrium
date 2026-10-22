@@ -31,7 +31,6 @@ export default function BansTool() {
   }
   return (
     <section className="space-y-6">
-      <p className="text-nier-bg/75 text-sm leading-relaxed">{t('developers.bansDesc')}</p>
       <div className="flex flex-wrap gap-2">
         <input value={username} onChange={e => setUsername(e.target.value)} placeholder={t('developers.banUsername')} className={`min-w-[10rem] ${FIELD}`} />
         <input value={reason} onChange={e => setReason(e.target.value)} placeholder={t('developers.banReason')} className={`flex-1 min-w-[12rem] ${FIELD}`} />

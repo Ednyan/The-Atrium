@@ -18,6 +18,18 @@ export function Brackets({ inset = '-0.5rem' }: { inset?: string }) {
   )
 }
 
+// A section's heading inside a page: a diamond, its name, and a rule drawn
+// out from it (the Developers page and its tools).
+export function Heading({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
+      <h2 className="text-nier-strong text-xs tracking-[0.25em] uppercase">{children}</h2>
+      <div className="flex-1 h-px bg-gradient-to-r from-nier-border/30 to-transparent" />
+    </div>
+  )
+}
+
 // A chapter's label: its number, a diamond the light fills as it comes into
 // view, its name -- decoded the way NieR's screens write themselves,
 // scrambled with its own letters so a Japanese name stays Japanese and the

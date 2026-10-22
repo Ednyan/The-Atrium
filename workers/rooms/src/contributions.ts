@@ -29,9 +29,9 @@ const SEARCH_MOST = 40
 // How long the wall is kept at the edge before it's worked out again.
 const WALL_FRESH_S = 300
 // Supabase's monthly_goal_cents default, until one is set or moved.
-const DEFAULT_GOAL_CENTS = 5000
+export const DEFAULT_GOAL_CENTS = 5000
 export const MOVED = 'contributions.moved'
-const GOAL = 'contributions.goal_cents'
+export const GOAL = 'contributions.goal_cents'
 export const LAST_EVENT = 'stripe.last_event'
 
 const SAID: Record<string, string> = {
@@ -78,7 +78,7 @@ const open = (status: number, body: unknown, headers: Record<string, string> = {
 const WALL_KEY = `${SITE}/contributions/wall`
 const fresh = () => caches.default.delete(WALL_KEY).catch(() => false)
 
-const monthStart = (now = new Date()) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+export const monthStart = (now = new Date()) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
 
 // ---------------------------------------------------------------- routes
 

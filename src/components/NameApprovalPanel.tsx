@@ -9,8 +9,8 @@ import {
   seedContributors,
 } from '../lib/seedContributors'
 
-// The operator's dashboard, opened from here: only ever loaded by them.
-const OperatorDashboard = lazy(() => import('./OperatorDashboard'))
+// The month's money at a glance, opened from here: only ever loaded by the operator.
+const MoneyPopup = lazy(() => import('./HealthTool').then(module => ({ default: module.MoneyPopup })))
 
 interface NameApprovalPanelProps {
   onClose: () => void
@@ -446,7 +446,7 @@ export default function NameApprovalPanel({ onClose, seededCount, onSeedChanged,
 
       {dashboard && (
         <Suspense fallback={null}>
-          <OperatorDashboard onClose={() => setDashboard(false)} />
+          <MoneyPopup onClose={() => setDashboard(false)} />
         </Suspense>
       )}
 

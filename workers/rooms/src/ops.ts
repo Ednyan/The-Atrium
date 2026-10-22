@@ -1,26 +1,47 @@
-// The operator's dashboard (components/OperatorDashboard in the app): the
-// money Stripe has had this month beside what's recorded of it, and each
-// free-plan limit the Atrium runs inside beside how much of it is spent
-// (docs/SCALING.md). Every figure is asked on its own, so one that can't be
-// had is said in its place and the rest still show.
+// What the operator is shown of the Atrium's health. Two answers:
 //
-// Cloudflare's daily limits reset at 00:00 UTC, its monthly ones on the 1st;
-// past one on the free plan, what it limits fails until then. Resend's are
-// its own, and it says them.
+//   /ops/money   the month's money through Stripe beside what the Atrium
+//                recorded -- the names panel's short look (components/HealthTool, MoneyPopup)
+//   /ops/health  everything a developer needs (Developers > Health): that,
+//                with the last 30 days of it, Stripe's movements and whether
+//                the key may do what the worker asks of it; every free-plan
+//                limit, today and over 30 days; the worker's setup; and how
+//                much the Atrium is used
+//
+// Every figure is asked on its own, so one that can't be had is said in its
+// place and the rest still show. Cloudflare's daily limits reset at 00:00
+// UTC, its monthly ones on the 1st; past one on the free plan, what it
+// limits fails until then (docs/SCALING.md). Resend's are its own, and it
+// says them.
 
-import { ACTIVE_MS, LAST_EVENT, MOVED, setting, stripe } from './contributions'
+import { ACTIVE_MS, DEFAULT_GOAL_CENTS, GOAL, LAST_EVENT, MOVED, monthStart, setting, stripe } from './contributions'
 import { isOperator, tablesIn } from './people'
 import { graph, relayBudget, relayedBytes } from './relay'
 import { outbound, replies, whoIs, type Env } from './who'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const GB = 1e9
+const DAYS = 30
 // The worker (wrangler.toml), and its database: one database may hold 500 MB on the free plan.
 const SCRIPT = 'atrium-rooms'
 const DATABASE_ID = '98e3f3c7-95f3-4482-b0b2-f8be13c26562'
 // R2's operations: these free, these class B (reads); the rest class A.
 const R2_FREE = new Set(['DeleteObject', 'DeleteBucket', 'AbortMultipartUpload'])
 const R2_CLASS_B = new Set(['HeadBucket', 'HeadObject', 'GetObject', 'UsageSummary', 'GetBucketEncryption', 'GetBucketLocation', 'GetBucketCors', 'GetBucketLifecycleConfiguration'])
+// What the worker is given, by name only -- never a value.
+const SECRETS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RESEND_API_KEY', 'GOOGLE_CLIENT_SECRET', 'SUPABASE_WORKER_KEY',
+  'CF_ACCOUNT_ID', 'CF_ANALYTICS_TOKEN', 'CF_TURN_KEY_ID', 'CF_TURN_KEY_TOKEN', 'PINTEREST_CLIENT_ID', 'PINTEREST_CLIENT_SECRET'] as const
+// What the worker asks of Stripe, each tried in a way that changes nothing: a
+// write sent empty (refused for what's missing in it, if the key may write),
+// a cancellation of no subscription, a read of one. Stripe's names for them.
+const PERMISSIONS: [name: string, method: 'GET' | 'POST' | 'DELETE', path: string][] = [
+  ['Checkout Sessions: write', 'POST', 'checkout/sessions'],
+  ['Charges and Refunds: write', 'POST', 'refunds'],
+  ['Subscriptions: write', 'DELETE', 'subscriptions/sub_atrium_check'],
+  ['Payment Intents: read', 'GET', 'payment_intents?limit=1'],
+  ['Balance: read', 'GET', 'balance_transactions?limit=1'],
+  ['Invoices: read', 'GET', 'invoices?limit=1'],
+]
 
 export interface Meter {
   key: string
@@ -34,8 +55,11 @@ export interface Meter {
   error?: string
 }
 type Shown = Omit<Meter, 'used' | 'over' | 'error'>
+interface Day { date: string; value: number }
 
 const said = (error: unknown) => (error instanceof Error ? error.message : String(error))
+// Each part on its own: its answer, or why not.
+const part = <T>(work: () => Promise<T>) => work().catch(error => ({ error: said(error) }))
 
 export async function ops(request: Request, env: Env, what: string): Promise<Response> {
   const { allowed, answer } = replies(request)
@@ -46,64 +70,122 @@ export async function ops(request: Request, env: Env, what: string): Promise<Res
   const who = await whoIs(token, env)
   if (!who) return answer(401, { error: 'Not signed in' })
   if (!(await isOperator(env, who, token!))) return answer(403, { error: 'Not allowed' })
-  if (what !== 'health') return answer(404, { error: 'no such thing' })
   const now = Date.now()
-  const today = now - (now % DAY_MS)
-  const month = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)
-  const [money, meters] = await Promise.all([moneyOf(env, month).catch(error => ({ error: said(error) })), metersOf(env, now, today, month)])
-  return answer(200, { at: now, money, meters })
+  if (what === 'money') return answer(200, { at: now, money: await part(() => moneyOf(env, now, false)) })
+  if (what !== 'health') return answer(404, { error: 'no such thing' })
+  const [money, meters, history, key, usage] = await Promise.all([
+    part(() => moneyOf(env, now, true)),
+    metersOf(env, now),
+    historyOf(env, now),
+    part(() => keyCheck(env)),
+    part(() => usageOf(env, now)),
+  ])
+  return answer(200, { at: now, money, meters, history, key, usage, setup: setupOf(env) })
 }
 
 // ---------------------------------------------------------------- money
 
-async function moneyOf(env: Env, month: number) {
+interface Movement { id: string; at: number; type: string; amount: number; fee: number; net: number; currency: string; pending: boolean; description: string | null }
+
+// Stripe's balance movements since then, newest first.
+async function movementsSince(env: Env, from: number): Promise<Movement[]> {
+  const movements: Movement[] = []
+  let after = ''
+  // ponytail: 20 pages of 100 -- past 2,000 movements in 30 days, ask Stripe's reports instead.
+  for (let page = 0; page < 20; page++) {
+    const list = await stripe(env, 'GET', `balance_transactions?limit=100&created[gte]=${Math.floor(from / 1000)}${after}`)
+    for (const move of list.data ?? []) {
+      movements.push({ id: move.id, at: move.created * 1000, type: move.type, amount: move.amount, fee: move.fee, net: move.net,
+        currency: move.currency, pending: move.status === 'pending', description: move.description ?? null })
+    }
+    if (!list.has_more || !list.data?.length) break
+    after = `&starting_after=${list.data[list.data.length - 1].id}`
+  }
+  return movements
+}
+
+const PAID = new Set(['charge', 'payment'])
+const REFUNDED = new Set(['refund', 'payment_refund'])
+
+// This month's money, by currency: payments in -- with Stripe's fee, and
+// what's left -- and refunds out; beside what the webhook recorded. In
+// detail, the last 30 days of it too, each month's against the goal, and the
+// movements themselves.
+async function moneyOf(env: Env, now: number, detail: boolean) {
   if (!env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY is not set on the worker')
   const db = env.PEOPLE!
   await tablesIn(db)
-  const [balance, stripeMonth, recorded, monthly, lastEvent, moved] = await Promise.all([
+  const month = monthStart(new Date(now))
+  const today = now - (now % DAY_MS)
+  const from = detail ? Math.min(month, today - (DAYS - 1) * DAY_MS) : month
+  const yearAgo = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() - 11, 1)
+  const [balance, movements, recorded, monthly, lastEvent, moved, goal, months] = await Promise.all([
     stripe(env, 'GET', 'balance'),
-    stripeMonthOf(env, month),
+    movementsSince(env, from),
     db.prepare(`select count(*) as count, coalesce(sum(settled_eur_cents), 0) as cents from contributions
       where livemode = 1 and stripe_event_id is not null and created_at >= ?`).bind(month).first<{ count: number; cents: number }>(),
     db.prepare(`select count(distinct stripe_subscription_id) as count from contributions
-      where livemode = 1 and refunded = 0 and stripe_subscription_id is not null and created_at > ?`).bind(Date.now() - ACTIVE_MS).first<{ count: number }>(),
+      where livemode = 1 and refunded = 0 and stripe_subscription_id is not null and created_at > ?`).bind(now - ACTIVE_MS).first<{ count: number }>(),
     setting(db, LAST_EVENT),
     setting(db, MOVED),
+    setting(db, GOAL),
+    detail ? db.prepare(`select strftime('%Y-%m', created_at / 1000, 'unixepoch') as month, coalesce(sum(settled_eur_cents), 0) as cents
+      from contributions where livemode = 1 and refunded = 0 and counts_toward_goal = 1 and created_at >= ? group by month order by month`).bind(yearAgo).all<{ month: string; cents: number }>() : null,
   ])
-  return {
+  const payments: Record<string, { count: number; amount: number; fee: number; net: number }> = {}
+  const refunds: Record<string, { count: number; amount: number }> = {}
+  for (const move of movements.filter(move => move.at >= month)) {
+    if (PAID.has(move.type)) {
+      const sum = (payments[move.currency] ??= { count: 0, amount: 0, fee: 0, net: 0 })
+      sum.count++; sum.amount += move.amount; sum.fee += move.fee; sum.net += move.net
+    } else if (REFUNDED.has(move.type)) {
+      const sum = (refunds[move.currency] ??= { count: 0, amount: 0 })
+      sum.count++; sum.amount -= move.amount
+    }
+  }
+  const summary = {
     available: balance.available ?? [],
     pending: balance.pending ?? [],
-    ...stripeMonth,
+    payments,
+    refunds,
     // What the webhook wrote this month: the same count as Stripe's payments, or one was missed.
     recorded,
     monthlyContributors: monthly?.count ?? 0,
     lastEvent: Number(lastEvent) || null,
     moved: Number(moved) || null,
   }
+  if (!detail) return summary
+  // The account's own currency: what the days are counted in.
+  const currency = balance.available?.[0]?.currency ?? 'eur'
+  const daily = new Map<string, number>()
+  for (let day = today - (DAYS - 1) * DAY_MS; day <= today; day += DAY_MS) daily.set(new Date(day).toISOString().slice(0, 10), 0)
+  for (const move of movements) {
+    const date = new Date(move.at).toISOString().slice(0, 10)
+    if (PAID.has(move.type) && move.currency === currency && daily.has(date)) daily.set(date, daily.get(date)! + move.net)
+  }
+  const byMonth = new Map((months?.results ?? []).map(row => [row.month, row.cents]))
+  return {
+    ...summary,
+    currency,
+    daily: [...daily].map(([date, value]) => ({ date, value })),
+    months: [...Array(12)].map((_, i) => {
+      const key = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() - 11 + i, 1)).toISOString().slice(0, 7)
+      return { date: key, value: byMonth.get(key) ?? 0 }
+    }),
+    goalCents: Number(goal) || DEFAULT_GOAL_CENTS,
+    movements: movements.slice(0, 60),
+  }
 }
 
-// This month's money through Stripe, by currency: payments in -- with
-// Stripe's fee, and what's left -- and refunds out.
-async function stripeMonthOf(env: Env, month: number) {
-  const payments: Record<string, { count: number; amount: number; fee: number; net: number }> = {}
-  const refunds: Record<string, { count: number; amount: number }> = {}
-  let after = ''
-  // ponytail: 20 pages of 100 -- past 2,000 movements a month, ask Stripe's reports instead.
-  for (let page = 0; page < 20; page++) {
-    const list = await stripe(env, 'GET', `balance_transactions?limit=100&created[gte]=${Math.floor(month / 1000)}${after}`)
-    for (const move of list.data ?? []) {
-      if (move.type === 'charge' || move.type === 'payment') {
-        const sum = (payments[move.currency] ??= { count: 0, amount: 0, fee: 0, net: 0 })
-        sum.count++; sum.amount += move.amount; sum.fee += move.fee; sum.net += move.net
-      } else if (move.type === 'refund' || move.type === 'payment_refund') {
-        const sum = (refunds[move.currency] ??= { count: 0, amount: 0 })
-        sum.count++; sum.amount -= move.amount
-      }
-    }
-    if (!list.has_more || !list.data?.length) break
-    after = `&starting_after=${list.data[list.data.length - 1].id}`
-  }
-  return { payments, refunds }
+// Whether the key may do each thing the worker asks of Stripe: missing for
+// a permission it lacks (403), refused for no such key (401), unknown if
+// Stripe couldn't be asked.
+async function keyCheck(env: Env) {
+  if (!env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY is not set on the worker')
+  return Promise.all(PERMISSIONS.map(async ([name, method, path]) => {
+    const status = await stripe(env, method, path, method === 'GET' ? undefined : new URLSearchParams()).then(() => 200, error => (error as { status?: number }).status ?? 0)
+    return { name, state: status === 403 ? 'missing' : status === 401 ? 'refused' : status === 0 || status >= 500 ? 'unknown' : 'allowed' }
+  }))
 }
 
 // ---------------------------------------------------------------- limits
@@ -112,7 +194,9 @@ const at = (ms: number) => JSON.stringify(new Date(ms).toISOString())
 const on = (ms: number) => JSON.stringify(new Date(ms).toISOString().slice(0, 10))
 const total = (groups: any[] | undefined, field: string, of = 'sum') => (groups ?? []).reduce((n, group) => n + Number(group?.[of]?.[field] ?? 0), 0)
 
-function metersOf(env: Env, now: number, today: number, month: number): Promise<Meter[]> {
+function metersOf(env: Env, now: number): Promise<Meter[]> {
+  const today = now - (now % DAY_MS)
+  const month = monthStart(new Date(now))
   const since = (from: number) => `datetime_geq: ${at(from)}, datetime_leq: ${at(now)}`
   const readings: [Shown[], () => Promise<Partial<Meter>[]>][] = [
     // Every request to a worker or a Pages function: one allowance for both.
@@ -179,4 +263,86 @@ function metersOf(env: Env, now: number, today: number, month: number): Promise<
       return shown.map(meter => ({ ...meter, error: said(error) }))
     }
   })).then(groups => groups.flat())
+}
+
+// The daily limits over the last 30 days, a value a day (none counted: 0).
+function historyOf(env: Env, now: number) {
+  const first = now - (now % DAY_MS) - (DAYS - 1) * DAY_MS
+  const days = (groups: any[] | undefined, field: string) => {
+    const byDate = new Map<string, number>()
+    for (let day = first; day <= now; day += DAY_MS) byDate.set(new Date(day).toISOString().slice(0, 10), 0)
+    for (const group of groups ?? []) {
+      const date = group.dimensions?.date
+      if (byDate.has(date)) byDate.set(date, byDate.get(date)! + Number(group.sum?.[field] ?? 0))
+    }
+    return [...byDate].map(([date, value]) => ({ date, value }))
+  }
+  const added = (a: Day[], b: Day[]) => a.map((day, i) => ({ date: day.date, value: day.value + (b[i]?.value ?? 0) }))
+  const since = `datetime_geq: ${at(first)}, datetime_leq: ${at(now)}`
+  const readings: [{ key: string; limit: number }[], () => Promise<Day[][]>][] = [
+    [[{ key: 'requests', limit: 100_000 }], async () => {
+      const [workers, pages] = await Promise.all([
+        graph(env, `workersInvocationsAdaptive(limit: 10000, filter: { ${since} }) { sum { requests } dimensions { date } }`),
+        graph(env, `pagesFunctionsInvocationsAdaptiveGroups(limit: 10000, filter: { ${since} }) { sum { requests } dimensions { date } }`),
+      ])
+      return [added(days(workers.workersInvocationsAdaptive, 'requests'), days(pages.pagesFunctionsInvocationsAdaptiveGroups, 'requests'))]
+    }],
+    [[{ key: 'rooms', limit: 100_000 }], async () =>
+      [days((await graph(env, `durableObjectsInvocationsAdaptiveGroups(limit: 10000, filter: { date_geq: ${on(first)} }) { sum { requests } dimensions { date } }`)).durableObjectsInvocationsAdaptiveGroups, 'requests')]],
+    [[{ key: 'dbWritten', limit: 100_000 }, { key: 'dbRead', limit: 5_000_000 }], async () => {
+      const groups = (await graph(env, `d1AnalyticsAdaptiveGroups(limit: 10000, filter: { date_geq: ${on(first)} }) { sum { rowsRead rowsWritten } dimensions { date } }`)).d1AnalyticsAdaptiveGroups
+      return [days(groups, 'rowsWritten'), days(groups, 'rowsRead')]
+    }],
+  ]
+  return Promise.all(readings.map(async ([shown, read]) => {
+    try {
+      const series = await read()
+      return shown.map((chart, i) => ({ ...chart, days: series[i] }))
+    } catch (error) {
+      return shown.map(chart => ({ ...chart, error: said(error) }))
+    }
+  })).then(groups => groups.flat())
+}
+
+// ---------------------------------------------------------------- the Atrium
+
+// What the worker is given -- each set or not -- and what it's told.
+function setupOf(env: Env) {
+  return {
+    secrets: SECRETS.map(name => ({ name, set: !!env[name] })),
+    relayBudgetGb: relayBudget(env) / GB,
+    storeQuotaMb: Number(env.STORE_QUOTA_MB) || 50,
+  }
+}
+
+// How much the Atrium is used, from the directory. Each count reads its
+// table whole: fine for a look now and then.
+async function usageOf(env: Env, now: number) {
+  const db = env.PEOPLE
+  if (!db) throw new Error('the directory (D1) is not bound')
+  await tablesIn(db)
+  const week = now - 7 * DAY_MS
+  const [accounts, logins, signedIn, hosted, publicAtriums, mirrored, invites, bans, contributions] = await db.batch([
+    db.prepare('select kind, count(*) as count, coalesce(sum(created_at > ?), 0) as recent from accounts group by kind').bind(week),
+    db.prepare('select count(*) as count, coalesce(sum(confirmed_at is not null), 0) as confirmed from logins'),
+    db.prepare('select count(distinct account) as count from refresh_tokens where used_at > ?').bind(week),
+    db.prepare(`select coalesce(sum(name = 'atrium.roster' and folder = 0), 0) as atriums, coalesce(sum(size), 0) as bytes, count(distinct owner) as owners from store_files`),
+    db.prepare('select count(*) as count from public_atriums'),
+    db.prepare('select coalesce(sum(size), 0) as bytes from mirror_files'),
+    db.prepare('select count(*) as count from invites'),
+    db.prepare('select count(*) as count from bans'),
+    db.prepare('select count(*) as count, coalesce(sum(livemode = 1), 0) as live from contributions'),
+  ])
+  const one = (result: D1Result) => (result.results[0] ?? {}) as Record<string, number>
+  return {
+    accounts: accounts.results as { kind: string; count: number; recent: number }[],
+    logins: one(logins),
+    signedInThisWeek: one(signedIn).count ?? 0,
+    hosted: one(hosted),
+    publicAtriums: one(publicAtriums).count ?? 0,
+    mirroredBytes: one(mirrored).bytes ?? 0,
+    invites: one(invites).count ?? 0,
+    bans: one(bans).count ?? 0,
+    contributions: one(contributions),
+  }
 }

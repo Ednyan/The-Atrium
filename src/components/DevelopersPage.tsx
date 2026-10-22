@@ -1,16 +1,26 @@
 // Developers: the tools for building the atrium, for the platform's operator
 // alone (lib/platformAdmin) -- reached from the welcome screen's Developers,
-// on the web. One tool so far: Special themes (lib/specialThemes) -- the three
-// built-in presets, made over or hidden, and the developer's own, each made
-// here like a theme of one's own, named, marked light or dark, all year or
-// given the days of the year it's shown, and hidden until it's ready. Nothing
-// is written until Save; the database refuses anyone else's changes either way.
+// on the web. In the landing page's hall, as the sign-in and the welcome
+// are: its light and theme, the orb over the page's name. The tools:
+//
+// - Special themes (lib/specialThemes): the three built-in presets, made
+//   over or hidden, and the developer's own, each made here like a theme of
+//   one's own, named, marked light or dark, all year or given the days of the
+//   year it's shown, and hidden until it's ready. Nothing is written until
+//   Save; the database refuses anyone else's changes either way.
+// - Bans (BansTool).
+// - Health (HealthTool): money, limits, usage, the worker's setup.
 
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
+import { useLandingTheme } from '../lib/useLandingTheme'
 import BansTool from './BansTool'
+import HealthTool from './HealthTool'
+import Atmosphere from './Atmosphere'
+import ThemeToggle from './ThemeToggle'
+import { Brackets, Heading } from './landing/parts'
 import { deleteSpecialTheme, refOf, saveSpecialTheme, setSpecialThemeDraft, specialThemeDraft, useSpecialThemes, type SpecialTheme } from '../lib/specialThemes'
 import { PRESETS, modeOf, writeView } from '../lib/customThemes'
 import { Switch } from './Customization'
@@ -21,21 +31,13 @@ import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { THEME_DEFAULTS, ThemeSections, ThemeTile, themeSwatch } from './ThemeCustomization'
 import type { ThemeSettings } from '../types/database'
 
+// Each tool: its name, what its card says, and what its page opens with.
 const TOOLS = [
-  { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc' },
-  { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc' },
+  { id: 'health', name: 'developers.health', about: 'developers.healthDesc', lead: 'developers.healthDesc' },
+  { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc', lead: 'developers.specialThemesLead' },
+  { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc', lead: 'developers.bansDesc' },
 ] as const
 type ToolId = typeof TOOLS[number]['id']
-
-function Heading({ children }: { children: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-      <h2 className="text-nier-strong text-xs tracking-[0.25em] uppercase">{children}</h2>
-      <div className="flex-1 h-px bg-gradient-to-r from-nier-border/30 to-transparent" />
-    </div>
-  )
-}
 
 export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () => void; onEnterAtrium?: (lobbyId: string) => void }) {
   const { t } = useTranslation()
@@ -53,49 +55,69 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
     return () => window.removeEventListener('keydown', key)
   }, [onBack, tool])
 
+  const theme = useLandingTheme()
+  const open = TOOLS.find(({ id }) => id === tool)
   return (
-    <div data-developers-page="" className="fixed inset-0 overflow-y-auto bg-nier-black text-nier-bg font-mono">
-      <div className="max-w-5xl mx-auto px-5 sm:px-10 py-8">
+    <div data-developers-page="" data-landing-theme={theme.resolved} className="fixed inset-0 overflow-y-auto text-nier-bg font-mono" style={{ backgroundColor: 'rgb(var(--c-ground))' }}>
+      <Atmosphere />
+      <header className="relative z-10 flex items-center justify-between gap-4 px-5 sm:px-8 h-16">
         <button
           type="button"
           onClick={() => (tool ? setTool(null) : onBack())}
-          className="group flex items-center gap-2 text-[11px] tracking-[0.2em] uppercase text-nier-bg/70 hover:text-nier-strong transition-colors"
+          className="landing-link text-xs tracking-[0.2em] uppercase"
         >
-          <span className="transition-transform group-hover:-translate-x-1">←</span>
-          {t('common.back')}
+          <span aria-hidden="true">◁</span> {tool ? t('developers.tools') : t('common.back')}
         </button>
+        <ThemeToggle />
+      </header>
 
-        <header className="mt-10 mb-10">
-          <p className="text-nier-bg/60 text-sm tracking-[0.3em] uppercase">{t('developers.title')}</p>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-light tracking-[0.06em] uppercase text-nier-strong">
-            {t(TOOLS.find(({ id }) => id === tool)?.name ?? 'developers.tools')}
+      <main className="relative z-10 max-w-6xl mx-auto px-5 sm:px-10 pb-20">
+        <div className="flex flex-col items-center text-center pt-2 sm:pt-6 mb-12">
+          <span aria-hidden="true" className="landing-orb w-4 h-4 rounded-full mb-8" />
+          <p className="text-[11px] tracking-[0.35em] uppercase text-nier-bg/60">{t('developers.title')}</p>
+          <h1 className="mt-4 text-3xl sm:text-5xl font-extralight tracking-[0.1em] uppercase text-nier-strong text-balance">
+            {t(open?.name ?? 'developers.tools')}
           </h1>
-        </header>
+          <p className="mt-5 max-w-xl text-nier-bg/75 text-sm leading-relaxed text-pretty">
+            {allowed === null ? t('developers.checking') : allowed === false ? '' : t(open?.lead ?? 'developers.lead')}
+          </p>
+        </div>
 
-        {allowed === null && <p className="text-nier-bg/60 text-xs tracking-wider">{t('developers.checking')}</p>}
-        {allowed === false && <p data-developers-denied="" className="text-nier-bg/70 text-sm leading-relaxed">{t('developers.denied')}</p>}
+        {allowed === false && <p data-developers-denied="" className="text-center text-nier-bg/70 text-sm leading-relaxed">{t('developers.denied')}</p>}
         {allowed && !tool && (
-          <section>
-            <p className="text-nier-bg/75 text-sm leading-relaxed mb-6">{t('developers.lead')}</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {TOOLS.map(({ id, name, about }) => (
-                <button
-                  key={id}
-                  type="button"
-                  data-developer-tool={id}
-                  onClick={() => setTool(id)}
-                  className="text-left border border-nier-border/30 hover:border-nier-border/70 p-4 transition-colors"
+          <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {TOOLS.map(({ id, name, about }) => (
+              <button
+                key={id}
+                type="button"
+                data-developer-tool={id}
+                onClick={() => setTool(id)}
+                className="group relative text-left"
+              >
+                <Brackets inset="-0.35rem" />
+                <span
+                  className="flex h-full flex-col border border-nier-border/30 group-hover:border-nier-border/70 p-6 transition-colors"
+                  style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}
                 >
-                  <h3 className="text-nier-strong text-xs tracking-[0.2em] uppercase mb-2">◇ {t(name)}</h3>
-                  <p className="text-nier-bg/75 text-xs leading-relaxed">{t(about)}</p>
-                </button>
-              ))}
-            </div>
+                  <span className="text-nier-strong text-xs tracking-[0.25em] uppercase mb-3">◇ {t(name)}</span>
+                  <span className="flex-1 text-nier-bg/75 text-xs leading-relaxed">{t(about)}</span>
+                  <span className="mt-5 text-nier-bg/60 group-hover:text-nier-strong text-[10px] tracking-[0.2em] uppercase transition-colors">{t('developers.open')} ▷</span>
+                </span>
+              </button>
+            ))}
           </section>
         )}
+        {allowed && tool === 'health' && <HealthTool />}
         {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
-        {allowed && tool === 'bans' && <BansTool />}
-      </div>
+        {allowed && tool === 'bans' && (
+          <div className="relative max-w-3xl mx-auto">
+            <Brackets inset="-0.35rem" />
+            <div className="border border-nier-border/30 p-5 sm:p-7" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
+              <BansTool />
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   )
 }
@@ -256,7 +278,7 @@ function SpecialThemesTool({ onEnterAtrium }: { onEnterAtrium?: (lobbyId: string
       </div>
 
       {draft && (
-        <div data-special-editor="" className="border border-nier-border/30 p-4 space-y-4 md:sticky md:top-6">
+        <div data-special-editor="" className="border border-nier-border/30 p-4 space-y-4 md:sticky md:top-6" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.85)' }}>
           {/* A preset keeps its name, in every language. */}
           {draft.preset ? (
             <p data-special-name="" className="text-nier-strong text-sm tracking-[0.1em] uppercase">{presetName(draft)}</p>
