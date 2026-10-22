@@ -10,6 +10,7 @@
 // settings (its colour, its themes): private, as its email is -- an existing
 // account keeps them in its Supabase profile.
 
+import { heldMember } from './held'
 import { welcome } from './mail'
 import { dropMirror } from './mirror'
 import { fromBase64, replies, whoIs, type Env, type Who } from './who'
@@ -86,6 +87,12 @@ const TABLES = [
   // The platform's operators (add_platform_admin.sql), as each is first seen
   // here: kept for when Supabase can't be asked (isOperator).
   'create table if not exists operators (account text primary key, at integer not null)',
+  // Cloud atriums held for their owners (phase 10, step 5c, src/held.ts):
+  // each one's manifest -- whose, its people, its files -- and its files' states.
+  `create table if not exists held_atriums (lobby_id text primary key, owner text not null, name text not null, manifest text not null,
+    taken_at integer not null, released_at integer)`,
+  'create index if not exists held_atriums_owner on held_atriums (owner)',
+  'create table if not exists held_files (lobby text not null, idx integer not null, url text not null, size integer, state text, primary key (lobby, idx))',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -215,7 +222,7 @@ export async function supersededBy(env: Env, id: string, googleId: string | null
  *  sign-in (its rules let an owner read their atrium's lists). Anything else
  *  -- a Google account's, an atrium already gone, an answer that didn't come
  *  -- is an ordinary invitation: joining is then the invited person's call. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 async function cloudMember(env: Env, token: string, from: string, lobby: string, to: string): Promise<boolean> {
   if (!UUID.test(lobby) || !UUID.test(to) || typeof token !== 'string') return false
   const rows = async <T>(path: string): Promise<T[]> => {
@@ -449,8 +456,9 @@ export async function people(request: Request, env: Env, what: string): Promise<
       const to = text('to', 64), roster = text('roster', 128), lobby = text('lobby_id', 64), name = text('name', 200)
       const secret = asked.secret === null ? null : text('secret', 2000)
       if (!to || !roster || !lobby || !name || (asked.secret !== null && secret === null)) return answer(400, { error: 'body' })
-      // Joining by itself, asked: granted only as cloudMember says.
-      const auto = asked.auto === true && await cloudMember(env, asked.token as string, who.id, lobby, to) ? 1 : 0
+      // Joining by itself, asked: granted only as cloudMember says -- or, its
+      // atrium held for the sender (src/held.ts), as heldMember does.
+      const auto = asked.auto === true && (await cloudMember(env, asked.token as string, who.id, lobby, to) || await heldMember(db, who.id, lobby, to)) ? 1 : 0
       await db.prepare(`insert into invites (id, to_user, from_user, roster, lobby_id, name, secret, created_at, auto) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
         on conflict (to_user, roster) do update set lobby_id = excluded.lobby_id, name = excluded.name,
         secret = excluded.secret, created_at = excluded.created_at, auto = excluded.auto

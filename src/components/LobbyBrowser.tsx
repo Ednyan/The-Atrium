@@ -472,17 +472,25 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // ponytail: no lock across devices -- the owner's two browsers opening in the
   // same seconds could each move it (two hosted copies, nothing lost); a lock
   // needs a compare-and-set the hosted store hasn't got. Add one if it happens.
+  // Those held for one by the Atrium since (lib/held: the operator holds
+  // what's left in Supabase for owners who hadn't come back) come in the
+  // same way, after.
   const triedMoving = useRef(new Set<string>())
   const moveToHosted = async (owned: { id: string; name: string }[], me: { id: string; name: string }) => {
-    const waiting = owned.filter(lobby => !triedMoving.current.has(lobby.id))
+    const { moveToDrive, restoreHeld } = await import('../lib/moveToDrive')
+    await moveIn(owned, me, (id, who) => moveToDrive(id, who, true))
+    const held = await (await import('../lib/held')).myHeld().catch(() => [])
+    await moveIn(held.map(lobby => ({ id: lobby.lobby_id, name: lobby.name })), me, restoreHeld)
+  }
+  const moveIn = async (lobbies: { id: string; name: string }[], me: { id: string; name: string }, move: (id: string, me: { id: string; name: string }) => Promise<void>) => {
+    const waiting = lobbies.filter(lobby => !triedMoving.current.has(lobby.id))
     if (!waiting.length) return
     waiting.forEach(lobby => triedMoving.current.add(lobby.id))
-    const { moveToDrive } = await import('../lib/moveToDrive')
     let moved = 0
     for (const lobby of waiting) {
       setConverting(lobby.id)
       try {
-        await moveToDrive(lobby.id, me, true)
+        await move(lobby.id, me)
         moved++
         showToast(t('browser.cloud.moved', { name: lobby.name }))
       } catch (err) {

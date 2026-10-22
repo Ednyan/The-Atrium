@@ -1166,8 +1166,18 @@ A hosted atrium is then a Drive atrium whose store is ours:
      - Public ones made public, visitors reading. Passwords dropped: the
        invite link and asking to join stand in.
      - "Move to my Drive" brings the people the same way.
-     - **Still to do, at cutover (step 7):** owners who never come back --
-       their atriums exported as .atrium files before Supabase closes.
+     - **Held for owners who don't come back (step 5c, 2026-10-22).** The
+       operator presses "Hold all" in Developers > Cloud atriums: for each
+       atrium left in Supabase, the worker (`src/held.ts`) asks
+       supabase/functions/hold-atriums, with the operator's sign-in, for its
+       manifest (owner, people, files) and rows, keeps them in R2, copies its
+       files one request each, then has the original let go. On the owner's
+       next visit their app makes it a hosted atrium (lib/moveToDrive,
+       restoreHeld: the same steps as a move, from what's held), its people
+       invited back and joining by themselves (`heldMember` vouches), and it's
+       no longer held. Until then its people can't open it -- the operator's
+       choice. One the owner's hosted space can't take stays held, and says
+       so each visit.
 6. Everything else to the worker: Stripe contributions, deletion codes,
    platform admins, `app_changes`, special themes, visits.
    - **Contributions, built (2026-10-22, `workers/rooms/src/contributions.ts`).**

@@ -38,3 +38,7 @@ verify_jwt = true
 # relay pass is for signed-in people only (getAuthenticatedUserId).
 [functions.relay-pass]
 verify_jwt = true
+
+# Verified, and then checked again inside: the operator's alone (platform_admins).
+[functions.hold-atriums]
+verify_jwt = true

@@ -10,6 +10,7 @@
 //   Save; the database refuses anyone else's changes either way.
 // - Bans (BansTool).
 // - Health (HealthTool): money, limits, usage, the worker's setup.
+// - Cloud atriums (CloudAtriumsTool): what's left in Supabase, held for its owners.
 
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
@@ -18,6 +19,7 @@ import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import BansTool from './BansTool'
 import HealthTool from './HealthTool'
+import CloudAtriumsTool from './CloudAtriumsTool'
 import Atmosphere from './Atmosphere'
 import ThemeToggle from './ThemeToggle'
 import { Brackets, Heading } from './landing/parts'
@@ -34,6 +36,7 @@ import type { ThemeSettings } from '../types/database'
 // Each tool: its name, what its card says, and what its page opens with.
 const TOOLS = [
   { id: 'health', name: 'developers.health', about: 'developers.healthDesc', lead: 'developers.healthDesc' },
+  { id: 'cloud', name: 'developers.cloud', about: 'developers.cloudDesc', lead: 'developers.cloudDesc' },
   { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc', lead: 'developers.specialThemesLead' },
   { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc', lead: 'developers.bansDesc' },
 ] as const
@@ -108,6 +111,7 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
           </section>
         )}
         {allowed && tool === 'health' && <HealthTool />}
+        {allowed && tool === 'cloud' && <CloudAtriumsTool />}
         {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
         {allowed && tool === 'bans' && (
           <div className="relative max-w-3xl mx-auto">

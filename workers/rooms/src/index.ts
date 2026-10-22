@@ -23,6 +23,7 @@ import { mirror } from './mirror'
 import { pinterest } from './pinterest'
 import { contributions, stripeWebhook } from './contributions'
 import { ops } from './ops'
+import { held } from './held'
 import { relay } from './relay'
 import { whoIs, type Env } from './who'
 
@@ -62,6 +63,8 @@ export default {
     if (url.pathname.startsWith('/contributions/')) return contributions(request, env, url.pathname.slice('/contributions/'.length))
     if (url.pathname === '/stripe/webhook') return stripeWebhook(request, env)
     if (url.pathname.startsWith('/ops/')) return ops(request, env, url.pathname.slice('/ops/'.length))
+    // Cloud atriums held for their owners (phase 10, step 5c).
+    if (url.pathname.startsWith('/held/')) return held(request, env, url.pathname.slice('/held/'.length))
     const atrium = url.pathname.match(ATRIUM)?.[1]
     if (!atrium) return new Response('Not found', { status: 404 })
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })
