@@ -10,9 +10,10 @@ import DriveConnection from './DriveConnection'
 import ImportAtrium from './ImportAtrium'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
-import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
+import { driveSpace, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
+import { formatSize } from '../lib/size'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
-import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -233,7 +234,7 @@ interface LobbyBrowserProps {
 }
 
 export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: LobbyBrowserProps) {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const [lobbies, setLobbies] = useState<LobbyWithOwner[]>([])
   // Everyone's public Drive atriums (phase 8), shown to anyone, a guest too.
   const [publicDrive, setPublicDrive] = useState<LobbyWithOwner[]>([])
@@ -566,37 +567,82 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       setConverting(null)
     }
   }
-  const [online, setOnline] = useState<{ lobby: LobbyWithOwner; where?: 'cloud' | 'drive'; same?: LobbyWithOwner; busy?: boolean } | null>(null)
+  // `step`: what it's doing, as it goes; `failed`: why it stopped, said in the
+  // dialog; `wontFit`: each place it can't go, and why (measured as it opens).
+  const [online, setOnline] = useState<{
+    lobby: LobbyWithOwner; where?: 'cloud' | 'drive'; same?: LobbyWithOwner; busy?: boolean; step?: string; failed?: string
+    wontFit?: Record<'cloud' | 'drive', string | null>
+  } | null>(null)
+  // Whether an atrium fits where it would go: its size, less what it
+  // replaces, against what's free there -- and, in the Atrium's cloud, one of
+  // one's three. Why not; null if it fits (or there's no telling).
+  const wontFit = async (lobby: LobbyWithOwner, where: 'cloud' | 'drive', into: LobbyWithOwner | null): Promise<string | null> => {
+    if (where === 'drive' && !hasDriveToken()) return t('browser.putOnline.noDrive')
+    const local = await browserEngine()
+    const sizeOf = async (id: string) => Number((await local.localClient.rpc('get_lobby_size_bytes', { p_lobby_id: id })).data ?? 0)
+    const needs = (await sizeOf(lobby.id)) - (into ? await sizeOf(into.id) : 0)
+    let free: number | null = null
+    if (where === 'cloud') {
+      const room = await hostedStore.usage()
+      if (!into && room.atriums >= room.most) return t('browser.putOnline.atCap', { most: room.most })
+      free = room.limit - room.usage
+    } else {
+      const room = await driveSpace.look()
+      free = room?.limit != null ? room.limit - room.usage : null
+    }
+    return free !== null && needs > free ? t('browser.putOnline.tooBig', { size: formatSize(needs, language), free: formatSize(Math.max(0, free), language) }) : null
+  }
+  const openOnline = (lobby: LobbyWithOwner) => {
+    setOnline({ lobby })
+    void Promise.all((['cloud', 'drive'] as const).map(where => wontFit(lobby, where, null).catch(() => null)))
+      .then(([cloud, drive]) => setOnline(current => (current?.lobby.id === lobby.id ? { ...current, wontFit: { cloud, drive } } : current)))
+  }
   const sameNamed = (lobby: LobbyWithOwner, where: 'cloud' | 'drive') => browserLobbies.find(other =>
     other.inDrive && !other.publicRoster && isDriveOwner(other.id) && (where === 'cloud') === isHostedAtrium(other.id)
     && other.name.trim().toLowerCase() === lobby.name.trim().toLowerCase())
   const putOnline = async (lobby: LobbyWithOwner, where: 'cloud' | 'drive', into: LobbyWithOwner | null) => {
-    setOnline(current => current && { ...current, busy: true })
+    const say = (step: string) => setOnline(current => current && { ...current, busy: true, step, failed: undefined })
+    const percent = (done: number, total: number) => (total ? Math.round((done / total) * 100) : 100)
+    say(t('browser.putOnline.working'))
+    // The new atrium once there is one: what's undone, should it fail.
+    let made: string | null = null
     try {
       const me = await sharedMe()
       await ensureSignedIn(where === 'cloud' ? HOSTED_MARK : undefined)
-      await browserEngine()
+      // Room for it there, measured again just before anything goes.
+      const refused = await wontFit(lobby, where, into)
+      if (refused) throw new Error(refused)
       const { copyAtrium, copyInto } = await import('../lib/atriumCopy')
-      if (into) {
-        await replaceContents(into.id, me.id, () => copyInto(lobby.id, into.id))
-        showToast(t('browser.putOnline.replaced', { name: into.name }))
-      } else {
-        const id = await copyAtrium(lobby.id, lobby.name, me.id)
-        try {
-          await keepInDrive(id, lobby.name, me, where === 'cloud')
-        } catch (error) {
-          // Not there: the copy made for it goes too.
-          await (await browserEngine()).localClient.from('lobbies').delete().eq('id', id)
-          throw error
+      const copying = (done: number, total: number) => say(t('browser.putOnline.copying', { percent: percent(done, total) }))
+      const stopWatching = watchSending((done, total) => say(done < total ? t('browser.putOnline.uploading', { done, total, percent: percent(done, total) }) : t('browser.putOnline.saving')))
+      try {
+        if (into) {
+          await replaceContents(into.id, me.id, () => copyInto(lobby.id, into.id, copying))
+          if (!(await driveHasEverything(into.id, me.id))) throw new Error('NOT_ALL_SENT')
+          showToast(t('browser.putOnline.replaced', { name: into.name }))
+        } else {
+          made = await copyAtrium(lobby.id, lobby.name, me.id, copying)
+          await keepInDrive(made, lobby.name, me, where === 'cloud')
+          rememberBrowserAtrium(made)
+          showToast(t('browser.putOnline.done', { name: lobby.name }))
         }
-        rememberBrowserAtrium(id)
-        showToast(t('browser.putOnline.done', { name: lobby.name }))
+      } finally {
+        stopWatching()
       }
       setOnline(null)
       loadLobbies()
     } catch (err) {
-      setOnline(null)
-      setError(driveProblem(err))
+      // Nothing half-made left behind: the online atrium it started, and the
+      // copy made for it here.
+      if (made) {
+        if (isDriveAtrium(made)) {
+          await deleteDriveAtrium(made).catch(error => console.warn('[online] its half-made online atrium:', error))
+          await leaveDriveAtrium(made).catch(() => {})
+        } else {
+          await (await browserEngine()).localClient.from('lobbies').delete().eq('id', made)
+        }
+      }
+      setOnline(current => current && { ...current, busy: false, same: undefined, failed: driveProblem(err) })
     }
   }
   const chooseWhere = (where: 'cloud' | 'drive') => {
@@ -1358,7 +1404,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       // On desktop: an online one kept as a copy on this computer; one of the
       // vault's put online, with an account signed in.
       ...(isDesktop && lobby.inDrive && !lobby.publicRoster ? [{ label: t('browser.offlineCopy'), disabled: converting !== null, onClick: () => void keepOffline(lobby) }] : []),
-      ...(isDesktop && deskAccount && !lobby.inDrive && !lobby.inBrowser && list !== 'public' ? [{ label: t('browser.putOnline'), disabled: converting !== null, onClick: () => setOnline({ lobby }) }] : []),
+      ...(isDesktop && deskAccount && !lobby.inDrive && !lobby.inBrowser && list !== 'public' ? [{ label: t('browser.putOnline'), disabled: converting !== null, onClick: () => openOnline(lobby) }] : []),
       // Someone else's Drive atrium is left, not deleted: it isn't theirs to delete.
       ...(mine ? [{ label: lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete'), danger: true, onClick: () => setDeleteConfirmId(lobby.id) }] : []),
     ]
@@ -1818,9 +1864,22 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             <h3 className="text-nier-strong tracking-[0.15em] uppercase text-sm mb-3">◇ {t('browser.putOnline.title', { name: online.lobby.name })}</h3>
             {online.busy ? (
               <div role="status">
-                <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {t('browser.putOnline.working')}</p>
-                <div className="w-48 h-[3px] bg-nier-bg/15 overflow-hidden"><div className="h-full bg-nier-bg/80 animate-nier-slide" /></div>
+                <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {online.step ?? t('browser.putOnline.working')}</p>
+                {(() => {
+                  // The bar at its percentage while one's known; moving, while not.
+                  const at = /(\d+)\s?%/.exec(online.step ?? '')?.[1]
+                  return (
+                    <div className="w-full h-[3px] bg-nier-bg/15 overflow-hidden">
+                      {at ? <div className="h-full bg-nier-bg/80 transition-[width] duration-300" style={{ width: `${at}%` }} /> : <div className="h-full bg-nier-bg/80 animate-nier-slide" />}
+                    </div>
+                  )
+                })()}
               </div>
+            ) : online.failed ? (
+              <>
+                <p className="text-xs leading-relaxed mb-5" style={{ color: '#FF6161' }}>⚠ {online.failed}</p>
+                <button onClick={() => setOnline(null)} className={ROW_BUTTON}>{t('common.close')}</button>
+              </>
             ) : online.same ? (
               <>
                 <p className="text-nier-bg/80 text-xs leading-relaxed mb-5">{t('browser.putOnline.same', { name: online.same.name })}</p>
@@ -1834,9 +1893,21 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               <>
                 <p className="text-nier-bg/80 text-xs leading-relaxed mb-5">{t('browser.putOnline.lead')}</p>
                 <div className="flex flex-col gap-2">
-                  <button onClick={() => chooseWhere('cloud')} className={`${ROW_BUTTON} text-left`}>◇ {t('browser.putOnline.cloud')}</button>
-                  <button onClick={() => chooseWhere('drive')} disabled={!hasDriveToken()} className={`${ROW_BUTTON} text-left disabled:opacity-40`}>◇ {t('browser.putOnline.drive')}</button>
-                  {!hasDriveToken() && <p className="text-nier-bg/60 text-[11px] leading-relaxed">{t('browser.putOnline.noDrive')}</p>}
+                  {(['cloud', 'drive'] as const).map(where => {
+                    const why = online.wontFit?.[where]
+                    return (
+                      <div key={where}>
+                        <button
+                          onClick={() => chooseWhere(where)}
+                          disabled={!online.wontFit || !!why}
+                          className={`${ROW_BUTTON} w-full text-left disabled:opacity-40`}
+                        >
+                          ◇ {t(where === 'cloud' ? 'browser.putOnline.cloud' : 'browser.putOnline.drive')}
+                        </button>
+                        {why && <p className="text-nier-bg/65 text-[11px] leading-relaxed mt-1">{why}</p>}
+                      </div>
+                    )
+                  })}
                   <button onClick={() => setOnline(null)} className={`${ROW_BUTTON} mt-2 self-start`}>{t('common.cancel')}</button>
                 </div>
               </>

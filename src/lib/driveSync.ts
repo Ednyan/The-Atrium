@@ -114,6 +114,7 @@ const SAID: Partial<Record<string, TranslationKey>> = {
   DB_UPDATE_NEEDED: 'browser.drive.dbUpdate',
   PICK_CANCELLED: 'browser.drive.pickCancelled',
   NEED_DRIVE: 'browser.drive.needDrive',
+  NOT_ALL_SENT: 'browser.drive.notAllSent',
   DESKTOP_GOOGLE: 'browser.drive.desktopGoogle',
   MOVE_INCOMPLETE: 'browser.drive.moveIncomplete',
 }
@@ -552,7 +553,20 @@ export async function keepInDrive(lobbyId: string, name: string, me: { id: strin
   await createDriveAtrium(lobbyId, name, me, hostedAtrium)
   await startDriveSync(lobbyId, me.id)
   await syncNow()
+  // A send that fails is tried again later, quietly (run): here, what didn't
+  // get there -- no room for it, the connection gone -- is said, not taken
+  // for done.
+  const sent = await driveHasEverything(lobbyId, me.id)
   await stopDriveSync()
+  if (!sent) throw new Error('NOT_ALL_SENT')
+}
+
+/** Told as an atrium's files go up (the first send of one put online, the
+ *  atrium browser's progress): how many of how many. */
+const sendingWatchers = new Set<(done: number, total: number) => void>()
+export function watchSending(watcher: (done: number, total: number) => void): () => void {
+  sendingWatchers.add(watcher)
+  return () => { sendingWatchers.delete(watcher) }
 }
 
 // ---------------------------------------------------------------- invites and joining
@@ -1696,6 +1710,9 @@ async function sendFiles(s: Session, urls: string[]): Promise<{ id: string; file
   if (!urls.length) return []
   const folder = s.filesFolder ??= (await store.listByLink(s.kept.folder)).find(file => file.name === 'files')?.id
     ?? (await store.createFolder('files', s.kept.folder)).id
+  let done = 0
+  const told = () => sendingWatchers.forEach(watcher => watcher(done, urls.length))
+  told()
   const sent = await Promise.all(urls.map(url => inTurn(async () => {
     try {
       const bytes = await s.local.readLocalFileBytes(url)
@@ -1709,6 +1726,9 @@ async function sendFiles(s: Session, urls: string[]): Promise<{ id: string; file
     } catch (error) {
       console.warn('[drive] sending a file:', url, error)
       return null
+    } finally {
+      done++
+      told()
     }
   })))
   return sent.filter((row): row is { id: string; file: string } => !!row)

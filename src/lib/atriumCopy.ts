@@ -15,7 +15,7 @@ type Local = typeof import('./localDb')
 const FILE_COLUMNS = ['media_url', 'image_url'] as const
 
 /** `fromId`'s rows, made `toId`'s: new ids throughout, its files copied. */
-async function copiedRows(local: Local, fromId: string, toId: string) {
+async function copiedRows(local: Local, fromId: string, toId: string, onProgress?: (done: number, total: number) => void) {
   const rows = await local.atriumRows(fromId)
   const ids = new Map<string, string>()
   for (const table of ['layers', 'traces', 'trace_links', 'lobby_locations']) for (const row of rows[table]) ids.set(row.id, crypto.randomUUID())
@@ -25,13 +25,17 @@ async function copiedRows(local: Local, fromId: string, toId: string) {
   const storage = local.localClient.storage.from('traces')
   const { fetchMedia } = await import('./exportImage')
   const files = new Map<string, string>()
-  for (const url of new Set(rows.traces.flatMap(row => FILE_COLUMNS.map(column => row[column])).filter((url): url is string => typeof url === 'string' && url.startsWith('local://')))) {
+  const urls = [...new Set(rows.traces.flatMap(row => FILE_COLUMNS.map(column => row[column])).filter((url): url is string => typeof url === 'string' && url.startsWith('local://')))]
+  onProgress?.(0, urls.length)
+  for (const [index, url] of urls.entries()) {
+    onProgress?.(index, urls.length)
     const blob = await fetchMedia(url)
     if (!blob) continue
     const path = `${toId}/${crypto.randomUUID()}-${url.split('/').pop()}`
     const { error } = await storage.upload(path, blob, { contentType: blob.type || undefined })
     if (!error) files.set(url, storage.getPublicUrl(path).data.publicUrl)
   }
+  onProgress?.(urls.length, urls.length)
 
   return {
     lobby: rows.lobbies[0] as Row | undefined,
@@ -51,7 +55,7 @@ async function put(local: Local, toId: string, copied: Awaited<ReturnType<typeof
 
 /** A new atrium of `fromId`'s, called `name`, owned by `owner`: kept here
  *  alone -- private, no password, no admins. Its id. */
-export async function copyAtrium(fromId: string, name: string, owner: string): Promise<string> {
+export async function copyAtrium(fromId: string, name: string, owner: string, onProgress?: (done: number, total: number) => void): Promise<string> {
   const local = await import('./localDb')
   const toId = crypto.randomUUID()
   const source = (await local.atriumRows(fromId)).lobbies[0]
@@ -61,17 +65,17 @@ export async function copyAtrium(fromId: string, name: string, owner: string): P
     ...source, id: toId, name, owner_user_id: owner, is_public: false, password_hash: null, admin_user_ids: [],
     edit_permission_mode: 'all', preview_url: null, preview_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }], [])
-  await put(local, toId, await copiedRows(local, fromId, toId))
+  await put(local, toId, await copiedRows(local, fromId, toId, onProgress))
   return toId
 }
 
 /** `intoId`'s contents -- its traces, groups, threads, places, its theme --
  *  replaced by `fromId`'s, its name and who's in it as they were. */
-export async function copyInto(fromId: string, intoId: string): Promise<void> {
+export async function copyInto(fromId: string, intoId: string, onProgress?: (done: number, total: number) => void): Promise<void> {
   const local = await import('./localDb')
   const [from, into] = await Promise.all([local.atriumRows(fromId), local.atriumRows(intoId)])
   if (!from.lobbies[0] || !into.lobbies[0]) throw new Error('no such atrium')
-  const copied = await copiedRows(local, fromId, intoId)
+  const copied = await copiedRows(local, fromId, intoId, onProgress)
   for (const table of ['trace_links', 'traces', 'layers', 'lobby_locations'] as const) await local.takeAtriumRows(intoId, table, [], into[table].map(row => row.id))
   await local.takeAtriumRows(intoId, 'lobbies', [{ ...into.lobbies[0], theme_settings: from.lobbies[0].theme_settings ?? null }], [])
   await put(local, intoId, copied)
