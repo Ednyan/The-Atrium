@@ -1290,7 +1290,7 @@ A hosted atrium is then a Drive atrium whose store is ours:
         rendered PDF pages (TraceOverlay); and any theme backgrounds still
         there. Those writes move to R2; what's still referenced is copied.
      5. **supabase-js out of the app**, then a month read-only, then cancel.
-   - The user: deletes the old Stripe endpoint `we_1U5qqpA4whuztXi4ySt9Rqp0`;
+   - The user: deletes the old Stripe endpoint `we_1U5ucHA7tPYqyteyhcqk8Jtx (atrium-contributions-live, …supabase.co/functions/v1/stripe-webhook)`;
      at cutover, the reset emails go out.
    - Rate limiting (free plan: path-only expressions, per IP, 10 s, Block 10
      s, one rule): "Atrium worker: flood guard", 100 requests / 10 s on the
