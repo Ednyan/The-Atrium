@@ -201,7 +201,7 @@ function useMeterNames() {
     requests: t('ops.meter.requests'), cpu: t('ops.meter.cpu'), rooms: t('ops.meter.rooms'), roomTime: t('ops.meter.roomTime'),
     dbRead: t('ops.meter.dbRead'), dbWritten: t('ops.meter.dbWritten'), dbSize: t('ops.meter.dbSize'), files: t('ops.meter.files'),
     filesWritten: t('ops.meter.filesWritten'), filesRead: t('ops.meter.filesRead'), relay: t('ops.meter.relay'),
-    mailDay: t('ops.meter.mail'), mailMonth: t('ops.meter.mail'),
+    mailDay: `${t('ops.meter.mail')} (Resend)`, mailMonth: `${t('ops.meter.mail')} (Resend)`, mailBrevo: `${t('ops.meter.mail')} (Brevo)`,
   }
   return { per, name }
 }

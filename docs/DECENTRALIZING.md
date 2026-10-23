@@ -924,7 +924,14 @@ public list. Contributions already need no account.
     `lib/worker` (`toWorker`) is the app's one way to call the worker.
   - **Secrets on the worker:** CF_TURN_KEY_ID, CF_TURN_KEY_TOKEN,
     CF_ACCOUNT_ID, CF_ANALYTICS_TOKEN, RELAY_BUDGET_GB (optional),
-    RESEND_API_KEY, PINTEREST_CLIENT_ID, PINTEREST_CLIENT_SECRET.
+    RESEND_API_KEY, BREVO_API_KEY (optional), PINTEREST_CLIENT_ID,
+    PINTEREST_CLIENT_SECRET.
+  - **Mail goes Resend, then Brevo (2026-10-23).** Each free day on its own
+    (100 + 300); the next is taken when one's day is spent or it refuses.
+    Mail that can wait stops at 80% of each day, so sign-up and reset codes
+    always have the last 20%. Counts in D1 setting `mail.sent`; Health has
+    a Brevo meter. Brevo sends from `mail.digitalatrium.org` once that
+    domain is authenticated in Brevo.
 - **Step 7, linking and bans (2026-10-19).**
   - **Linking is by Google's own word only** (the user's rule): the Google
     an account signed up with, or the address Google verified. Supabase

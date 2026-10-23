@@ -35,6 +35,7 @@ export interface Env {
   RELAY_BUDGET_GB?: string
   // Mail, through Resend (src/mail.ts): its key (a secret).
   RESEND_API_KEY?: string
+  BREVO_API_KEY?: string
   // Pinterest's app (src/pinterest.ts): its id and secret (secrets).
   PINTEREST_CLIENT_ID?: string
   PINTEREST_CLIENT_SECRET?: string

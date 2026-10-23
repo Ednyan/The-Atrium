@@ -14,7 +14,7 @@
 
 import { nameProblem as problemOf, MAX_NAME_LENGTH } from '../../../supabase/functions/_shared/contributorName'
 import { BASE_CURRENCY, currencyByCode, isAllowedStep, isCurrencyCode, minorPerUnit } from '../../../supabase/functions/_shared/currencies'
-import { SITE, toContributor } from './mail'
+import { SITE, mailReady, toContributor } from './mail'
 import { allowedNow, isOperator, keep, setting, tablesIn } from './people'
 import { outbound, replies, whoIs, type Env } from './who'
 
@@ -455,7 +455,7 @@ async function operate(request: Request, env: Env, db: D1Database): Promise<Resp
       if (!body) return answer(400, { error: 'Nothing to send.' })
       if (body.length > 4000) return answer(400, { error: 'That message is too long to send.' })
       if (!target.contact_email) return answer(400, { error: 'Stripe recorded no address for this payment, so there is nowhere to write.' })
-      if (!env.RESEND_API_KEY) return answer(503, { error: 'Email is not configured on this project.' })
+      if (!mailReady(env)) return answer(503, { error: 'Email is not configured on this project.' })
       const sent = await toContributor(env, target.contact_email, 'About your contribution', {
         heading: 'Your contribution',
         body,
@@ -493,7 +493,7 @@ async function operate(request: Request, env: Env, db: D1Database): Promise<Resp
         }
       }
       await fresh()
-      if (target.contact_email && env.RESEND_API_KEY) {
+      if (target.contact_email && mailReady(env)) {
         await toContributor(env, target.contact_email, 'About the name on your contribution', {
           heading: 'About your name',
           body: ['Thank you for contributing to The Digital Atrium.', '', `You asked to be listed as "${target.display_name}", and that name can't be shown on the public contributors list.`].join('\n'),

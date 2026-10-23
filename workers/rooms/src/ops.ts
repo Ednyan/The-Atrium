@@ -15,7 +15,7 @@
 // says them.
 
 import { ACTIVE_MS, DEFAULT_GOAL_CENTS, GOAL, LAST_EVENT, MOVED, monthStart, stripe } from './contributions'
-import { MAIL_COUNTS } from './mail'
+import { MAIL_COUNTS, SENT_TODAY } from './mail'
 import { isOperator, setting, tablesIn } from './people'
 import { graph, relayBudget, relayedBytes } from './relay'
 import { replies, whoIs, type Env } from './who'
@@ -30,7 +30,7 @@ const DATABASE_ID = '98e3f3c7-95f3-4482-b0b2-f8be13c26562'
 const R2_FREE = new Set(['DeleteObject', 'DeleteBucket', 'AbortMultipartUpload'])
 const R2_CLASS_B = new Set(['HeadBucket', 'HeadObject', 'GetObject', 'UsageSummary', 'GetBucketEncryption', 'GetBucketLocation', 'GetBucketCors', 'GetBucketLifecycleConfiguration'])
 // What the worker is given, by name only -- never a value.
-const SECRETS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RESEND_API_KEY', 'GOOGLE_CLIENT_SECRET', 'SUPABASE_WORKER_KEY',
+const SECRETS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RESEND_API_KEY', 'BREVO_API_KEY', 'GOOGLE_CLIENT_SECRET', 'SUPABASE_WORKER_KEY',
   'CF_ACCOUNT_ID', 'CF_ANALYTICS_TOKEN', 'CF_TURN_KEY_ID', 'CF_TURN_KEY_TOKEN', 'PINTEREST_CLIENT_ID', 'PINTEREST_CLIENT_SECRET'] as const
 // What the worker asks of Stripe, each tried in a way that changes nothing: a
 // write sent empty (refused for what's missing in it, if the key may write),
@@ -262,6 +262,12 @@ function metersOf(env: Env, now: number): Promise<Meter[]> {
       if (!kept) throw new Error('No email sent by the worker since this was set up: Resend gives its counts with each one.')
       const { daily, monthly, at } = JSON.parse(kept) as { daily: number | null; monthly: number | null; at: number }
       return [{ used: daily ?? 0, at }, { used: monthly ?? 0, at }]
+    }],
+    // Brevo's day (src/mail.ts), counted by the worker as it sends: what Resend's had no room for.
+    [[{ key: 'mailBrevo', limit: 300, unit: 'count', per: 'day' }], async () => {
+      if (!env.BREVO_API_KEY) throw new Error('No BREVO_API_KEY yet: all the mail goes through Resend.')
+      const kept = JSON.parse((env.PEOPLE && await setting(env.PEOPLE, SENT_TODAY)) || 'null') as { day: string; brevo?: number } | null
+      return [{ used: kept?.day === new Date(now).toISOString().slice(0, 10) ? kept.brevo ?? 0 : 0 }]
     }],
   ]
   return Promise.all(readings.map(async ([shown, read]) => {
