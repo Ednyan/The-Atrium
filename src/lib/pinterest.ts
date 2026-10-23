@@ -206,6 +206,12 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
   const oauthError = params.get('error')
 
   if (!code && !oauthError) return { handled: false }
+  // Pinterest's return only if this tab sent someone there (the state kept as
+  // it did): another page's own `code` -- the desktop app's sign-in
+  // (components/DesktopLink) -- is that page's, not taken and sent elsewhere.
+  let pending: string | null = null
+  try { pending = sessionStorage.getItem(OAUTH_STATE_KEY) } catch { /* none kept */ }
+  if (!pending) return { handled: false }
 
   const cleanUrl = window.location.pathname + window.location.hash
   window.history.replaceState({}, '', cleanUrl)
@@ -214,14 +220,14 @@ export async function handlePinterestCallback(): Promise<PinterestCallbackResult
   // exchange puts you back where you were too. Being dropped on the landing
   // page is a poor way to be told something went wrong.
   restorePinterestReturn()
+  // Used once, whatever comes of it.
+  sessionStorage.removeItem(OAUTH_STATE_KEY)
 
   if (oauthError) {
     return { handled: true, success: false, error: 'Pinterest authorization was cancelled or denied.' }
   }
 
-  const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY)
-  sessionStorage.removeItem(OAUTH_STATE_KEY)
-  if (!expectedState || state !== expectedState) {
+  if (state !== pending) {
     return { handled: true, success: false, error: 'Pinterest sign-in could not be verified. Please try connecting again.' }
   }
 
