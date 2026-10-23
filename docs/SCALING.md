@@ -1,269 +1,263 @@
-# Scaling the web app: tiers, costs, and moving off Supabase
+# Scaling the web app: tiers and costs
 
-Written 2026-10-19. A plan to read when usage grows, or before spending
-money on the web app. Two paths are costed side by side: **A**, keep
-Supabase for what it does today; **B**, move everything to Cloudflare.
+Rewritten 2026-10-23, now that the web app runs on Cloudflare
+(docs/DECENTRALIZING.md, phase 10). A plan to read when usage grows, or
+before spending money on the web app.
 
 **Recheck before buying.** Prices are list prices as known in late 2025
-(Cloudflare, Supabase, Resend). Google Drive's billing above its free
-threshold is announced but not yet priced. Usage per person is an
-estimate (below); the Cloudflare and Supabase dashboards give the real
-numbers, and these tables should be redone from them.
+(Cloudflare, Resend, Brevo). Usage per person is an estimate (below). The
+app's Developers → Health shows every free-plan meter, today and over 30
+days: redo these tables from it once there's real traffic.
+
+## What runs where
+
+- **Cloudflare Pages**: the website, static and free at any size. The image
+  proxy (`functions/api/proxy-image.js`) is a Pages Function and shares the
+  Workers request allowance.
+- **The rooms worker** (`workers/rooms`, rooms.digitalatrium.org):
+  - Accounts, Google and email, in D1 (`atrium-people`). The page stretches
+    a password (PBKDF2, 600,000 rounds) and the worker keeps a salted hash
+    of that. Also there: sessions, the directory, invitations, Pinterest,
+    bans, operators, settings, themes and visits.
+  - Live rooms: one Durable Object per atrium. They use the WebSocket
+    Hibernation API, so a room is billed only while it handles a message.
+    A room carries live saves, presence, and the slow cursor for anyone not
+    connected directly.
+  - The hosted store (`/store/*`). It holds online atriums' sealed saves
+    and files in R2, and their listing in D1. Each account gets 3 atriums
+    and 50 MB, with at most 25 MB a file.
+  - The public mirror (`/mirror/*`): public Drive atriums' files copied to
+    R2 (up to 200 MB each), so visitors read them from us and not from
+    Google.
+  - Relay passes (Cloudflare TURN), capped at 800 GB a month
+    (`RELAY_BUDGET_GB`).
+  - Contributions (Stripe Checkout and its webhook), reports and mail, and
+    the operator's Health.
+- **Google Drive**: Drive atriums, kept in each person's own Drive, so their
+  storage is never ours. API use is free up to 1,000,000 quota units a
+  minute and 400 million a day per project.
+- **The browser and the desktop app**: browser atriums and the desktop
+  vault cost us nothing.
+- **Mail** (`workers/rooms/src/mail.ts`) goes through Resend first, then
+  Brevo. Resend's free plan allows 100 a day and 3,000 a month; Brevo's
+  allows 300 a day. Mail that can wait stops at 80% of each provider's
+  day, so sign-up and reset codes always have the rest.
 
 ## The usage model
 
 - Monthly actives ≈ 3 × daily actives. People at the same moment, at the
-  daily peak ≈ 8% of daily actives.
-- About 20% of people use cloud atriums (email accounts). The rest use
-  atriums kept in their Google Drive or in their browser, which cost us
-  nothing to store.
-- A daily active person makes about 30 requests a day to the rooms worker
-  (sign-in, staying signed in, the directory, entering a room, the relay
-  pass, the public list) and the site's image proxy (a Pages Function,
-  same allowance).
-- About 20 Durable Object requests a day each: entering rooms, and
-  incoming room messages (live saves, presence), 20 messages counting as
-  one request. The rooms use the WebSocket Hibernation API, so a room is
-  billed for run time only while it handles a message.
-- About 15% of people can't connect directly and go through the relay,
-  at about 15 MB an hour of cursors and laser.
-- Someone editing a cloud atrium writes about 100 rows a day; opening one
-  reads all of its rows.
+  daily peak, ≈ 8% of daily actives.
+- About 20% of people keep online (hosted) atriums, using about 10 MB each
+  on average. The rest use Drive, the browser or the desktop.
+- **About 40 worker requests a day** from each daily active person:
+  - signing in and staying signed in, the directory, entering a room, the
+    relay pass, the public list, and the image proxy;
+  - for online atriums, a look every 1–2 minutes, plus reading the files
+    not yet in the browser.
+- **About 20 Durable Object requests a day** each: entering rooms and
+  incoming room messages (20 messages bill as one request).
+- **Saves to online atriums** are the big unknown.
+  - The app sends a save after each 1.5 s pause (`QUIET_MS` in
+    `lib/driveSync`). Assumed: one person in ten edits an online atrium on
+    a given day, at about 150 saves.
+  - Each save is one new file: one R2 write, and about 4 D1 rows written
+    (its listing row, two indexes, and the write throttle).
+  - Per daily active person, with sessions and throttles: about 15 R2
+    writes and 75 D1 rows written a day.
+- About 20 R2 reads a day each: files opened, and the mirror.
+- About 15% of people can't connect directly and go through the relay, at
+  about 15 MB an hour of cursors and laser.
+- Mail ≈ 15% of monthly actives a month: sign-up codes, welcomes, resets
+  and reports.
 
-| Tier | Daily active | Monthly active | At once | Path A (Supabase) | Path B (all Cloudflare) |
+## Tiers at a glance
+
+Workers Paid from Tier 1. **Now** is the code as it is. **After** includes
+the save change (below), which cuts writes about 10×.
+
+| Tier | Daily active | Monthly active | At once | Now | After the save change |
 |---|---|---|---|---|---|
-| 0, today | ~2,000 | ~6,000 | ~300 | $0 | $0 |
-| 1 | 10,000 | 30,000 | ~1,000 | ~$70 | ~$27 |
-| 2 | 50,000 | 150,000 | ~4,000 | ~$190–400 | ~$75–280 |
-| 3 | 150,000 | 500,000 | ~12,000 | ~$600–1,100 | ~$475–975 |
-| 4 | 300,000 | 1,000,000 | ~25,000 | ~$1,600–2,600 | ~$1,150–2,150 |
+| 0, free plans | up to ~1,300 now, ~2,500 after | | | $0 | $0 |
+| 1 | 10,000 | 30,000 | ~800 | ~$24 | ~$8 |
+| 2 | 50,000 | 150,000 | ~4,000 | ~$220–450 | ~$75–300 |
+| 3 | 150,000 | 450,000 | ~12,000 | ~$850–1,550 | ~$350–1,050 |
+| 4 | 300,000 | 900,000 | ~25,000 | ~$1,750–3,200 | ~$750–2,200 |
 
-The ranges are mostly the relay: full quality, cursor updates batched
-over it (about a third of the bytes), or today's 800 GB cap, past which
-those 15% get a cursor every few seconds through the room instead.
+The ranges are mostly the relay, at one of three levels:
+- capped at today's 800 GB, which costs nothing (past the cap, the people
+  it would carry get a slower cursor through the room);
+- cursor updates batched over it, about a third of the bytes;
+- full quality.
 
-## What each service does today
+## The walls on the free plans
 
-- **Cloudflare**
-  - The website: static files on Pages, free at any size.
-  - The rooms worker (`workers/rooms`): Google sign-in and staying signed
-    in, the directory in D1 (accounts, invitations, Google grants,
-    Pinterest, bans, public atriums), live rooms as Durable Objects, relay
-    passes, feedback and mail.
-  - The relay (TURN), capped at 800 GB a month.
-  - The image proxy (`functions/api/proxy-image.js`).
-- **Supabase**
-  - Email/password accounts: Supabase Auth.
-  - Cloud atriums: Postgres tables `lobbies`, `traces`, `layers`,
-    `trace_links`, `lobby_locations`, `lobby_access_lists`,
-    `lobby_sessions`, `lobby_visits`, `profiles`, `special_themes`, with
-    row-level security.
-  - Their files and previews, in Storage.
-  - Their live changes, through Realtime.
-  - RPCs, among them `can_user_join_lobby`, `get_lobby_size_bytes`,
-    `lobby_has_password`, `get_user_lobby_count`,
-    `transfer_lobby_ownership`, `is_platform_admin`, `email_for_sign_in`,
-    `username_taken`, `account_for_google`, `account_for_email`, and
-    Pinterest's for email accounts.
-  - Edge Functions: `delete-account`, `ban-account`,
-    `request-deletion-code`, `send-welcome`, `send-feedback`,
-    `relay-pass`, the Pinterest ones, and Stripe's
-    (`create-contribution`, `contribution-status`, `stripe-webhook`,
-    `moderate-contributors`). Several are already duplicated in the
-    worker for Google accounts.
-- **Google Drive**: Drive atriums, in each person's own Drive, so their
-  storage is never ours. API use: 1,000,000 quota units a minute and
-  400 million a day per project before billing.
-- **Resend**: welcome, goodbye and feedback mail. Free: 100 a day,
-  3,000 a month. A failed welcome never blocks a sign-up.
+Daily limits reset at 00:00 UTC.
 
-## The first walls, on the free plans
+1. **D1, 100,000 rows written a day.** At about 75 a person, that's about
+   1,300 daily actives. This is likely the first wall, because of online
+   atriums' saves. Past it, until midnight UTC, nothing that writes works:
+   - signing in and staying signed in;
+   - saves to online atriums;
+   - invitations and settings.
 
-1. **Cloudflare Workers, 100,000 requests a day** (rooms worker and image
-   proxy together, reset 00:00 UTC). At ~30 per person, about 2,000–3,000
-   daily actives. Past it, until midnight UTC:
-   - Google accounts can't sign in or stay signed in.
-   - Rooms fail.
-   - Drive atriums still sync through Google, and browser atriums don't
-     notice.
-2. **Durable Objects, 100,000 requests a day**: about the same point.
-3. **Supabase Realtime, 200 connections at once**: people inside cloud
-   atriums. Storage 1 GB, downloads 5 GB a month.
-4. **Google Drive**: not a wall below Tier 3, but see "Code changes".
+   Browser and desktop atriums don't notice.
+2. **Workers, 100,000 requests a day** (the worker and the image proxy
+   together). At about 40 a person, that's about 2,500 daily actives. Past
+   it the worker answers nothing: no sign-in, no rooms, no online atriums,
+   no public list.
+3. **Durable Objects, 100,000 requests a day**, about 5,000 daily actives.
+   Rooms fail. Saves are still kept, but no longer passed on live.
+4. **CPU, 10 ms a request.** This isn't a daily wall: any request that runs
+   past it fails. Typical use is well under it (Health shows p50 and p99).
+   The worker is minified to keep cold starts short.
+5. **D1's size, 500 MB a database** (Health: database size).
+6. **R2 is billed, not a wall.** It's enabled with a card on file, so past
+   its monthly free allowance it bills from the first unit over, on any
+   Workers plan. The allowance is 10 GB stored, 1M writes and 10M reads.
+   At about 450 writes a person a month, writes pass 1M at about 2,200
+   daily actives. That's about $16 a month at Tier 1 now, and about $0
+   after the save change.
+7. **Mail, 400 a day**: Resend 100 and Brevo 300, with Resend also limited
+   to 3,000 a month. Codes keep the last 20% of each day.
+   - On an even day this lasts to about 27,000 daily actives.
+   - Sign-ups come in bursts (a post, a launch), and that's when mail that
+     can wait is held back first.
+8. **The relay never bills.** Past 800 GB in 31 days it gives no more
+   passes, and those people's cursors go through the room instead. That's
+   slower, and costs a few more DO requests.
+9. **Google Drive** isn't a wall below Tier 4, now that an atrium with a
+   live room looks every 2 minutes rather than every 20 s.
 
-## Code changes, needed on either path
+## Changes made for scale
 
-None cost money. Each cuts a bill or removes a wall.
+- **Looking less.** How often an atrium checks for changes:
+  - every 2 minutes when its room is live;
+  - otherwise every minute for an online atrium, and every 20 s for a
+    Drive atrium (`lookEvery` in `lib/driveSync`).
 
-1. **Poll Drive less while the room is connected.** Do it before Tier 3,
-   which it's required for. An open Drive atrium checks Drive every 20 s
-   (`LOOK_MS` in `lib/driveSync`): about 75 units a minute per person, so
-   ~12,000 people at once reach the 1,000,000-a-minute limit. The room
-   already announces saves (`drive-save`), so every 2 minutes is enough
-   while it's connected. That cuts Drive use about 6×, and keeps Tier 4
-   under the 400M units a day where billing would start.
-2. **Batch cursor updates over the relay**, before Tier 2: about a third
-   of the relay's bytes.
-3. **Move cloud atrium files to R2**, before Tier 2 on path A (Supabase
-   bills about $0.09 a GB downloaded; R2 downloads are free). Part of
-   path B anyway.
-4. **The R2 mirror for popular public atriums** (phase 8's last part), by
-   Tier 3. It also keeps people on one network off Google's robot check,
-   which anonymous Drive downloads can trigger for about 10 minutes.
-5. **The atrium browser's own polling**, already trimmed: the public
-   list every 5 minutes, Drive atrium looks each minute while visible.
-   Keep anything new that polls the worker this frugal.
+  This cuts Drive use about 6×, and our requests for online atriums.
+- **The R2 mirror of public atriums.** Visitors read from us, so there's no
+  Google robot check and no file locked for being read too often.
+- **The atrium browser polls frugally**: the public list every 5 minutes,
+  and Drive looks each minute while it's visible. Keep anything new that
+  polls the worker this frugal.
+- **Mail through two free providers, codes first.**
+- **Throttles where one person could spend everyone's day:**
+  - store writes: 3,000 an hour an account;
+  - reports: 5 an hour a network, 30 an hour in all;
+  - codes: 8 a day an account, and 40 tries;
+  - Checkout: 30 an hour a network.
 
----
+  The free Cloudflare rate-limiting rule (100 requests per 10 s per IP,
+  file traffic and Stripe's webhook excepted) bounds floods. Only Workers
+  Paid lifts the daily budget.
+- **The worker is minified** (225 → 154 KB). Cold starts are shorter, and
+  they were the CPU spikes.
+- **Health** (Developers → Health) shows every meter here, today and over
+  30 days, and whether each secret is set.
 
-## Path A: keep Supabase
+## Changes still to make
 
-### Tier 1: 10,000 daily (~$70/month)
+None cost money.
 
-| Upgrade | Why | Cost/month |
-|---|---|---|
-| Cloudflare Workers Paid | 10M requests a month included; the free 100k a day is the first wall | $5 |
-| Durable Objects | ~6M requests, 1M included | ~$1 |
-| Supabase Pro | Cloud atriums past 1 GB and 200 at once | $25 |
-| Supabase Small compute | More queries | $15 |
-| Supabase downloads | ~300 GB, 250 GB included | ~$5 |
-| Resend Pro | Past 3,000 mails a month | $20 |
-| Relay | ~1 TB, Cloudflare's first 1,000 GB free | $0 |
+1. **Save less often while the room is live.** This is the biggest lever;
+   do it before Tier 1.
+   - Today a save goes after each 1.5 s pause, so a day of editing is about
+     150 R2 writes and 600 D1 rows.
+   - A live room already carries every change to everyone in it, so the
+     durable save can wait about 30 s. It should go at once on leaving, or
+     when the room drops. Unsent changes stay in the browser's working copy
+     meanwhile.
+   - This means about 10× fewer D1 and R2 writes. The first free wall moves
+     from about 1,300 to about 2,500 daily actives, where Workers requests
+     become the first wall.
+   - It saves about $16 a month at Tier 1, and about $1,000 a month at
+     Tier 4.
+2. **Batch cursor updates over the relay**, before Tier 2. That's about a
+   third of the relay's bytes.
+3. **A write throttle that doesn't write a D1 row on every write.** It's one
+   of the 4 rows each save writes; it could be counted in memory or in the
+   room instead. This is small, and best done together with change 1.
 
-### Tier 2: 50,000 daily (~$190–400/month)
+## Costs per tier
 
-| Upgrade | Why | Cost/month |
-|---|---|---|
-| Workers requests and CPU | ~45M requests | ~$18 |
-| Durable Objects | ~30M requests, run time | ~$6 |
-| Supabase Pro, Medium compute, +1,000 realtime connections | ~800 in cloud atriums at once | ~$95 |
-| R2 for cloud atrium files | Instead of ~$110 of Supabase downloads | ~$3 |
-| Resend Pro | ~22,000 mails | $20 |
-| Relay | ~5 TB: $200 full, ~$35 batched, $0 capped | $0–200 |
-| Error monitoring (Sentry Team), optional | | $26 |
+**Workers Paid ($5 a month) includes:**
+- Requests: 10M a month, then $0.30 a million. CPU: 30M ms, then $0.02 a
+  million.
+- Durable Objects: 1M requests, then $0.15 a million. 400,000 GB-s, then
+  $12.50 a million.
+- D1: 25 billion rows read and 50 million written a month, then $0.001
+  and $1 a million. 5 GB stored, then $0.75 a GB.
 
-### Tier 3: 150,000 daily, 12,000 at once (~$600–1,100/month)
+**R2, on any plan:** 10 GB stored, then $0.015 a GB-month. 1M writes, then
+$4.50 a million. 10M reads, then $0.36 a million. Downloads are free.
 
-| Upgrade | Why | Cost/month |
-|---|---|---|
-| Workers | ~135M requests | ~$50 |
-| Durable Objects | ~90M requests | ~$30 |
-| Supabase Pro, Large compute, realtime, storage | ~2,400 in cloud atriums at once | ~$170 |
-| R2: cloud files and the public mirror | | ~$25 |
-| Resend Scale | ~75,000 mails | $90 |
-| Relay | ~15 TB: $700 full, ~$200 batched | $200–700 |
-| Sentry Team | | $26 |
+**Relay (TURN):** 1,000 GB a month free, then $0.05 a GB.
 
-### Tier 4: 1,000,000 monthly, 25,000 at once (~$1,600–2,600/month)
+The D1 and R2 columns show today's cost, with the cost after the save
+change in brackets.
 
-| Upgrade | Why | Cost/month |
-|---|---|---|
-| Workers | ~270M requests | ~$100 |
-| Durable Objects | ~180M requests, run time | ~$65 |
-| Supabase Pro, XL compute, 5,000 realtime connections | | ~$280 |
-| Supabase sign-ins past 100,000 a month | ~200,000 email accounts at $0.00325 each | ~$325 |
-| R2 | ~1 TB, mirror reads | ~$90 |
-| Resend | ~150,000 mails | ~$150 |
-| Relay | ~30 TB: $1,450 full, ~$450 batched | $450–1,450 |
-| Monitoring (Sentry Business) | | ~$80 |
+| Tier | Workers | DOs | D1 writes | R2 | Mail | Relay | Monitoring | Total now | After |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | ~$6 | ~$1 | $0 | ~$17 ($1) | $0 | $0 | — | **~$24** | **~$8** |
+| 2 | ~$23 | ~$6 | ~$63 ($0) | ~$109 ($24) | $20 | $0–200 | $26 opt. | **~$220–450** | **~$75–300** |
+| 3 | ~$66 | ~$30 | ~$290 ($44) | ~$345 ($91) | $90 | $0–700 | $26 | **~$850–1,550** | **~$350–1,050** |
+| 4 | ~$131 | ~$65 | ~$635 ($140) | ~$695 ($188) | ~$150 | $0–1,450 | ~$80 | **~$1,750–3,200** | **~$750–2,200** |
 
----
+- **Relay** costs, at each of its three levels (capped / batched / full):
 
-## Path B: everything on Cloudflare
-
-### What replaces what
-
-| Supabase today | On Cloudflare |
-|---|---|
-| Auth for email accounts | The worker (built, phase 10 step 4). Accounts in D1, as Google accounts already are, with kind `email`. The page stretches the password (PBKDF2, 600,000 rounds) and the worker keeps a salted SHA-256 of that: the free plan's 10 ms of CPU a request can't hash passwords itself. Confirmation and reset codes mailed by Resend. Sessions are the worker's own `a1.` sessions, renewed from a renewal token. Existing accounts' credentials are copied as they sign in (no bcrypt export). |
-| Postgres tables of cloud atriums | **Each cloud atrium kept by its own room**: the atrium's Durable Object, which is already its live room, keeps its rows in its own SQLite storage. Recommended form: the same as Drive atriums (`lib/driveSync`, `lib/driveFormat`), with the room as the store instead of Drive. A working copy in the browser (the phase 7 engine), saves sent to the room, which merges them, keeps them, and passes them on. Most of the code exists. |
-| Row-level security | The room's own checks: the roster, roles, passwords. Authorization written in code, reviewed as carefully as the policies were. |
-| Storage | R2, at the same paths. Free downloads. |
-| Realtime | The rooms. A DO holds thousands of WebSockets; no per-connection fee. |
-| `profiles`, settings, themes | D1 `accounts` (`settings` already holds a Google account's). |
-| `lobby_access_lists`, admins, passwords, sizes, counts | The atrium's roster in its DO, and small D1 tables where something must be listed across atriums (an account's cloud atriums, the public list). |
-| Edge Functions | Worker routes. relay, feedback, Pinterest, Google deletion and bans are already there. To port: email-account deletion and its code, welcome for email accounts, and Stripe (`create-contribution`, `contribution-status`, `stripe-webhook` with WebCrypto signature checks, `moderate-contributors`). |
-| `is_platform_admin`, `platform_admins` | A D1 table; the worker's `isOperator`. |
-| `app_changes` markers, `special_themes`, `lobby_visits`, `lobby_sessions` | D1, or the browser where they're per person. |
-| Backups | D1 and Durable Object SQLite keep 30 days of point-in-time recovery. R2 has none, so a scheduled copy of what matters. |
-
-What doesn't change: Drive atriums, browser atriums, the desktop app (its
-vault never used Supabase), Google sign-in.
-
-### Migration, in order
-
-1. **Email accounts into D1** beside Google accounts: sign up, confirm,
-   sign in, reset, delete, sessions. Import Supabase's users (ids kept, so
-   everything keyed by user id holds). The two kinds then share every
-   path in the worker.
-2. **Cloud atriums into their rooms**: the room's SQLite store and the
-   browser working copy with sync, by the Drive format. Copy each existing
-   atrium's rows (same ids) and files (to R2, as `lib/moveToDrive` does
-   for Drive). Cut over atrium by atrium, or all at a quiet hour; Supabase
-   stays read-only meanwhile.
-3. **The remaining functions** to worker routes (Stripe last, tested
-   against Stripe's test mode).
-4. **The app off the Supabase client**: `lib/supabase` and
-   `switchDataClient` simplify to the browser engine and the worker.
-   Desktop is unaffected.
-5. **A month with Supabase read-only** as a backup, then cancel.
-
-Rough size: several focused sessions. Accounts and cloud atriums are the
-two big pieces; the rest is ports of code that mostly exists.
-
-**Trade-offs**
-- One vendor, one bill, one account system, no per-user sign-in fee, no
-  200/500 realtime cap, no project pausing.
-- But: authorization moves from SQL policies into code we must review
-  ourselves.
-- R2 has no point-in-time recovery: back it up.
-- Everything sits with Cloudflare. A Cloudflare outage takes the whole web
-  app down, where today Supabase and Cloudflare fail separately.
-
-### Costs on path B
-
-All of Cloudflare's allowances below come with Workers Paid ($5):
-- Requests: 10M a month.
-- Durable Objects: 1M requests a month.
-- D1 and DO SQLite: 25 billion rows read and 50 million written a month,
-  then $0.001 per million read and $1 per million written; 5 GB stored,
-  then $0.20 a GB.
-- R2: 10 GB stored, then $0.015 a GB; downloads free.
-
-| Tier | Workers | DOs (requests, run time) | Cloud atrium rows (writes, storage) | R2 | Resend | Relay | Monitoring | Total |
-|---|---|---|---|---|---|---|---|---|
-| 1 | $5 | ~$1 | $0 (~6M writes) | <$1 | $20 | $0 | — | **~$27** |
-| 2 | ~$18 | ~$6 | ~$5 (~30M writes, ~30 GB) | ~$2 | $20 | $0–200 | $26 opt. | **~$75–280** |
-| 3 | ~$50 | ~$30 | ~$57 (~90M writes, ~90 GB) | ~$20 | $90 | $200–700 | $26 | **~$475–975** |
-| 4 | ~$105 | ~$65 | ~$165 (~180M writes, ~180 GB) | ~$90 | ~$200 | $450–1,450 | ~$80 | **~$1,150–2,150** |
-
-Resend is a little higher than on path A, since it now also sends
-sign-up, reset and deletion mails for email accounts. Password hashing
-costs a few dollars of CPU at Tier 4.
-
-**Savings against path A:** about $45 a month at Tier 1, rising to about
-$450 at Tier 4. The biggest single difference is Supabase's per-user
-sign-in fee at Tier 4, which path B doesn't have.
-
----
+  | Tier | Data | Capped | Batched | Full |
+  |---|---|---|---|---|
+  | 2 | ~5 TB | $0 | ~$35 | ~$200 |
+  | 3 | ~15 TB | $0 | ~$200 | ~$700 |
+  | 4 | ~30 TB | $0 | ~$450 | ~$1,450 |
+- **Mail** volume and plan at each tier:
+  - Tier 1, about 4,500 a month: fits the two free days.
+  - Tier 2, about 22,500: Resend Pro ($20, 50,000 a month, no daily
+    limit), with Brevo's free day as overflow.
+  - Tier 3: Resend Scale ($90, 100,000).
+  - Tier 4: about $150. Recheck both providers' paid plans then.
+  - A third free provider (Mailjet, 200 a day) would add to the free days
+    if wanted. It's one more entry in `PROVIDERS`.
+- **Monitoring**: error tracking (Sentry Team at $26, Business at about
+  $80). It's optional at Tier 2.
+- **Password hashing** costs nothing: the page does it.
 
 ## When to upgrade: what to watch
 
-| Signal (where) | Do |
+Everything here except Drive is in Developers → Health.
+
+| Meter | Do |
 |---|---|
-| Worker requests regularly past ~70,000 a day (Cloudflare dashboard, Workers) | Workers Paid ($5) |
-| DO requests past ~70,000 a day | Same plan covers it |
-| Supabase storage near 1 GB, or realtime near 200 at once (path A) | Supabase Pro |
-| Relay near its 800 GB cap (`RELAY_BUDGET_GB`, the worker) | Batch cursor updates; then raise the cap if the cost is wanted |
-| Resend near 100 a day | Resend Pro |
-| Drive quota use past ~50% of 1,000,000 a minute (Google Cloud console, Drive API quotas) | The polling change, if not done |
-| Many "Google is busy" reports for public atriums | The R2 mirror |
+| D1 rows written past ~70,000 a day | The save change, if not done; then Workers Paid ($5) |
+| Worker requests past ~70,000 a day | Workers Paid ($5) |
+| Rooms (DO requests) past ~70,000 a day | The same plan covers it |
+| CPU p99 near 10 ms | Find the route in the worker's logs; Workers Paid allows 30 s |
+| Database size near 500 MB | Workers Paid (10 GB a database) |
+| Files written past 1M a month | The save change (R2 bills past it anyway) |
+| Relay near 800 GB | Batch cursor updates; then raise `RELAY_BUDGET_GB` if the cost is wanted |
+| Resend at 80 a day most days, or the Brevo meter climbing | A paid mail plan (Resend Pro, $20) |
+| Drive quota past ~50% of 1,000,000 a minute (Google Cloud console, Drive API quotas) | Drive atriums look less often still |
+| Many "Google is busy" reports for public atriums | Check that the mirror holds them |
 
 ## Recommendation
 
-- Spend nothing until the first wall is near.
-- Workers Paid ($5) is the first and most effective step on both paths.
-- If the web app is meant to grow past a few thousand people a day, path
-  B is cheaper at every tier and removes Supabase's caps. Its cost is
-  engineering time. A good moment is before email-account cloud atriums
-  hold much data, since every atrium added now is one more to move later.
+- Spend nothing until a wall is near. Health shows how near.
+- Make the save change first. It costs nothing, moves the first wall, and
+  is the largest saving at every tier.
+- Workers Paid ($5) is the first purchase. It lifts the request, D1 and
+  room walls together.
+- Buy a paid mail plan around Tier 2, or the first week that mail gets
+  held back.
+- Batch the relay's cursors before raising its cap.
+
+## Trade-offs of one vendor
+
+- One bill, one account system, no per-user sign-in fee and no cap on
+  live connections.
+- Authorization is our own code, in the worker's checks, so it has to be
+  reviewed as such (security reviews 2026-10-22).
+- D1 keeps 30 days of point-in-time recovery; R2 keeps none. If online
+  atriums come to matter, back R2 up on a schedule.
+- A Cloudflare outage takes down sign-in, rooms and online atriums together.
+  Browser and desktop atriums keep working.
