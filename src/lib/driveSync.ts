@@ -1152,8 +1152,13 @@ const ROSTER_AGAIN_MS = 10_000
 const ROSTER_EVENT = 'drive-roster'
 const ROSTER_TOLD_MS = 3_000
 const ROOM_MOST = 40_000
+// With the room live, a save goes through it as it's made, and into the store
+// with the others of the last KEEP_MS: one file for them all, not one for each
+// pause (docs/SCALING.md: each is a write to Drive or R2, and rows in D1).
+// Sooner when the room drops, the page is hidden or closed, or the sync stops.
+const KEEP_MS = 30_000
 
-interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] } }
+interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] }; unkept?: Change[] }
 interface Session {
   lobbyId: string
   me: string
@@ -1169,6 +1174,10 @@ interface Session {
   folders: Map<string, string>
   quiet: number
   looking: number
+  // Saves sent through the room and not in the store yet, and the timer that
+  // puts them there.
+  unkept: Change[]
+  keeping: number
   // When the store was last looked at, and whether the room was live then.
   lookedAt: number
   // When the owner's app last filled a public atrium's mirror in.
@@ -1203,6 +1212,7 @@ const FRESH: State = { merged: [], seen: [], last: null }
 const persist = (s: Session) => s.local.writeVaultJson(s.local.driveStatePath(s.lobbyId), {
   merged: [...s.merged.values()], seen: [...s.seen], last: s.last,
   ...(s.snapshot ? { snapshot: { version: s.snapshot.version, folded: [...s.snapshot.folded] } } : {}),
+  ...(s.unkept.length ? { unkept: s.unkept } : {}),
 } satisfies State)
 // A session's tasks, one at a time: `inQueue` hands back its task's result
 // (or failure); `run` only says, as the sync's own looks need.
@@ -1227,7 +1237,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
+    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, unkept: state.unkept ?? [], keeping: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
     filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0, door: null,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
@@ -1244,14 +1254,29 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const stopRoster = onRoomEvent(ROSTER_EVENT, (_payload, sender) => { if (session === s) void run(s, x => rosterTold(x, sender)) })
   const both = async (x: Session) => { await down(x); await up(x) }
   const look = () => { s.lookedAt = Date.now(); void run(s, both) }
-  // The room back after a gap: what it missed, looked for now.
+  const keepNow = () => { if (session === s && s.unkept.length) void run(s, x => up(x, true)) }
+  // The room back after a gap: what it missed, looked for now. Gone: what
+  // went only through it, into the store now.
   const stopWatching = watchRooms(() => {
     const live = roomStatus(s.lobbyId) === 'live'
     if (session === s && live && !s.roomLive && s.lookedAt) look()
+    if (!live && s.roomLive) keepNow()
     s.roomLive = live
   })
-  s.stopHearing = () => { stopSaves(); stopAsks(); stopRoster(); stopWatching(); s.door?.(); s.door = null }
+  // The page hidden -- most often, on its way to being closed -- or closed:
+  // what went only through the room, into the store first (asked, as a stop does).
+  const hidden = () => { if (document.visibilityState === 'hidden') keepNow() }
+  const closing = (event: BeforeUnloadEvent) => { if (s.unkept.length) { keepNow(); holdPage(event) } }
+  document.addEventListener('visibilitychange', hidden)
+  window.addEventListener('beforeunload', closing)
+  s.stopHearing = () => {
+    stopSaves(); stopAsks(); stopRoster(); stopWatching(); s.door?.(); s.door = null
+    document.removeEventListener('visibilitychange', hidden)
+    window.removeEventListener('beforeunload', closing)
+  }
   look()
+  // Left unkept by the last visit (closed before they went): now.
+  keepNow()
   // Each tick a little early must still count: a second's grace.
   s.looking = window.setInterval(() => { if (session === s && Date.now() - s.lookedAt >= lookEvery(s) - 1000) look() }, LOOK_MS)
 }
@@ -1267,11 +1292,12 @@ export function stopDriveSync(): Promise<void> {
   session = null
   mirrored = null
   window.clearTimeout(s.quiet)
+  window.clearTimeout(s.keeping)
   window.clearInterval(s.looking)
   s.stopHearing()
   s.local.listenToLocalWrites(null)
   window.addEventListener('beforeunload', holdPage)
-  stopping = run(s, up).then(() => {
+  stopping = run(s, x => up(x, true)).then(() => {
     window.removeEventListener('beforeunload', holdPage)
     setStatus({ signInNeeded: false, catchingUp: false, asking: status.asking.length ? [] : status.asking })
   })
@@ -1314,7 +1340,9 @@ export async function reconnectDrive(): Promise<void> {
 /** Now, rather than at the next look: down, then up. For tests and a "sync now". */
 export const syncNow = () => (session ? run(session, async s => { await down(s); await up(s) }) : Promise.resolve())
 
-async function up(s: Session): Promise<void> {
+/** What's changed here, sent: through the live room, or -- with `keep`, or
+ *  without the room -- into the store, with what went only through the room. */
+async function up(s: Session, keep = false): Promise<void> {
   // A public atrium's viewer has no folder to send to: nothing goes.
   if (status.ended || s.kept.viewer) return
   // A viewer's saves aren't taken: none made.
@@ -1327,18 +1355,37 @@ async function up(s: Session): Promise<void> {
   const changes = changesSince(s.merged, current, at).filter(change => change.table !== 'lobbies' || manages(role))
   const unsent = await unsentFiles(s, current.traces)
   const unused = unusedFiles(s, current.traces)
-  if (!changes.length && !unsent.length && !unused.length) return
+  if (!changes.length && !unsent.length && !unused.length && !(keep && s.unkept.length)) return
   // Kept for later: the next diff still has them.
   if (!storeOf(s.kept.roster).canWrite()) { setStatus({ signInNeeded: true }); return }
   // Its files first: whoever takes the save finds them there.
   for (const row of await sendFiles(s, unsent)) changes.push({ table: 'media', id: row.id, at, row })
   for (const url of await removeFiles(unused)) changes.push({ table: 'media', id: url, at, row: null })
   if (unsent.length || unused.length) void spaceOf(s.lobbyId).look().catch(() => {})
-  if (!changes.length) return
-  const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
+  if (!changes.length && !(keep && s.unkept.length)) return
+  // The room live: to everyone in it now (a version from before this hears
+  // only the file, KEEP_MS on), and into the store with the next ones.
+  if (changes.length && !keep && roomStatus(s.lobbyId) === 'live') {
+    const sealed = await sealJson(s.keyring, { v: 1, changes } satisfies DriveSave)
+    if (sealed.length <= ROOM_MOST) {
+      merge(s.merged, changes)
+      s.unkept.push(...changes)
+      s.last = at
+      await persist(s)
+      sendThroughRoom(ROOM_EVENT, { live: true, sealed: bytesToBase64(sealed) })
+      if (!s.keeping) s.keeping = window.setTimeout(() => { s.keeping = 0; if (session === s) void run(s, x => up(x, true)) }, KEEP_MS)
+      return
+    }
+  }
+  // Into the store: each row as it is now, of all that went only through the room, and these.
+  const all = [...new Map([...s.unkept, ...changes].map(change => [`${change.table}/${change.id}`, change])).values()]
+  const sealed = await sealJson(s.keyring, { v: 1, changes: all } satisfies DriveSave)
   const file = await store.write(`${at}.save`, sealed, { parent: s.kept.folder })
   mirrorOf(s.lobbyId, { id: file.id, parent: s.kept.folder, name: `${at}.save`, version: file.version, bytes: sealed })
   merge(s.merged, changes)
+  s.unkept = []
+  window.clearTimeout(s.keeping)
+  s.keeping = 0
   s.last = at
   s.seen.add(file.id)
   await persist(s)
@@ -1350,8 +1397,9 @@ async function up(s: Session): Promise<void> {
  *  who sent it: not a viewer's, nor a removed member's, who may still hold a
  *  key that opens and seals. */
 async function heard(s: Session, payload: unknown, sender: string): Promise<void> {
-  const { file, sealed } = (payload ?? {}) as { file?: unknown; sealed?: unknown }
-  if (typeof file !== 'string' || s.seen.has(file)) return
+  const { file, sealed, live } = (payload ?? {}) as { file?: unknown; sealed?: unknown; live?: unknown }
+  // Live, it has no file yet: the one that holds it comes later, and is taken again (the same).
+  if (live === true ? typeof sealed !== 'string' : typeof file !== 'string' || s.seen.has(file)) return
   const roster = s.roster?.roster ?? await lookAtRoster(s)
   let role = roster && placeOf(roster, sender)?.role
   // Someone let in since this browser read the roster: its version looked at
@@ -1363,7 +1411,7 @@ async function heard(s: Session, payload: unknown, sender: string): Promise<void
   }
   if (!role || role === 'viewer') return
   if (typeof sealed !== 'string') return down(s)
-  await take(s, [{ id: file, by: sender, save: fromJson<DriveSave>(await opened(s, base64ToBytes(sealed))) }])
+  await take(s, [{ id: typeof file === 'string' ? file : undefined, by: sender, save: fromJson<DriveSave>(await opened(s, base64ToBytes(sealed))) }])
 }
 
 /** A sealed file opened -- after reading the roster again, if it was sealed
@@ -1584,7 +1632,8 @@ async function tidy(s: Session, roster: Roster, listed: { user: string; files: L
 
 // A save, and whose it is: the writer whose folder it's in, or who the room
 // says sent it.
-interface Saved { id: string; by: string; save: DriveSave }
+// `id`: its file's -- none for a save heard live, whose file comes later.
+interface Saved { id?: string; by: string; save: DriveSave }
 
 /** Saves read -- from Drive, or the room -- merged, and what took brought into
  *  the working copy. Changes to the atrium's own row only from its owner and
@@ -1614,7 +1663,7 @@ async function take(s: Session, saves: Saved[]): Promise<void> {
   await bringIn(s, changes)
   s.merged = merged
   s.last = last
-  for (const { id } of saves) s.seen.add(id)
+  for (const { id } of saves) if (id) s.seen.add(id)
   await persist(s)
 }
 
