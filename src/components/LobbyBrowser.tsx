@@ -815,15 +815,21 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }
   // While the browser's open: Drive atriums looked at again each minute --
   // their owners' latest pictures taken, those one's out of let go (Google's
-  // quota, a few metadata reads each) -- and the public list every fifth:
-  // that's the Atrium's own server, whose free day is 100,000 requests for
-  // everyone together. Not while the page is hidden.
+  // quota, a few metadata reads each) -- and every fifth, the public list and
+  // what's come for one meanwhile (invitations, one's own atriums put online
+  // elsewhere): that's the Atrium's own server, whose free day is 100,000
+  // requests for everyone together. Not while the page is hidden.
+  const lookAgain = useRef(lookForInvitations)
+  lookAgain.current = lookForInvitations
   useEffect(() => {
     let minutes = 0
     const every = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void loadBrowserLobbies()
-      if (++minutes % 5 === 0) void loadPublicDrive()
+      if (++minutes % 5 === 0) {
+        void loadPublicDrive()
+        lookAgain.current()
+      }
     }, 60_000)
     return () => window.clearInterval(every)
   }, [])
@@ -1531,7 +1537,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               </button>
             ))}
           </div>
-          <button onClick={loadLobbies} disabled={loading} title={t('browser.refresh')} aria-label={t('browser.refresh')} className={ICON_BUTTON}>
+          <button onClick={() => { loadLobbies(); lookForInvitations() }} disabled={loading} title={t('browser.refresh')} aria-label={t('browser.refresh')} className={ICON_BUTTON}>
             <span className={loading ? 'animate-spin' : ''}>↻</span>
           </button>
           {/* The atrium's own, its state the app's (lib/fullscreen). */}
