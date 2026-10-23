@@ -1269,6 +1269,35 @@ A hosted atrium is then a Drive atrium whose store is ours:
        'unsafe-inline' and 'unsafe-eval' (kept in devCsp for the dev server).
 7. The app off the Supabase client. A month with Supabase read-only, then
    cancel.
+   - **Left, as of 2026-10-23 (the user: "save that plan for now").** Atriums
+     and their files are off Supabase already (hosted, or held in R2);
+     contributions, themes, visits, profiles, Pinterest and new sign-ups are
+     the worker's. What's left is mostly existing accounts:
+     1. **Their sign-in.** Adopted ones (signed in with a password since step
+        4) become email accounts; never-adopted ones get a reset email.
+        Existing accounts' "Sign in with Google" (Supabase's Google OAuth)
+        moves to the worker's Google sign-in. Sign-up stops asking Supabase
+        (`existingAccountFor`, `takenInSupabase`).
+     2. **Their Supabase functions:** deletion codes and delete-account,
+        send-welcome, ban-account (bans kept in Supabase Auth), and username
+        sign-in (`email_for_sign_in`).
+     3. **Leftover cloud-atrium code**, nothing uses it now -- to delete, not
+        port: the RPCs lobby_has_password, get_user_lobby_access_status,
+        can_user_join_lobby, touch_lobby_session, transfer_lobby_ownership,
+        get_user_lobby_count, user_has_member_access; LobbyManagement.
+     4. **Files still written to Supabase Storage** (the `traces` bucket):
+        atrium previews (lib/atriumPreview), drawings (lib/drawingFiles),
+        rendered PDF pages (TraceOverlay); and any theme backgrounds still
+        there. Those writes move to R2; what's still referenced is copied.
+     5. **supabase-js out of the app**, then a month read-only, then cancel.
+   - The user: deletes the old Stripe endpoint `we_1U5qqpA4whuztXi4ySt9Rqp0`;
+     at cutover, the reset emails go out.
+   - Rate limiting (free plan: path-only expressions, per IP, 10 s, Block 10
+     s, one rule): "Atrium worker: flood guard", 100 requests / 10 s on the
+     worker's paths except file traffic (`/store/`, `/mirror/`) and Stripe's
+     webhook -- the app reads files 6 at a time, which one limit for all
+     would throttle. It bounds floods, not a slow drain of the 100k/day;
+     only Workers Paid ($5/month) lifts that.
 8. Drive atriums on desktop. Separate; the desktop never used Supabase.
    - **Built (2026-10-23).** The desktop app signs in by the site: it asks
      the worker for a link (`/auth/link`: a code it shows, a secret it
