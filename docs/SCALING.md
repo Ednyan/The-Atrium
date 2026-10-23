@@ -38,10 +38,14 @@ days: redo these tables from it once there's real traffic.
   minute and 400 million a day per project.
 - **The browser and the desktop app**: browser atriums and the desktop
   vault cost us nothing.
-- **Mail** (`workers/rooms/src/mail.ts`) goes through Resend first, then
-  Brevo. Resend's free plan allows 100 a day and 3,000 a month; Brevo's
-  allows 300 a day. Mail that can wait stops at 80% of each provider's
-  day, so sign-up and reset codes always have the rest.
+- **Mail** (`workers/rooms/src/mail.ts`) goes through Resend and Brevo.
+  Resend's free plan allows 100 a day and 3,000 a month; Brevo's allows
+  300 a day.
+  - Sign-up and reset codes go by Resend alone. Brevo adds an Unsubscribe
+    link to everything it sends, and one click would silently stop that
+    address's later Brevo mail.
+  - Mail that can wait goes by Brevo first, then Resend up to 80% of its
+    day, so the rest of Resend's day is kept for codes.
 
 ## The usage model
 
@@ -120,10 +124,12 @@ Daily limits reset at 00:00 UTC.
    At about 75 writes a person a month, writes pass 1M at about 13,000
    daily actives. Storage passes 10 GB at about 1,700: pennies a GB.
 7. **Mail, 400 a day**: Resend 100 and Brevo 300, with Resend also limited
-   to 3,000 a month. Codes keep the last 20% of each day.
+   to 3,000 a month.
+   - Codes go by Resend alone: up to 100 a day, and at least 20 even when
+     everything else is spent.
    - On an even day this lasts to about 27,000 daily actives.
-   - Sign-ups come in bursts (a post, a launch), and that's when mail that
-     can wait is held back first.
+   - Sign-ups come in bursts (a post, a launch). A burst of more than about
+     100 codes in a day is the real limit, before the 400.
 8. **The relay never bills.** Past 800 GB in 31 days it gives no more
    passes, and those people's cursors go through the room instead. That's
    slower, and costs a few more DO requests.

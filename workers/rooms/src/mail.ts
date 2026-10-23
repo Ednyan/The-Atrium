@@ -1,5 +1,5 @@
-// Mail from the Atrium, through Resend and then Brevo (their keys secrets
-// here, RESEND_API_KEY and BREVO_API_KEY):
+// Mail from the Atrium, through Resend and Brevo (their keys secrets here,
+// RESEND_API_KEY and BREVO_API_KEY): sign-up and reset codes (src/auth.ts);
 // the report form's, to support, for either kind of account; and a Google
 // account's welcome, as it chooses its username (src/people.ts), and its
 // goodbye, once it's deleted (src/google.ts) -- an existing account's come
@@ -26,15 +26,19 @@ export const SITE = 'https://digitalatrium.org'
 
 interface Mail { from: string; to: string; reply_to?: string; subject: string; html: string; text: string }
 
-// Who sends it: Resend, then Brevo -- each free plan's day on its own (100,
-// 300 a day), the next taken when one's spent or refuses it (Resend's month
-// of 3,000 too, which it says by refusing). One without its key is skipped.
-// Mail that can wait -- welcomes, goodbyes, reports, a contributor's -- stops
-// at CAN_WAIT of each day: the rest is kept for sign-up and reset codes.
+// Who sends it -- each free plan's day on its own (Resend 100, Brevo 300 a
+// day; Resend's month of 3,000 too, which it says by refusing), the next taken
+// when one's spent or refuses it, one without its key skipped:
+// - A code by Resend alone. Brevo puts an Unsubscribe link on everything it
+//   sends, and one clicked has it drop that address's later mail without a
+//   word -- a code that never comes.
+// - Mail that can wait -- welcomes, goodbyes, reports, a contributor's -- by
+//   Brevo first, then Resend up to CAN_WAIT of its day: the rest of Resend's
+//   day is the codes'.
 const CAN_WAIT = 0.8
 type ProviderName = 'resend' | 'brevo'
 interface Provider { name: ProviderName; daily: number; key: (env: Env) => string | undefined; post: (env: Env, mail: Mail) => Promise<Response> }
-const PROVIDERS: Provider[] = [
+const [RESEND, BREVO]: Provider[] = [
   {
     name: 'resend', daily: 100, key: env => env.RESEND_API_KEY,
     post: (env, mail) => fetch(outbound(env, 'https://api.resend.com/emails'), {
@@ -58,8 +62,11 @@ const PROVIDERS: Provider[] = [
     },
   },
 ]
-/** Whether any mail can be sent: a provider with its key. */
-export const mailReady = (env: Env) => PROVIDERS.some(provider => !!provider.key(env))
+// Each provider tried, and how much of its day may go.
+const CODES: [Provider, number][] = [[RESEND, 1]]
+const CAN_WAIT_BY: [Provider, number][] = [[BREVO, 1], [RESEND, CAN_WAIT]]
+/** Whether mail that can wait can be sent: a provider with its key. */
+export const mailReady = (env: Env) => CAN_WAIT_BY.some(([provider]) => !!provider.key(env))
 
 // What each has sent today (UTC), counted here -- Resend's own count, when
 // its last answer was today's, if that's more (it counts Supabase's mail too).
@@ -80,12 +87,12 @@ async function sentToday(env: Env): Promise<Sent> {
   }
 }
 
-/** Sent by the first provider with room for it today -- all of a day for a
- *  code (`urgent`), the part that can wait for the rest. Whether it went. */
+/** Sent by the first provider with room for it today: a code's (`urgent`),
+ *  or what can wait's. Whether it went. */
 async function send(env: Env, mail: Mail, urgent = false): Promise<boolean> {
   const sent = await sentToday(env)
-  for (const provider of PROVIDERS) {
-    if (!provider.key(env) || (sent[provider.name] ?? 0) >= provider.daily * (urgent ? 1 : CAN_WAIT)) continue
+  for (const [provider, part] of urgent ? CODES : CAN_WAIT_BY) {
+    if (!provider.key(env) || (sent[provider.name] ?? 0) >= provider.daily * part) continue
     const response = await provider.post(env, mail).catch(error => { console.error(`[mail] ${provider.name}:`, error); return null })
     if (provider.name === 'resend' && response) await keepCounts(env, response.headers)
     if (response?.ok) {

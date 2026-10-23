@@ -263,7 +263,7 @@ function metersOf(env: Env, now: number): Promise<Meter[]> {
       const { daily, monthly, at } = JSON.parse(kept) as { daily: number | null; monthly: number | null; at: number }
       return [{ used: daily ?? 0, at }, { used: monthly ?? 0, at }]
     }],
-    // Brevo's day (src/mail.ts), counted by the worker as it sends: what Resend's had no room for.
+    // Brevo's day (src/mail.ts), counted by the worker as it sends: the mail that can wait goes there first.
     [[{ key: 'mailBrevo', limit: 300, unit: 'count', per: 'day' }], async () => {
       if (!env.BREVO_API_KEY) throw new Error('No BREVO_API_KEY yet: all the mail goes through Resend.')
       const kept = JSON.parse((env.PEOPLE && await setting(env.PEOPLE, SENT_TODAY)) || 'null') as { day: string; brevo?: number } | null
