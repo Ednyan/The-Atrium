@@ -41,7 +41,7 @@ export default function DesktopAccount({ buttonClass }: { buttonClass: string })
   }
 
   return (
-    <div className="mt-3 border border-nier-border/20 bg-nier-black/60 px-4 py-3">
+    <div className="h-full border border-nier-border/25 px-4 py-3" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-1">{t('browser.account.title')}</div>

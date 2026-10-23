@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
+import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
 import { gridStyleOf } from '../lib/customThemes'
 import { GROUND_DEFAULTS, GROUND_PX, groundKey, groundTile } from '../lib/ground'
@@ -1095,7 +1096,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       window.removeEventListener('drop', clear)
     }
   }, [])
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isFullscreen = useFullscreen()
   // The top-right bar the Leave button is in, for the leave prompt to open under.
   const sessionBarRef = useRef<HTMLDivElement>(null)
 
@@ -4114,44 +4115,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       themeManagerRef.current.createParticles(window.innerWidth, window.innerHeight, cameraPositionRef.current.x, cameraPositionRef.current.y)
     }
   }, [viewTheme])
-
-  // Fullscreen toggle
-  const toggleFullscreen = async () => {
-    if (isDesktop) {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const win = getCurrentWindow()
-      const current = await win.isFullscreen()
-      await win.setFullscreen(!current)
-      setIsFullscreen(!current)
-    } else {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen()
-        setIsFullscreen(true)
-      } else {
-        await document.exitFullscreen()
-        setIsFullscreen(false)
-      }
-    }
-  }
-
-  // Listen for fullscreen changes (e.g. user presses Escape)
-  useEffect(() => {
-    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', handleFsChange)
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F11') {
-        e.preventDefault()
-        toggleFullscreen()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
 
   // Any in-app drag that isn't a file or a link. Listed in one place because
   // the three handlers below have to agree exactly: if dragover exempts a

@@ -348,6 +348,21 @@ export async function roomNameOf(lobbyId: string): Promise<string> {
 nameRoomsBy(roomNameOf)
 export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
 
+// Atriums left on this device on purpose, each account's: not joined again by
+// themselves (the atrium browser's quiet joins), only by hand -- which ends it.
+const LEFT_HERE = 'atrium.leftHere'
+function leftHere(lobbyId: string, left: boolean, user = signedInHere()) {
+  if (!user) return
+  const byAccount = stored<string[]>(LEFT_HERE)
+  const mine = new Set(byAccount[user] ?? [])
+  if (left) mine.add(lobbyId)
+  else mine.delete(lobbyId)
+  byAccount[user] = [...mine]
+  store_(LEFT_HERE, byAccount)
+}
+/** Left on this device on purpose: joined again only by hand. */
+export const isLeftHere = (lobbyId: string) => (stored<string[]>(LEFT_HERE)[signedInHere()] ?? []).includes(lobbyId)
+
 /** Out of a Drive atrium on this browser, for the account signed in: off its
  *  list, and its working copy gone -- unless another account here still
  *  holds it, whose copy it is too. The copy's sync state goes with it. The
@@ -356,6 +371,7 @@ export const forgetDriveAtrium = (lobbyId: string) => keep(lobbyId, null)
  *  Quietly not without Drive just now (its window needs a click). */
 export async function leaveDriveAtrium(lobbyId: string, deleted = false): Promise<void> {
   await settled()
+  leftHere(lobbyId, true)
   const folder = allKept()[lobbyId]?.folder
   if (deleted && folder && storeOf(folder).canWrite()) await removeQuietly(folder).catch(error => console.warn('[drive] one’s folder for a deleted atrium:', error))
   forgetDriveAtrium(lobbyId)
@@ -562,19 +578,23 @@ export async function readInvite(rosterId: string): Promise<{ lobbyId: string; n
   return { lobbyId: roster.lobbyId, name: roster.name, owner: roster.members.find(member => member.role === 'owner')?.name ?? '' }
 }
 
-/** One's own atriums in the Atrium's cloud not kept here -- made, or moved
- *  there, on another device: each a folder in one's hosted root, named for
- *  the atrium, holding its roster (an atrium one's only in holds one's saves
- *  alone). Joined as their owner (joinDriveAtrium) wherever one signs in. */
-export async function ownHostedElsewhere(me: string): Promise<{ lobbyId: string; roster: string }[]> {
-  const root = (await myEntry()).hosted_root
-  if (!root) return []
+/** One's own atriums not kept here -- made, or moved, on another device:
+ *  each a folder in one's root, named for the atrium, holding its roster (an
+ *  atrium one's only in holds one's saves alone). In the Atrium's cloud; and
+ *  in Drive, when Drive's at hand with no window. Joined as their owner
+ *  (joinDriveAtrium) wherever one signs in. */
+export async function ownElsewhere(me: string): Promise<{ lobbyId: string; roster: string }[]> {
+  const entry = await myEntry()
   const kept = allKept(me)
   const found: { lobbyId: string; roster: string }[] = []
-  for (const folder of await hosted.listByLink(root)) {
-    if (folder.name in kept) continue
-    const roster = (await hosted.listByLink(folder.id)).find(file => file.name === 'atrium.roster')
-    if (roster) found.push({ lobbyId: folder.name, roster: roster.id })
+  const roots: [DriveStore, string | null | undefined][] = [[hosted, entry.hosted_root], [driveStore, drive.hasDriveToken() ? entry.drive_root : null]]
+  for (const [where, root] of roots) {
+    if (!root) continue
+    for (const folder of await where.listByLink(root)) {
+      if (folder.name in kept) continue
+      const roster = (await where.listByLink(folder.id)).find(file => file.name === 'atrium.roster')
+      if (roster) found.push({ lobbyId: folder.name, roster: roster.id })
+    }
   }
   return found
 }
@@ -604,6 +624,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
     const folder = await folderFor(root, lobbyId)
     keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(await keyringOf(roster, me.id, own.identity.privateJwk)), owner: member.role === 'owner' }, me.id)
     await clearSecret(rosterId)
+    leftHere(lobbyId, false)
     return { lobbyId, state: 'in' }
   }
   // Added before one had a key pair: in at once, by the invitation's secret
@@ -617,6 +638,7 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
       onStep('folder')
       const folder = await folderFor(root, lobbyId)
       keep(lobbyId, { roster: rosterId, folder, keys: await keysOf(keyring), owner: false }, me.id)
+      leftHere(lobbyId, false)
       return { lobbyId, state: 'in' }
     }
   }
@@ -634,12 +656,14 @@ export async function joinDriveAtrium(rosterId: string, me: { id: string; name: 
 // the atrium browser, so nobody needs a link. Newest first.
 // `auto`: joins by itself, the worker having vouched for it -- one's cloud
 // atrium moved, its people with it (lib/moveToDrive).
-export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number; auto: boolean }
+// `member`: let in already (no secret to open it with): in on another
+// device, or added with a key pair -- one's own, joined without asking.
+export interface Invitation { id: string; roster: string; lobbyId: string; name: string; from: string; at: number; auto: boolean; member: boolean }
 export async function myInvitations(): Promise<Invitation[]> {
   return (await invitationsToMe())
     // Not those one's in -- but those one only reads, public: added, one joins.
     .filter(row => { const kept = allKept()[row.lobby_id]; return !kept || !!kept.viewer })
-    .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at, auto: !!row.auto }))
+    .map(row => ({ id: row.id, roster: row.roster, lobbyId: row.lobby_id, name: row.name, from: row.from_name ?? '', at: row.created_at, auto: !!row.auto, member: row.secret === null }))
 }
 export const declineInvitation = (id: string) => withdrawInvitation({ id }).then(() => {})
 // Told to someone added, in their atrium browser: with the secret that opens
@@ -1861,6 +1885,17 @@ async function managed(s: Session): Promise<Roster> {
 // A task in step with `lobbyId`'s sync: the open atrium's, or one started for
 // it now and stopped after (as keepInDrive does), its copy brought up to date
 // first.
+/** An online atrium's contents replaced by another's (lib/atriumCopy,
+ *  copyInto, as `replace`): brought up to date first, so only what was
+ *  there goes, then all of it sent -- what it held, as deletions. */
+export function replaceContents(lobbyId: string, me: string, replace: () => Promise<void>): Promise<void> {
+  return withSession(lobbyId, me, async s => {
+    await down(s)
+    await replace()
+    await up(s)
+  })
+}
+
 async function withSession<T>(lobbyId: string, me: string, task: (s: Session) => Promise<T>): Promise<T> {
   if (session?.lobbyId === lobbyId) return inQueue(session, task)
   await startDriveSync(lobbyId, me)

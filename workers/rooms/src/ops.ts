@@ -54,6 +54,8 @@ export interface Meter {
   // Requests stopped for going past it (the CPU's): its only hard edge --
   // Cloudflare lets a request run over now and then.
   over?: number
+  // The middle request's, beside the slowest 1%'s (the CPU's): what most cost.
+  typical?: number
   // When it was counted, if not just now (Resend's, as the last email brought it).
   at?: number
   error?: string
@@ -215,9 +217,10 @@ function metersOf(env: Env, now: number): Promise<Meter[]> {
     }],
     // The worker's CPU a request (p99), against the 10 ms each may use; and how many ran out today.
     [[{ key: 'cpu', limit: 10, unit: 'ms', per: 'request' }], async () => {
-      const account = await graph(env, `cpu: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", ${since(today)} }) { quantiles { cpuTimeP99 } }
+      const account = await graph(env, `cpu: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", ${since(today)} }) { quantiles { cpuTimeP50 cpuTimeP99 } }
         over: workersInvocationsAdaptive(limit: 1, filter: { scriptName: "${SCRIPT}", status_in: ["exceededResources", "exceededCpu"], ${since(today)} }) { sum { requests } }`)
-      return [{ used: Number(account.cpu?.[0]?.quantiles?.cpuTimeP99 ?? 0) / 1000, over: total(account.over, 'requests') }]
+      const quantiles = account.cpu?.[0]?.quantiles
+      return [{ used: Number(quantiles?.cpuTimeP99 ?? 0) / 1000, typical: Number(quantiles?.cpuTimeP50 ?? 0) / 1000, over: total(account.over, 'requests') }]
     }],
     [[{ key: 'rooms', limit: 100_000, unit: 'count', per: 'day' }], async () =>
       [{ used: total((await graph(env, `durableObjectsInvocationsAdaptiveGroups(limit: 10000, filter: { date_geq: ${on(today)} }) { sum { requests } }`)).durableObjectsInvocationsAdaptiveGroups, 'requests') }]],

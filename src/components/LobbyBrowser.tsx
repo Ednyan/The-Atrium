@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, lazy, Suspense, type ReactNode } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
+import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import DesktopAccount from './DesktopAccount'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
@@ -11,7 +12,7 @@ import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
-import { anotherAccountsDriveAtrium, askToJoin, ownHostedElsewhere, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -20,15 +21,15 @@ import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPa
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
 import ThemeToggle from './ThemeToggle'
-import MonthlyGoalColumn from './MonthlyGoalColumn'
+import Atmosphere from './Atmosphere'
+import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import { startingAtriumTheme } from '../lib/atriumThemePresets'
 import { themeOf } from '../lib/customThemes'
 import { defaultPresetFor } from '../lib/tracePresets'
 import { seasonalThemeNow } from '../lib/specialThemes'
-import { resolveThemeNow } from '../lib/useLandingTheme'
-import { openContributors } from '../lib/contributorsRoute'
+import { resolveThemeNow, useLandingTheme } from '../lib/useLandingTheme'
+import type { TranslationKey } from '../locales/en'
 import { useTranslation } from '../lib/i18n'
-import { getCachedContributions, startContributionsRefresh, type ContributionsData } from '../lib/contributions'
 
 const ExportDatabase = lazy(() => import('./ExportDatabase'))
 // Phase 4's Drive test (components/DriveSpike): the platform operator's alone.
@@ -42,17 +43,43 @@ import type { PreviewDetail } from '../lib/atriumPreview'
 import { googleOpen } from '../lib/drive'
 import { ACCOUNT_EVENT, googleAccount, workerAccount } from '../lib/signedIn'
 
-// An atrium in the browser's lists, the same in each (AtriumCard), two to a
-// row where there's room.
-const ROW_GRID = 'grid gap-3 sm:grid-cols-2'
-const ROW = 'bg-nier-black border border-nier-border/20 p-4 hover:border-nier-border/40 transition-colors'
+// An atrium in the browser's lists, the same in each (AtriumCard): as cards,
+// three to a row where there's room, or as a list, a row each.
+export type BrowserView = 'grid' | 'list'
+const ROW_GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
+const ROW_LIST = 'flex flex-col gap-2'
+const ROW = 'border border-nier-border/25 p-4 hover:border-nier-border/60 transition-colors'
+const ROW_FILL = { backgroundColor: 'rgb(var(--c-ground) / 0.75)' }
+const ICON_BUTTON = 'w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50'
+const SMALL_BUTTON = 'px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50'
+const FOOT_BUTTON = 'flex-1 min-w-[10rem] py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
+// Which way the lists are shown, kept for the next visit.
+const VIEW_KEY = 'atrium.browserView'
+
+// One of the browser's lists: numbered as it's shown, its name, how many,
+// and what can be done to the list as a whole.
+function BrowserSection({ index, title, count, action, children }: { index: number; title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section>
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">{String(index).padStart(2, '0')}</span>
+        <h2 className="text-nier-strong text-xs tracking-[0.25em] uppercase">{title}</h2>
+        <div className="flex-1 min-w-[2rem] h-[1px] bg-gradient-to-r from-nier-border/40 to-transparent" />
+        {count !== undefined && <span className="text-nier-bg/65 text-xs tabular-nums">{count}</span>}
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+const unique = <T extends { id: string }>(list: T[]) => [...new Map(list.map(item => [item.id, item])).values()]
 const ROW_BUTTON = 'px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors'
 
 // An atrium's picture on its card (lib/atriumPreview) -- read from the vault
 // first, on desktop -- and the atrium's mark on its grid where there isn't
 // one yet. Edge to edge across the top of the card.
-function AtriumPreview({ url }: { url?: string | null }) {
+function AtriumPreview({ url, small = false }: { url?: string | null; small?: boolean }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     if (!url) { setSrc(null); return }
@@ -62,7 +89,7 @@ function AtriumPreview({ url }: { url?: string | null }) {
     return () => { live = false }
   }, [url])
   return (
-    <div className="relative -mx-4 -mt-4 mb-3 aspect-[16/10] overflow-hidden border-b border-nier-border/20 bg-nier-blackLight">
+    <div className={`relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`}>
       {src ? (
         <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(null)} />
       ) : (
@@ -90,7 +117,8 @@ const TAG = 'px-1.5 py-0.5 border text-[10px] tracking-[0.12em] uppercase'
 // An atrium on the browser's lists, the same card in each: its picture, its
 // name, what it is as tags, Enter and at most one other thing in sight (its
 // settings), the rest under ⋯.
-function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, enterDisabled, side, menu, moreLabel }: {
+function AtriumCard({ view, name, renaming, preview, tags, busy, onEnter, enterLabel, enterDisabled, side, menu, moreLabel }: {
+  view: BrowserView
   name: string
   renaming?: ReactNode
   preview?: string | null
@@ -103,11 +131,12 @@ function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, 
   menu: CardAction[]
   moreLabel: string
 }) {
+  const list = view === 'list'
   return (
-    <div className={`${ROW} group`}>
-      <AtriumPreview url={preview} />
-      <div className="flex flex-col gap-3">
-        <div className="min-w-0">
+    <div className={`${ROW} group ${list ? 'flex items-center gap-4 py-3' : ''}`} style={ROW_FILL}>
+      <AtriumPreview url={preview} small={list} />
+      <div className={list ? 'flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-3' : 'flex flex-col gap-3'}>
+        <div className="min-w-0 flex-1">
           {renaming ?? <h4 className="text-nier-bg text-sm tracking-wide break-words">{name}</h4>}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {tags.map((tag, i) => (
@@ -118,14 +147,14 @@ function AtriumCard({ name, renaming, preview, tags, busy, onEnter, enterLabel, 
           </div>
           {busy && <p role="status" className="mt-2 text-nier-bg text-[11px] tracking-[0.12em] uppercase">◇ {busy}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={onEnter} disabled={enterDisabled} className={`${ROW_ENTER} disabled:opacity-40`}>{enterLabel}</button>
           {side && (
             <button onClick={side.onClick} disabled={side.disabled} aria-pressed={side.pressed} className={`${ROW_BUTTON} disabled:opacity-40 ${side.pressed ? 'border-nier-border/70 text-nier-bg' : ''}`}>
               {side.label}
             </button>
           )}
-          <div className="flex-1" />
+          {!list && <div className="flex-1" />}
           <CardMenu items={menu} label={moreLabel} />
         </div>
       </div>
@@ -250,7 +279,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [withGoogle, setWithGoogle] = useState(() => !!googleAccount())
   // A guest, or a Google account (phase 6): no atriums in Supabase -- those
   // are an existing account's, until they move to the Atrium's cloud.
-  const noCloud = guest || !!workerAccount()
+  // (On desktop that list is the vault's, there signed in or not.)
+  const noCloud = !isDesktop && (guest || !!workerAccount())
   // Atriums in the Atrium's cloud: for anyone signed in (phase 10).
   const canHost = !isDesktop && !guest
   // On desktop: the account the site signed in (components/DesktopAccount),
@@ -294,59 +324,22 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [showExport, setShowExport] = useState(false)
   const [showVaultRecovery, setShowVaultRecovery] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
-  // Cache first, refreshed behind: the line below the sections is drawn on the
-  // first frame and works offline, like the one on the welcome screen.
-  const [contributions, setContributions] = useState<ContributionsData>(() => getCachedContributions())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   // A cloud atrium moved to its owner's Drive (lib/moveToDrive): asked first,
   // as a deletion is -- it ends with one.
   const [moveConfirmId, setMoveConfirmId] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isFullscreen = useFullscreen()
+  const landingTheme = useLandingTheme()
+  const [view, setView] = useState<BrowserView>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid' } catch { return 'grid' } })
+  const chooseView = (next: BrowserView) => {
+    setView(next)
+    try { localStorage.setItem(VIEW_KEY, next) } catch { /* this visit only */ }
+  }
   const [vaultPath, setVaultPath] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
   const { username } = useGamePick('username')
   const [vaultBusy, setVaultBusy] = useState(false)
   const [vaultError, setVaultError] = useState<string | null>(null)
-
-  const toggleFullscreen = async () => {
-    if (isDesktop) {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const win = getCurrentWindow()
-      const current = await win.isFullscreen()
-      await win.setFullscreen(!current)
-      setIsFullscreen(!current)
-    } else {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen()
-        setIsFullscreen(true)
-      } else {
-        await document.exitFullscreen()
-        setIsFullscreen(false)
-      }
-    }
-  }
-
-  // Memoize particle positions (fireflies)
-  const particles = useMemo(() => 
-    [...Array(15)].map((_, i) => ({
-      left: `${(i * 17 + 3) % 96}%`,
-      top: `${(i * 23 + 5) % 94}%`,
-      duration: 8 + (i * 1.5) % 6,
-      delay: i * 0.5,
-    })), []
-  )
-
-  // Memoize background rectangles (trace-like elements)
-  const backgroundRects = useMemo(() => 
-    [...Array(10)].map((_, i) => ({
-      left: `${(i * 19 + 7) % 90}%`,
-      top: `${(i * 31 + 12) % 85}%`,
-      width: 30 + (i * 17) % 80,
-      height: 15 + (i * 13) % 40,
-      rotation: (i * 7) % 15 - 7,
-      delay: i * 0.3,
-    })), []
-  )
 
   // Initial load and clear active_lobby_id (user is browsing, not in a lobby)
   useEffect(() => {
@@ -371,7 +364,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     clearAndLoad()
   }, [])
 
-  useEffect(() => startContributionsRefresh(setContributions), [])
 
   // An invite to a Drive atrium, arrived in the address's # (lib/driveSync):
   // read by link, then offered -- or, already joined here, simply opened.
@@ -556,6 +548,64 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     checkCanCreateLobby()
   })
 
+  // On desktop: an online atrium kept as a copy of its own on this computer
+  // (lib/atriumCopy), the device's; and one of the vault's put online, for the
+  // account signed in -- as a new atrium, or into one of one's own of its name
+  // there, its contents replaced (its people stay).
+  const keepOffline = async (lobby: LobbyWithOwner) => {
+    setConverting(lobby.id)
+    try {
+      await browserEngine()
+      const { copyAtrium } = await import('../lib/atriumCopy')
+      await copyAtrium(lobby.id, lobby.name, useGameStore.getState().userId)
+      showToast(t('browser.offlineCopied', { name: lobby.name }))
+      loadLobbies()
+    } catch (err) {
+      setError(driveProblem(err))
+    } finally {
+      setConverting(null)
+    }
+  }
+  const [online, setOnline] = useState<{ lobby: LobbyWithOwner; where?: 'cloud' | 'drive'; same?: LobbyWithOwner; busy?: boolean } | null>(null)
+  const sameNamed = (lobby: LobbyWithOwner, where: 'cloud' | 'drive') => browserLobbies.find(other =>
+    other.inDrive && !other.publicRoster && isDriveOwner(other.id) && (where === 'cloud') === isHostedAtrium(other.id)
+    && other.name.trim().toLowerCase() === lobby.name.trim().toLowerCase())
+  const putOnline = async (lobby: LobbyWithOwner, where: 'cloud' | 'drive', into: LobbyWithOwner | null) => {
+    setOnline(current => current && { ...current, busy: true })
+    try {
+      const me = await sharedMe()
+      await ensureSignedIn(where === 'cloud' ? HOSTED_MARK : undefined)
+      await browserEngine()
+      const { copyAtrium, copyInto } = await import('../lib/atriumCopy')
+      if (into) {
+        await replaceContents(into.id, me.id, () => copyInto(lobby.id, into.id))
+        showToast(t('browser.putOnline.replaced', { name: into.name }))
+      } else {
+        const id = await copyAtrium(lobby.id, lobby.name, me.id)
+        try {
+          await keepInDrive(id, lobby.name, me, where === 'cloud')
+        } catch (error) {
+          // Not there: the copy made for it goes too.
+          await (await browserEngine()).localClient.from('lobbies').delete().eq('id', id)
+          throw error
+        }
+        rememberBrowserAtrium(id)
+        showToast(t('browser.putOnline.done', { name: lobby.name }))
+      }
+      setOnline(null)
+      loadLobbies()
+    } catch (err) {
+      setOnline(null)
+      setError(driveProblem(err))
+    }
+  }
+  const chooseWhere = (where: 'cloud' | 'drive') => {
+    if (!online) return
+    const same = sameNamed(online.lobby, where)
+    if (same) setOnline({ ...online, where, same })
+    else void putOnline(online.lobby, where, null)
+  }
+
   // A Drive atrium's settings, from its card (components/DriveSettings).
   const [driveSettingsId, setDriveSettingsId] = useState<string | null>(null)
   const [myId, setMyId] = useState('')
@@ -577,25 +627,23 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const lookForInvitations = () => {
     if (!myId || !(canHost || canDrive || isDesktop)) return
     void myInvitations().then(async found => {
+      // Joined with no asking, where no window is needed for it (the
+      // Atrium's cloud; Drive while it's connected): those that join by
+      // themselves, those one's in already -- on another device, or added
+      // with one's key pair -- and one's own, made on another device.
+      const reachable = (roster: string) => isHostedId(roster) || hasDriveToken()
+      const quietly = [
+        ...found.filter(one => (one.auto || one.member) && !isLeftHere(one.lobbyId) && reachable(one.roster)).map(one => ({ roster: one.roster, name: one.name })),
+        ...(await ownElsewhere(myId).catch(() => [])).filter(one => !isLeftHere(one.lobbyId)).map(one => ({ roster: one.roster, name: null })),
+      ]
       let joined = 0
-      for (const one of found.filter(one => one.auto && !triedJoining.current.has(one.roster))) {
+      for (const one of quietly.filter(one => !triedJoining.current.has(one.roster))) {
         triedJoining.current.add(one.roster)
         try {
           const result = await joinDriveAtrium(one.roster, await sharedMe())
-          if (result.state === 'in') { await keepJoined(result.lobbyId, one.name, myId); joined++ }
+          if (result.state === 'in') { await keepJoined(result.lobbyId, one.name ?? (await readInvite(one.roster)).name, myId); joined++ }
         } catch (error) {
-          console.warn('[drive] joining by itself:', error)
-        }
-      }
-      // And one's own in the Atrium's cloud, made on another device.
-      const own = canHost || isDesktop ? await ownHostedElsewhere(myId).catch(() => []) : []
-      for (const one of own.filter(one => !triedJoining.current.has(one.roster))) {
-        triedJoining.current.add(one.roster)
-        try {
-          const result = await joinDriveAtrium(one.roster, await sharedMe())
-          if (result.state === 'in') { await keepJoined(result.lobbyId, (await readInvite(one.roster)).name, myId); joined++ }
-        } catch (error) {
-          console.warn('[drive] one’s own atrium, from elsewhere:', error)
+          console.warn('[drive] joining by itself:', one.roster, error)
         }
       }
       setInvitations(joined ? await myInvitations() : found)
@@ -712,7 +760,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   // Public Drive atriums (phase 8), as the directory lists them.
   const loadPublicDrive = async () => {
-    if (isDesktop) return
+    if (isDesktop && !workerAccount()) return
     const listed = await publicAtriums().catch(error => { console.warn('[drive] the public atriums:', error); return [] })
     setPublicDrive(listed.map(atrium => ({
       ...asLobby({ id: atrium.lobby_id, name: atrium.name, owner_user_id: atrium.owner, is_public: true, max_players: 50 }),
@@ -725,7 +773,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // that's the Atrium's own server, whose free day is 100,000 requests for
   // everyone together. Not while the page is hidden.
   useEffect(() => {
-    if (isDesktop) return
     let minutes = 0
     const every = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -1244,6 +1291,26 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const shownPublic = [...(noCloud ? [] : lobbies), ...publicDrive].filter(lobby =>
     lobby.ownerUserId !== myId && !yours.some(own => own.id === lobby.id) && lobby.name.toLowerCase().includes(searchQuery.toLowerCase()))
 
+  // The lists as shown: the search applied, each atrium in one of them.
+  // Online atriums kept here go by one's part in them -- one's own, shared
+  // with one, or read as a public one's viewer -- and on desktop the vault's
+  // own are apart: on this computer.
+  const matches = (lobby: { name: string }) => lobby.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const partIn = (lobby: LobbyWithOwner) => (lobby.inDrive && !lobby.publicRoster ? driveCard(lobby.id) : null)
+  const keptIds = new Set(browserLobbies.map(lobby => lobby.id))
+  const computer = isDesktop ? unique([...userLobbies, ...adminLobbies, ...lobbies]).filter(lobby => !keptIds.has(lobby.id) && matches(lobby)) : []
+  const mine = (isDesktop ? browserLobbies : yours).filter(lobby => matches(lobby) && (!lobby.inDrive || partIn(lobby)?.role === 'owner'))
+  const shared: { lobby: LobbyWithOwner; list: 'yours' | 'admin' }[] = [
+    ...browserLobbies.filter(lobby => matches(lobby) && lobby.inDrive && !partIn(lobby)?.viewer && partIn(lobby)?.role !== 'owner').map(lobby => ({ lobby, list: 'yours' as const })),
+    ...(isDesktop ? [] : adminLobbies.filter(matches).map(lobby => ({ lobby, list: 'admin' as const }))),
+  ]
+  const publics: { lobby: LobbyWithOwner; list: 'yours' | 'public' }[] = [
+    ...browserLobbies.filter(lobby => matches(lobby) && !!partIn(lobby)?.viewer).map(lobby => ({ lobby, list: 'yours' as const })),
+    ...(isDesktop ? publicDrive.filter(lobby => !keptIds.has(lobby.id) && matches(lobby)) : shownPublic).map(lobby => ({ lobby, list: 'public' as const })),
+  ]
+  // Invitations not answered yet, at the top of the shared ones.
+  const pending = invite ? [] : invitations.filter(matches)
+
   // An atrium's card (AtriumCard) in `list`: what it is, and what can be done
   // with it there.
   const cardFor = (lobby: LobbyWithOwner, list: 'yours' | 'admin' | 'public') => {
@@ -1288,6 +1355,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       ...(mine && canDrive && (cloud ? lobby.ownerUserId === myId : !!lobby.inDrive && isHostedAtrium(lobby.id) && isDriveOwner(lobby.id))
         ? [{ label: t('browser.drive.move'), disabled: converting !== null, onClick: () => setMoveConfirmId(lobby.id) }] : []),
       ...(cloud ? [{ label: t('browser.copyId'), onClick: () => copyLobbyId(lobby.id) }] : []),
+      // On desktop: an online one kept as a copy on this computer; one of the
+      // vault's put online, with an account signed in.
+      ...(isDesktop && lobby.inDrive && !lobby.publicRoster ? [{ label: t('browser.offlineCopy'), disabled: converting !== null, onClick: () => void keepOffline(lobby) }] : []),
+      ...(isDesktop && deskAccount && !lobby.inDrive && !lobby.inBrowser && list !== 'public' ? [{ label: t('browser.putOnline'), disabled: converting !== null, onClick: () => setOnline({ lobby }) }] : []),
       // Someone else's Drive atrium is left, not deleted: it isn't theirs to delete.
       ...(mine ? [{ label: lobby.inDrive && !isDriveOwner(lobby.id) ? t('browser.drive.leave') : t('common.delete'), danger: true, onClick: () => setDeleteConfirmId(lobby.id) }] : []),
     ]
@@ -1312,6 +1383,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     return (
       <AtriumCard
         key={lobby.id}
+        view={view}
         name={lobby.name}
         renaming={renaming}
         preview={lobby.previewUrl}
@@ -1390,181 +1462,111 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }
 
   return (
-    <div className="screen-rise fixed inset-0 bg-nier-black flex items-center justify-center z-50 p-4">
-      {/* In the margin beside the panel rather than inside it, where it was
-          competing for width with the list of atriums. */}
-      <MonthlyGoalColumn
-        month={contributions.month}
-        onOpen={() => openContributors('/browse')}
-      />
+    <div data-landing-theme={landingTheme.resolved} className="screen-rise fixed inset-0 z-50 overflow-y-auto text-nier-bg font-mono" style={{ backgroundColor: 'rgb(var(--c-ground))' }}>
+      <Atmosphere />
 
-      {/* Scanline overlay */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02] z-40"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(203, 203, 203, 0.1) 2px, rgba(203, 203, 203, 0.1) 4px)',
-        }}
-      />
-
-      {/* Animated background grid */}
-      <div 
-        className="absolute inset-0 pointer-events-none opacity-10"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(203, 203, 203, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(203, 203, 203, 0.15) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-        }}
-      />
-
-      {/* Background rectangles (trace-like elements) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {backgroundRects.map((rect, i) => (
-          <div
-            key={i}
-            className="absolute border border-nier-border/[0.08] bg-nier-border/[0.02]"
-            style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-              transform: `rotate(${rect.rotation}deg)`,
-              animation: `rectFloat ${12 + i % 5}s ease-in-out infinite`,
-              animationDelay: `${rect.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Floating particles (fireflies) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {particles.map((particle, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-nier-border rounded-full opacity-0"
-            style={{
-              left: particle.left,
-              top: particle.top,
-              animation: `firefly ${particle.duration}s ease-in-out infinite`,
-              animationDelay: `${particle.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-      
-      <div className="bg-nier-blackLight border border-nier-border/40 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col relative z-10">
-        {/* Corner brackets */}
-        <div className="absolute top-0 left-0 w-6 h-6 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-6 h-6 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-6 h-6 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-6 h-6 border-r border-b border-nier-border/60" />
-
-        {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-nier-border/20">
-          <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-3">
-            <div>
-              {/* Was eighteen pixels of the same extralight uppercase as the
-                  labels under it, which made the screen one continuous
-                  whisper. A heading should be able to be looked past; this one
-                  could only be read. */}
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
-                <h2 className="text-xl sm:text-2xl text-nier-strong tracking-[0.08em] uppercase font-normal leading-none">
-                  {t('browser.title')}
-                </h2>
-              </div>
-              <p className="text-nier-bg/70 text-xs tracking-[0.18em] uppercase ml-5 mt-1.5">{t('browser.selectDestination')}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* First in the row, before the window controls: those are things
-                  you do to the browser, and this is not one of them. */}
-              <ThemeToggle />
-              <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 px-5 sm:px-8 h-16" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.85)', backdropFilter: 'blur(6px)' }}>
+        <button onClick={onClose} className="landing-link text-xs tracking-[0.2em] uppercase">◁ {t('common.back')}</button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
+          {/* The lists as cards or as rows: the one in use lit. */}
+          <div role="group" aria-label={t('browser.view.label')} className="flex">
+            {(['grid', 'list'] as const).map(kind => (
               <button
-                onClick={toggleFullscreen}
-                className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-                title={isFullscreen ? t('browser.exitFullscreen') : t('atrium.fullscreen')}
+                key={kind}
+                onClick={() => chooseView(kind)}
+                aria-pressed={view === kind}
+                title={t(kind === 'grid' ? 'browser.view.grid' : 'browser.view.list')}
+                aria-label={t(kind === 'grid' ? 'browser.view.grid' : 'browser.view.list')}
+                className={`${ICON_BUTTON} ${kind === 'list' ? '-ml-px' : ''} ${view === kind ? 'text-nier-strong border-nier-border/70 bg-nier-bg/10' : ''}`}
               >
-                {isFullscreen ? '⊡' : '⊞'}
+                {kind === 'grid' ? '⊞' : '≡'}
               </button>
-              <button
-                onClick={loadLobbies}
-                disabled={loading}
-                className="px-3 h-8 flex items-center justify-center gap-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
-              >
-                <span className={loading ? 'animate-spin' : ''}>↻</span>
-                <span className="hidden sm:inline">{t('browser.refresh')}</span>
-              </button>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors"
-              >
-                ×
-              </button>
-            </div>
+            ))}
           </div>
-          {isDesktop && (
-            <div className="mt-4 border border-nier-border/20 bg-nier-black/60 px-4 py-3">
+          <button onClick={loadLobbies} disabled={loading} title={t('browser.refresh')} aria-label={t('browser.refresh')} className={ICON_BUTTON}>
+            <span className={loading ? 'animate-spin' : ''}>↻</span>
+          </button>
+          {/* The atrium's own, its state the app's (lib/fullscreen). */}
+          <button
+            onClick={() => void toggleFullscreen()}
+            title={isFullscreen ? t('browser.exitFullscreen') : t('atrium.fullscreen')}
+            aria-label={isFullscreen ? t('browser.exitFullscreen') : t('atrium.fullscreen')}
+            className={ICON_BUTTON}
+          >
+            <MenuIcon d={isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize} size={16} />
+          </button>
+        </div>
+      </header>
+
+      <main className="relative z-10 max-w-6xl mx-auto px-5 sm:px-10 pb-24">
+        <div className="flex flex-col items-center text-center pt-2 sm:pt-4 mb-8">
+          <span aria-hidden="true" className="landing-orb w-3 h-3 rounded-full mb-5" />
+          <p className="text-[11px] tracking-[0.35em] uppercase text-nier-bg/60">{t('browser.title')}</p>
+          <h1 className="mt-3 text-2xl sm:text-4xl font-extralight tracking-[0.1em] uppercase text-nier-strong text-balance">{t('browser.selectDestination')}</h1>
+        </div>
+
+        {/* One search, for every list below -- and beside it, a new one. */}
+        <div className="flex flex-col sm:flex-row gap-3 max-w-3xl mx-auto mb-10">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('browser.searchPlaceholder')}
+            aria-label={t('browser.searchPlaceholder')}
+            className="w-full border border-nier-border/30 text-nier-bg px-4 py-3 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/70 transition-colors pr-10"
+            style={ROW_FILL}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} aria-label={t('common.close')} className="absolute right-3 top-1/2 -translate-y-1/2 text-nier-bg/70 hover:text-nier-bg transition-colors">×</button>
+          )}
+        </div>
+          {/* Filled, the cut corner every committing action wears: the one
+              thing here that makes something. A new atrium is kept in Drive by
+              default for whoever's signed in with Google (phase 9), in the
+              Atrium's cloud otherwise, within its three -- in the browser past them. */}
+          <button
+            onClick={() => {
+              setNewWhere(canDrive && withGoogle ? 'drive' : canHost && canCreateMore ? 'cloud' : 'browser')
+              setShowCreateLobby(open => !open)
+            }}
+            aria-expanded={showCreateLobby}
+            className="px-6 py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors whitespace-nowrap"
+            style={{ clipPath: DONATE_CUT }}
+          >
+            ◇ {t('browser.create')}
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-8 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2" style={{ color: '#FF6161' }}>
+            ⚠ {error}
+          </div>
+        )}
+
+        {/* On desktop: where the vault is, and the account its shared atriums are for. */}
+        {isDesktop && (
+          <div className="grid md:grid-cols-2 gap-4 mb-12">
+            <div className="border border-nier-border/25 px-4 py-3" style={ROW_FILL}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-1">{t('browser.vault')}</div>
-                  <p className="text-nier-bg/80 text-xs tracking-wide break-all">
-                    {vaultPath || t('browser.vaultPreparing')}
-                  </p>
-                  <p className="text-nier-bg/70 text-xs tracking-wide mt-2">
-                    {t('browser.vaultDescription')}
-                  </p>
+                  <p className="text-nier-bg/80 text-xs tracking-wide break-all">{vaultPath || t('browser.vaultPreparing')}</p>
+                  <p className="text-nier-bg/70 text-xs tracking-wide mt-2">{t('browser.vaultDescription')}</p>
                 </div>
-                <button
-                  onClick={chooseVaultFolder}
-                  disabled={vaultBusy}
-                  className="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50"
-                >
+                <button onClick={chooseVaultFolder} disabled={vaultBusy} className={SMALL_BUTTON}>
                   {vaultBusy ? t('browser.vaultSyncing') : t('browser.vaultChangeFolder')}
                 </button>
               </div>
-              {vaultError && (
-                <p className="text-xs tracking-wide mt-3" style={{ color: '#FF6161' }}>{vaultError}</p>
-              )}
+              {vaultError && <p className="text-xs tracking-wide mt-3" style={{ color: '#FF6161' }}>{vaultError}</p>}
             </div>
-          )}
-          {isDesktop && <DesktopAccount buttonClass="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50" />}
-          {error && (
-            <div className="mt-4 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2" style={{ color: '#FF6161' }}>
-              ⚠ {error}
-            </div>
-          )}
-        </div>
+            <DesktopAccount buttonClass={SMALL_BUTTON} />
+          </div>
+        )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {invitations.length > 0 && !invite && (
-            <section className="border border-nier-border/40 p-5 space-y-3">
-              <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.invitations')}</h3>
-              <ul className="space-y-2">
-                {invitations.map(invitation => (
-                  <li key={invitation.id} className="flex flex-wrap items-center gap-3">
-                    <span className="flex-1 min-w-[10rem] text-nier-bg text-sm">
-                      {invitation.name}
-                      <span className="block text-nier-bg/60 text-xs">{t('browser.drive.from', { name: invitation.from })}{invitation.at && ` · ${new Date(invitation.at).toLocaleString()}`}</span>
-                    </span>
-                    <button
-                      onClick={() => {
-                        const asked = { rosterId: invitation.roster, lobbyId: invitation.lobbyId, name: invitation.name, owner: invitation.from }
-                        setJoinNote('')
-                        setInvite(asked)
-                        void joinInvite(asked).finally(lookForInvitations)
-                      }}
-                      className={ROW_ENTER}
-                    >
-                      {t('browser.drive.join')}
-                    </button>
-                    <button onClick={() => void declineInvitation(invitation.id).then(lookForInvitations)} className={ROW_BUTTON}>{t('browser.drive.decline')}</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+        <div className="space-y-14">
           {invite && (
             <section className="border border-nier-border/40 p-5 space-y-3">
               <h3 className="text-nier-strong text-sm tracking-[0.15em] uppercase">{t('browser.drive.joinTitle', { name: invite.name })}</h3>
@@ -1591,15 +1593,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           )}
           {/* Google Drive: connected or not, and the way to change it. */}
           {canDrive && myId && <DriveConnection buttonClass={`${ROW_BUTTON} disabled:opacity-40`} />}
-          {/* Create Lobby */}
+          {/* A new atrium: its form, opened by the button beside the search. */}
+          {showCreateLobby && (
           <section>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.createNew')}</span>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-            </div>
-
-            {showCreateLobby ? (
-              <div className="bg-nier-black border border-nier-border/30 p-5 space-y-4">
+              <div className="max-w-3xl mx-auto border border-nier-border/30 p-5 space-y-4" style={ROW_FILL}>
                 <div>
                   <label className="block text-nier-bg/80 text-xs tracking-[0.15em] uppercase mb-2">{t('browser.nameLabel')}</label>
                   <input
@@ -1662,27 +1659,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                   </button>
                 </div>
               </div>
-            ) : (
-              // Filled, like the Enter button on every atrium below it: the
-              // fill is the foreground ink and the label is the page, so it
-              // inverts with the theme rather than sitting in it. Outlined,
-              // it was the quietest thing on a screen whose whole purpose is
-              // getting you into an atrium -- including a new one.
-              // A new atrium is kept in Drive by default for whoever's signed
-              // in with Google (phase 9), in the Atrium's cloud otherwise,
-              // within its three -- in the browser alone past them.
-              <button
-                onClick={() => {
-                  setNewWhere(canDrive && withGoogle ? 'drive' : canHost && canCreateMore ? 'cloud' : 'browser')
-                  setShowCreateLobby(true)
-                }}
-                className="w-full py-3 bg-nier-bg text-nier-black text-xs tracking-[0.18em] uppercase font-medium hover:bg-nier-strong transition-colors"
-                style={{ clipPath: DONATE_CUT }}
-              >
-                ◇ {t('browser.create')}
-              </button>
-            )}
           </section>
+          )}
 
           {/* Held for one, not back yet: why, and what it can do instead */}
           {heldWaiting.length > 0 && (
@@ -1716,154 +1694,105 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
             </section>
           )}
 
-          {/* Your Atriums */}
-          {yours.length > 0 && (
-            <section>
-              <div className="flex items-baseline gap-3 mb-4">
-                <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">01</span>
-                <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.yours')}</span>
-                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-                {/* The three is a web limit, and was written into the
-                    markup rather than read from anywhere. A desktop vault has
-                    no such limit -- checkCanCreateLobby returns early there --
-                    so showing "2/3" told desktop users they were running out
-                    of something they cannot run out of. */}
-                {/* The cloud's, of its three; those kept in the browser aren't counted. */}
-                <span className="text-nier-bg/70 text-xs tabular-nums">
-                  {isDesktop || guest ? yours.length : `${ownedCloud}/3`}
-                </span>
-              </div>
-              <div className={ROW_GRID}>
-                {yours.map(lobby => cardFor(lobby, 'yours'))}
-              </div>
-            </section>
-          )}
-
-          {/* Atriums you administer (but don't own) -- same management
-              permissions as the owner, minus the owner-only Admins tab */}
-          {adminLobbies.length > 0 && (
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">{t('browser.administeredAtriums')}</span>
-                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              </div>
-              <div className={ROW_GRID}>
-                {adminLobbies.map(lobby => cardFor(lobby, 'admin'))}
-              </div>
-            </section>
-          )}
+          {(() => {
+            // The sections, numbered as they're shown. Each only with
+            // something in it -- but one's own always, where a new one goes.
+            let index = 0
+            const shown = (cards: ReactNode[]) => <div className={view === 'grid' ? ROW_GRID : ROW_LIST}>{cards}</div>
+            const none = (key: TranslationKey) => <p className="text-nier-bg/60 text-xs tracking-[0.15em] uppercase py-6">{t(key)}</p>
+            return (
+              <>
+                {isDesktop && computer.length > 0 && (
+                  <BrowserSection index={++index} title={t('browser.section.computer')} count={computer.length}>
+                    {shown(computer.map(lobby => cardFor(lobby, 'yours')))}
+                  </BrowserSection>
+                )}
+                {(!isDesktop || mine.length > 0) && (
+                  <BrowserSection
+                    index={++index}
+                    title={t('browser.yours')}
+                    // The cloud's, of its three, on the web; those kept in the browser aren't counted.
+                    count={isDesktop || guest ? mine.length : `${ownedCloud}/3`}
+                  >
+                    {mine.length ? shown(mine.map(lobby => cardFor(lobby, 'yours'))) : none(searchQuery ? 'browser.noMatch' : 'browser.noneYet')}
+                  </BrowserSection>
+                )}
+                {(shared.length > 0 || pending.length > 0) && (
+                  <BrowserSection index={++index} title={t('browser.section.shared')} count={shared.length}>
+                    {pending.length > 0 && (
+                      <ul className="mb-5 flex flex-col gap-2">
+                        {pending.map(invitation => (
+                          <li key={invitation.id} className="flex flex-wrap items-center gap-3 border border-nier-border/50 px-4 py-3" style={ROW_FILL}>
+                            <span className={`${TAG} border-nier-bg/60 text-nier-strong`}>{t('browser.invited')}</span>
+                            <span className="flex-1 min-w-[10rem] text-nier-bg text-sm">
+                              {invitation.name}
+                              <span className="block text-nier-bg/60 text-xs">{t('browser.drive.from', { name: invitation.from })}{invitation.at && ` · ${new Date(invitation.at).toLocaleString()}`}</span>
+                            </span>
+                            <button
+                              onClick={() => {
+                                const asked = { rosterId: invitation.roster, lobbyId: invitation.lobbyId, name: invitation.name, owner: invitation.from }
+                                setJoinNote('')
+                                setInvite(asked)
+                                void joinInvite(asked).finally(lookForInvitations)
+                              }}
+                              className={ROW_ENTER}
+                            >
+                              {t('browser.drive.join')}
+                            </button>
+                            <button onClick={() => void declineInvitation(invitation.id).then(lookForInvitations)} className={ROW_BUTTON}>{t('browser.drive.decline')}</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {shared.length > 0 && shown(shared.map(({ lobby, list }) => cardFor(lobby, list)))}
+                  </BrowserSection>
+                )}
+                {guest && (
+                  <section className="border border-nier-border/25 p-5 flex flex-wrap items-center gap-4" style={ROW_FILL}>
+                    <p className="flex-1 min-w-[14rem] text-nier-bg/80 text-xs tracking-wide leading-relaxed">{t('browser.guestNote')}</p>
+                    <button onClick={onSignIn} className={ROW_ENTER}>{t('auth.logIn')}</button>
+                  </section>
+                )}
+                {(publics.length > 0 || !noCloud) && (
+                  <BrowserSection
+                    index={++index}
+                    title={t('browser.section.public')}
+                    count={t('browser.found', { count: publics.length })}
+                    action={!noCloud && !isDesktop ? <button onClick={() => setShowJoinById(true)} className={SMALL_BUTTON}>{t('browser.joinById')}</button> : undefined}
+                  >
+                    {publics.length ? shown(publics.map(({ lobby, list }) => cardFor(lobby, list))) : none(searchQuery ? 'browser.noMatch' : 'browser.noneAvailable')}
+                  </BrowserSection>
+                )}
+              </>
+            )
+          })()}
 
           {/* Everything that moves an atrium in or out of this installation,
-              in one place. Export used to be desktop's odd one out, reachable
-              only from the welcome screen -- so getting an atrium out meant
-              leaving the browser, while getting one in happened here. They're
-              the same job seen from two directions, and this is where someone
-              is already standing when they think of either. */}
-          {(
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-nier-bg/80 text-xs tracking-[0.15em] uppercase">
-                  {isDesktop ? t('browser.importExportRestore') : t('browser.importExport')}
-                </span>
-                <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              </div>
-              {/* Side by side: they're directions of one operation, and stacking
-                  them read as unrelated actions. Three across on desktop is
-                  still comfortable at this panel width. */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowImport(true)}
-                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                >
-                  ◇ {t('browser.importJson')}
-                </button>
-
-                {/* Same format on both platforms, different machinery: the web
-                    downloads a file, desktop writes one to a chosen folder. */}
-                <button
-                  onClick={() => (isDesktop ? setShowExport(true) : setShowDownload(true))}
-                  className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                >
-                  ◇ {t('browser.exportJson')}
-                </button>
-
-                {/* Desktop only: rebuilds an atrium from the copy kept in the
-                    vault. Sits with import/export because it's the same idea --
-                    getting an atrium back in -- and because that's where
-                    someone goes looking when one has gone missing. */}
-                {isDesktop && (
-                  <button
-                    onClick={() => setShowVaultRecovery(true)}
-                    className="flex-1 py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors"
-                  >
-                    ◇ {t('browser.restoreVault')}
-                  </button>
-                )}
-              </div>
-            </section>
-          )}
-
-          {/* Public Atriums -- for a guest, what an account adds, and the
-              public Drive atriums anyone may look at. */}
-          {guest && (
-            <section className="border border-nier-border/20 p-5 flex flex-wrap items-center gap-4">
-              <p className="flex-1 min-w-[14rem] text-nier-bg/80 text-xs tracking-wide leading-relaxed">{t('browser.guestNote')}</p>
-              <button onClick={onSignIn} className={ROW_ENTER}>{t('auth.logIn')}</button>
-            </section>
-          )}
-          {noCloud && publicDrive.length === 0 ? null : (
-          <section>
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">02</span>
-              <span className="text-nier-strong text-xs tracking-[0.22em] uppercase">{t('browser.availableAtriums')}</span>
+              in one place: getting one in and getting one out are the same
+              job seen from two directions. */}
+          <section className="pt-2">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-nier-bg/70 text-[11px] tracking-[0.2em] uppercase">{isDesktop ? t('browser.importExportRestore') : t('browser.importExport')}</span>
               <div className="flex-1 h-[1px] bg-gradient-to-r from-nier-border/30 to-transparent" />
-              <span className="text-nier-bg/70 text-xs">{t('browser.found', { count: shownPublic.length })}</span>
-              {!noCloud && (
-                <button
-                  onClick={() => setShowJoinById(true)}
-                  className="px-3 py-1 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors ml-2"
-                >
-                  {t('browser.joinById')}
-                </button>
-              )}
             </div>
-            
-            {/* Search Bar */}
-            <div className="mb-4">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('browser.searchPlaceholder')}
-                  className="w-full bg-nier-black border border-nier-border/30 text-nier-bg px-4 py-2 text-sm tracking-wide placeholder-nier-bg/50 focus:border-nier-border/60 transition-colors pr-10"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-nier-bg/70 hover:text-nier-bg transition-colors"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            <div className={ROW_GRID}>
-              {shownPublic.length === 0 ? (
-                <div className="sm:col-span-2 text-nier-bg/70 text-center py-12 text-xs tracking-wider uppercase">
-                  {searchQuery ? t('browser.noMatch') : t('browser.noneAvailable')}
-                </div>
-              ) : (
-                shownPublic.map(lobby => cardFor(lobby, 'public'))
-              )}
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setShowImport(true)} className={FOOT_BUTTON} style={ROW_FILL}>◇ {t('browser.importJson')}</button>
+              {/* Same format on both platforms: the web downloads a file, desktop writes one to a chosen folder. */}
+              <button onClick={() => (isDesktop ? setShowExport(true) : setShowDownload(true))} className={FOOT_BUTTON} style={ROW_FILL}>◇ {t('browser.exportJson')}</button>
+              {/* Desktop only: an atrium rebuilt from the copy kept in the vault. */}
+              {isDesktop && <button onClick={() => setShowVaultRecovery(true)} className={FOOT_BUTTON} style={ROW_FILL}>◇ {t('browser.restoreVault')}</button>}
             </div>
           </section>
-          )}
 
           {googleOpen && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
-      </div>
+        {/* At the foot of the page, where it's out of the lists' way. */}
+        <div className="mt-16 text-center">
+          <button onClick={() => setShowReportForm(true)} className="landing-link text-nier-bg/75 hover:text-nier-strong text-xs tracking-[0.15em] uppercase">
+            {t('browser.reportProblem')}
+          </button>
+        </div>
+      </main>
 
       {/* Atrium settings, without going in: a Drive atrium's, or a cloud one's -- the same window. */}
       {driveSettingsId && <DriveSettings lobbyId={driveSettingsId} me={myId} onClose={() => { setDriveSettingsId(null); void loadBrowserLobbies() }} />}
@@ -1880,6 +1809,41 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           />
         )
       })()}
+
+      {/* Putting one of the vault's online: where, and -- one of one's own
+          there by its name -- replacing it or not. */}
+      {online && (
+        <div className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[100]" data-landing-theme={landingTheme.resolved}>
+          <div className="relative max-w-md w-full mx-4 border border-nier-border/40 p-6" style={{ backgroundColor: 'rgb(var(--c-ground))' }}>
+            <h3 className="text-nier-strong tracking-[0.15em] uppercase text-sm mb-3">◇ {t('browser.putOnline.title', { name: online.lobby.name })}</h3>
+            {online.busy ? (
+              <div role="status">
+                <p className="text-nier-bg text-xs tracking-[0.12em] uppercase mb-2">◇ {t('browser.putOnline.working')}</p>
+                <div className="w-48 h-[3px] bg-nier-bg/15 overflow-hidden"><div className="h-full bg-nier-bg/80 animate-nier-slide" /></div>
+              </div>
+            ) : online.same ? (
+              <>
+                <p className="text-nier-bg/80 text-xs leading-relaxed mb-5">{t('browser.putOnline.same', { name: online.same.name })}</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => void putOnline(online.lobby, online.where!, online.same!)} className={ROW_ENTER}>{t('browser.putOnline.replace')}</button>
+                  <button onClick={() => void putOnline(online.lobby, online.where!, null)} className={ROW_BUTTON}>{t('browser.putOnline.new')}</button>
+                  <button onClick={() => setOnline(null)} className={ROW_BUTTON}>{t('common.cancel')}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-nier-bg/80 text-xs leading-relaxed mb-5">{t('browser.putOnline.lead')}</p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => chooseWhere('cloud')} className={`${ROW_BUTTON} text-left`}>◇ {t('browser.putOnline.cloud')}</button>
+                  <button onClick={() => chooseWhere('drive')} disabled={!hasDriveToken()} className={`${ROW_BUTTON} text-left disabled:opacity-40`}>◇ {t('browser.putOnline.drive')}</button>
+                  {!hasDriveToken() && <p className="text-nier-bg/60 text-[11px] leading-relaxed">{t('browser.putOnline.noDrive')}</p>}
+                  <button onClick={() => setOnline(null)} className={`${ROW_BUTTON} mt-2 self-start`}>{t('common.cancel')}</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Password Modal */}
       {selectedLobbyId && (
@@ -2049,13 +2013,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         />
       )}
 
-      {/* Report a problem / suggest a feature */}
-      <button
-        onClick={() => setShowReportForm(true)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto text-nier-bg/75 hover:text-nier-bg/75 text-xs font-mono tracking-[0.1em] uppercase underline decoration-gray-700 hover:decoration-gray-400 transition-colors"
-      >
-        {t('browser.reportProblem')}
-      </button>
       {showReportForm && (
         <ReportFeedbackModal
           onClose={() => setShowReportForm(false)}

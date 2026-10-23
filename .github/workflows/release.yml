@@ -111,6 +111,14 @@ jobs:
           # prevent.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          # Google Drive atriums (lib/drive) and Pinterest, the same way: public
+          # in the web bundle too. Unset, every Drive call went out without
+          # the API key and Google refused it ("unregistered callers"). The
+          # key's HTTP-referrer list has to include the desktop's pages
+          # (http://tauri.localhost/*) as well.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID || secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY || secrets.VITE_GOOGLE_API_KEY }}
+          VITE_PINTEREST_CLIENT_ID: ${{ vars.VITE_PINTEREST_CLIENT_ID || secrets.VITE_PINTEREST_CLIENT_ID }}
           # Hardcoded empty rather than read from a secret: the key was
           # generated without a password, and GitHub refuses to store a secret
           # with an empty value. The variable still has to be present -- if it

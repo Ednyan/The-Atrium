@@ -20,6 +20,7 @@ interface Meter {
   per: 'day' | 'month' | 'total' | 'request' | '31 days'
   // Requests stopped for going past it (the CPU's).
   over?: number
+  typical?: number
   // When it was counted, if not just now.
   at?: number
   error?: string
@@ -236,6 +237,7 @@ function MeterRow({ meter }: { meter: Meter }) {
       )}
       {!!meter.over && <p className="text-[10px] tracking-wide mt-1" style={{ color: DANGER }}>{t('ops.ranOut', { count: f.number(meter.over) })}</p>}
       {meter.over === 0 && ratio >= 1 && <p className="text-[10px] tracking-wide mt-1 text-nier-bg/65 leading-relaxed">{t('health.noneStopped')}</p>}
+      {meter.typical !== undefined && meter.error === undefined && <p className="text-[10px] tracking-wide mt-1 text-nier-bg/65">{t('health.typical', { value: f.measure(meter.typical, meter.unit) })}</p>}
       {meter.at && meter.error === undefined && <p className="text-[10px] tracking-wide mt-1 text-nier-bg/55">{t('health.countedAt', { time: f.when(meter.at) })}</p>}
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useGamePick } from '../store/gameStore'
+import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import ProfileSettings from './ProfileSettings'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
 import PinterestMark from './PinterestMark'
@@ -102,7 +103,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   useEffect(() => startContributionsRefresh(setContributions), [])
   const [isHovered, setIsHovered] = useState<string | null>(null)
   const { t } = useTranslation()
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const isFullscreen = useFullscreen()
   const { username, setUsername } = useGamePick('username', 'setUsername')
 
   // Renaming in place, desktop only -- see the field itself for why the web
@@ -153,58 +154,6 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
     // Force navigation to landing page
     goTo('/')
     window.location.reload()
-  }
-
-  // The label was driven by state that started at false and was only ever
-  // updated by this screen's own button, so it disagreed with reality whenever
-  // fullscreen was entered anywhere else -- F11, or an atrium's own toggle
-  // before navigating back here. Sync from the window on mount, and keep
-  // following it afterwards.
-  useEffect(() => {
-    let cancelled = false
-    let unlisten: (() => void) | undefined
-
-    if (isDesktop) {
-      import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-        const win = getCurrentWindow()
-        const actual = await win.isFullscreen()
-        if (!cancelled) setIsFullscreen(actual)
-        // Tauri has no dedicated fullscreen event; a resize always accompanies
-        // the transition, so that's the signal to re-read it.
-        unlisten = await win.onResized(async () => {
-          const now = await win.isFullscreen()
-          if (!cancelled) setIsFullscreen(now)
-        })
-      }).catch(() => { /* leave the label as-is rather than guessing */ })
-    } else {
-      const sync = () => setIsFullscreen(!!document.fullscreenElement)
-      sync()
-      document.addEventListener('fullscreenchange', sync)
-      return () => document.removeEventListener('fullscreenchange', sync)
-    }
-
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
-  }, [])
-
-  const toggleFullscreen = async () => {
-    if (isDesktop) {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      const win = getCurrentWindow()
-      const current = await win.isFullscreen()
-      await win.setFullscreen(!current)
-      setIsFullscreen(!current)
-    } else {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen()
-        setIsFullscreen(true)
-      } else {
-        await document.exitFullscreen()
-        setIsFullscreen(false)
-      }
-    }
   }
 
   // Memoize background rectangles (trace-like elements)
