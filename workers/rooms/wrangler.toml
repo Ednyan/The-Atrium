@@ -2,6 +2,10 @@
 name = "atrium-rooms"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
+# Minified: a fresh instance parses the whole script before its first request,
+# and that time counts as the request's CPU -- with traffic this light, most of
+# the slowest requests are that.
+minify = true
 
 # A room per atrium. SQLite-backed, the kind the free plan offers; nothing
 # is stored in it.
