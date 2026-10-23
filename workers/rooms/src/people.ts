@@ -68,6 +68,10 @@ const TABLES = [
     confirmed_at integer, failures integer not null default 0, locked_until integer, created_at integer not null, updated_at integer not null)`,
   'create table if not exists refresh_tokens (hash text primary key, account text not null, created_at integer not null, used_at integer not null, expires_at integer not null)',
   'create index if not exists refresh_tokens_account on refresh_tokens (account)',
+  // The desktop app's sign-ins by the site (auth.ts, link): the secret it
+  // keeps (hashed), the code it shows, and who approved it there.
+  `create table if not exists desktop_links (device text primary key, code text not null unique, account text, google_grant text,
+    created_at integer not null)`,
   `create table if not exists auth_codes (account text not null, purpose text not null, hash text not null, sent_at integer not null,
     expires_at integer not null, tries integer not null default 0, primary key (account, purpose))`,
   // How often something that mails, or that anyone may ask, has been asked of
@@ -117,6 +121,21 @@ const ADDED = ['alter table accounts add column settings text', 'alter table acc
  *  an account): at most `most` times in `windowMs` (an hour). Resend sends
  *  so many a day, and the free plan writes so many rows: one script mustn't
  *  spend them for everyone. */
+/** An existing account met: its row made, and its profile taken in once,
+ *  with its own Supabase sign-in (`token`) -- from then on its row here is
+ *  the record. A desktop app's session, which isn't Supabase's, takes in
+ *  nothing; the site's page that signed it in already has (auth.ts, link). */
+export async function meetExisting(env: Env, db: D1Database, who: Who, token: string): Promise<void> {
+  await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
+  const taken = await db.prepare('select from_supabase from accounts where id = ?').bind(who.id).first<{ from_supabase: number | null }>()
+  if (taken?.from_supabase) return
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(who.id)}&select=${PROFILE_COLUMNS}`, {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  }).catch(() => null)
+  const rows = response?.ok ? await response.json().catch(() => null) as SupabaseProfile[] | null : null
+  if (rows?.[0]) await takeProfile(db, rows[0]).run()
+}
+
 export async function allowedNow(db: D1Database, key: string, most: number, windowMs = 60 * 60 * 1000): Promise<boolean> {
   const now = Date.now()
   const row = await db.prepare('select count, since from throttle where key = ?').bind(key).first<{ count: number; since: number }>()
@@ -414,18 +433,8 @@ export async function people(request: Request, env: Env, what: string): Promise<
       // Google account's is made as it signs in (google.ts, meet): gone --
       // deleted, or taken for a duplicate -- a session from before can't make
       // it again.
-      if (who.kind === 'supabase') {
-        await db.prepare('insert into accounts (id, kind, created_at) values (?, ?, ?) on conflict (id) do nothing').bind(who.id, who.kind, Date.now()).run()
-        // Its profile taken in once, with its own sign-in: from then on its row here is the record.
-        const taken = await db.prepare('select from_supabase from accounts where id = ?').bind(who.id).first<{ from_supabase: number | null }>()
-        if (!taken?.from_supabase) {
-          const response = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(who.id)}&select=${PROFILE_COLUMNS}`, {
-            headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${asked.token as string}` },
-          }).catch(() => null)
-          const rows = response?.ok ? await response.json().catch(() => null) as SupabaseProfile[] | null : null
-          if (rows?.[0]) await takeProfile(db, rows[0]).run()
-        }
-      } else if (!await accountKept(db, who.id)) return answer(401, { error: 'gone' })
+      if (who.kind === 'supabase') await meetExisting(env, db, who, asked.token as string)
+      else if (!await accountKept(db, who.id)) return answer(401, { error: 'gone' })
       const set = (asked.set ?? {}) as Record<string, unknown>
       const before = await db.prepare('select username, display_name, name_changed_at from accounts where id = ?').bind(who.id).first<{ username: string | null; display_name: string | null; name_changed_at: number | null }>()
       if ('username' in set) {

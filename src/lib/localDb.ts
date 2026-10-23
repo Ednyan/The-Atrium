@@ -2466,6 +2466,14 @@ let browserReady: Promise<void> | null = null
  *  browser's guest -- their profile here kept as they are. */
 export async function openBrowserVault(maker: { id: string; name: string; color: string }): Promise<void> {
   await (browserReady ??= initLocalDb().catch(error => { browserReady = null; throw error }))
+  await makeAs(maker)
+}
+
+/** Who makes what's made from here on, with a profile of their own: the
+ *  browser's account or guest -- or, on desktop, the device's person, or
+ *  the account signed in inside an atrium kept with others
+ *  (lib/browserAtriums). */
+export async function makeAs(maker: { id: string; name: string; color: string }): Promise<void> {
   if (!db) throw new Error('no database')
   LOCAL_USER_ID = maker.id
   LOCAL_USERNAME = maker.name

@@ -1270,6 +1270,32 @@ A hosted atrium is then a Drive atrium whose store is ours:
 7. The app off the Supabase client. A month with Supabase read-only, then
    cancel.
 8. Drive atriums on desktop. Separate; the desktop never used Supabase.
+   - **Built (2026-10-23).** The desktop app signs in by the site: it asks
+     the worker for a link (`/auth/link`: a code it shows, a secret it
+     keeps), opens `digitalatrium.org/link-desktop?code=…`, where whoever's
+     signed in approves that code (`link-approve`, with the site's Google
+     grant if it has one), and takes its own renewal token
+     (`link-take`) -- any kind of account, an existing one's sessions now
+     carrying its kind (`k: 's'`). Renewal tokens renew any account. The
+     page warns never to approve a code someone else sent.
+   - The device's person stays the vault's: the account is for atriums
+     shared with it (components/DesktopAccount), and stands in for the
+     device's person only inside one (lib/browserAtriums: the store's
+     person and the engine's maker swapped on entering, put back on
+     leaving). `driveSync.signedInHere` is the account on desktop.
+   - The desktop's vault is the working copies' engine (`browserEngine` sets
+     the maker, reopens nothing); `switchDataClient` turns rooms on there.
+     Invitations show and join as on the web; one's own hosted atriums made
+     elsewhere are found in one's hosted folder (`ownHostedElsewhere`, on
+     the web too) and joined as their owner.
+   - Google's own window (a Drive token with no grant, the Picker) can't
+     open in the app: `DESKTOP_GOOGLE` says to open it once on the site,
+     after which the grant handed over (or the one the worker keeps for an
+     existing account's Google) serves the app.
+   - Not yet: making a shared atrium from the app, or sharing a vault one.
+   - Tested end to end against a real test build (its own identifier, vault
+     and policy) and wrangler dev: link, invitation, join, both ways live,
+     presence, one's own atrium from elsewhere.
 
 **Needs from the user:** R2 enabled in the Cloudflare dashboard, before
 step 1 can be deployed.

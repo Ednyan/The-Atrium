@@ -10,7 +10,9 @@
 // sign in on the worker's word alone once Supabase is gone.
 
 import { workerUrl } from './rooms'
-import { keepAccount, workerAccount, type SignedOutReason } from './signedIn'
+import { keepAccount, whoIsSignedIn, workerAccount, type SignedOutReason, type WorkerAccount } from './signedIn'
+import { ATRIUM_WEBSITE } from './creatorLinks'
+import { openExternalUrl } from './openExternal'
 import { currentLanguage } from './i18n'
 
 const REFRESH = 'atrium.refresh'
@@ -22,6 +24,7 @@ interface Shown { id: string; kind: string; email: string | null; username: stri
 interface Answer {
   session?: string; until?: number; refresh?: string; account?: Shown
   verified?: boolean; error?: string; email?: string; ok?: boolean; deleted?: boolean
+  device?: string; code?: string; grant?: string
 }
 
 // A plain request (a string body, no headers of its own): no preflight.
@@ -62,8 +65,44 @@ function signedIn(answer: Answer): Shown {
   if (answer.session && answer.until) session = { value: answer.session, until: answer.until }
   try { if (answer.refresh) localStorage.setItem(REFRESH, answer.refresh) } catch { /* this visit only */ }
   const account = answer.account!
-  keepAccount({ id: account.id, email: account.email, name: account.name, kind: 'email' })
+  keepAccount({ id: account.id, email: account.email, name: account.name, kind: account.kind as WorkerAccount['kind'] })
   return account
+}
+
+/** The desktop app signed in by the site (workers/rooms, auth.ts link): a
+ *  code shown here (`show`) and the site opened at it, where whoever's
+ *  signed in there approves it; then the app's own renewal token for that
+ *  account, of any kind, and the Google grant the site keeps for it, for
+ *  Drive. Null once `stopped` says so, or the code runs out. */
+export async function linkDesktop(show: (code: string) => void, stopped: () => boolean): Promise<Shown | null> {
+  const { status, body } = await ask('link', {})
+  if (status === 429) throw failed('WAIT')
+  if (status !== 200 || !body.device || !body.code || !body.until) throw failed('AUTH_DOWN')
+  show(body.code)
+  openExternalUrl(`${ATRIUM_WEBSITE}/link-desktop?code=${body.code}`)
+  while (!stopped() && Date.now() < body.until) {
+    await new Promise(wait => setTimeout(wait, 2000))
+    // Offline a moment, or not approved yet: asked again.
+    const taken = await ask('link-take', { device: body.device }).catch(() => null)
+    if (!taken || taken.status === 202 || stopped()) continue
+    if (taken.status === 403) throw failed('BANNED')
+    if (taken.status !== 200) return null
+    if (taken.body.grant) (await import('./drive')).takeGrant(taken.body.account!.id, taken.body.grant)
+    return signedIn(taken.body)
+  }
+  return null
+}
+
+/** The site's side: the desktop app showing `code` signed in as whoever's
+ *  signed in here -- with this browser's Google grant for them, if any. */
+export async function approveDesktop(code: string): Promise<void> {
+  const who = await whoIsSignedIn()
+  if (!who) throw failed('SIGN_IN')
+  const grant = (await import('./drive')).grantFor(who.id)
+  const { status } = await ask('link-approve', { token: who.token, code, ...(grant ? { grant } : {}) })
+  if (status === 404) throw failed('CODE')
+  if (status === 429) throw failed('WAIT')
+  if (status !== 200) throw failed('AUTH_DOWN')
 }
 
 /** What went wrong, by name, for the page to say. */

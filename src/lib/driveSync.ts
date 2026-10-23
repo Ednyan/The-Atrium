@@ -42,6 +42,8 @@ import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
 import { DOOR, listenAtDoor, nameRoomsBy, onRoomEvent, rejoinRoom, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
+import { isDesktop } from './supabase'
+import { workerAccount } from './signedIn'
 import { hostedSpace, hostedStore, isHostedId } from './hostedStore'
 import { mirrorList, mirrorPut, mirroredStore } from './mirror'
 import { t } from './i18n'
@@ -112,6 +114,7 @@ const SAID: Partial<Record<string, TranslationKey>> = {
   DB_UPDATE_NEEDED: 'browser.drive.dbUpdate',
   PICK_CANCELLED: 'browser.drive.pickCancelled',
   NEED_DRIVE: 'browser.drive.needDrive',
+  DESKTOP_GOOGLE: 'browser.drive.desktopGoogle',
   MOVE_INCOMPLETE: 'browser.drive.moveIncomplete',
 }
 /** What went wrong, as a person is told it: the sync's errors by name;
@@ -279,7 +282,9 @@ const KEPT = 'atrium.driveAtriums.byAccount'
 const LEGACY = 'atrium.driveAtriums'
 // Drive atriums from before members (a head and a shared key) aren't these.
 const isKept = (kept: unknown): kept is Kept => typeof (kept as Kept)?.roster === 'string'
-const signedInHere = () => useGameStore.getState().userId ?? ''
+// On desktop the store's person is the device's (lib/localDb), and the
+// account signed in is the one Drive atriums are kept for.
+const signedInHere = () => (isDesktop ? workerAccount()?.id : useGameStore.getState().userId) ?? ''
 function stored<T>(key: string): Record<string, T> {
   try { return JSON.parse(localStorage.getItem(key) || '{}') ?? {} } catch { return {} }
 }
@@ -555,6 +560,23 @@ export const rosterVersion = (rosterId: string) => store.version(rosterId)
 export async function readInvite(rosterId: string): Promise<{ lobbyId: string; name: string; owner: string }> {
   const roster = await readRoster(rosterId)
   return { lobbyId: roster.lobbyId, name: roster.name, owner: roster.members.find(member => member.role === 'owner')?.name ?? '' }
+}
+
+/** One's own atriums in the Atrium's cloud not kept here -- made, or moved
+ *  there, on another device: each a folder in one's hosted root, named for
+ *  the atrium, holding its roster (an atrium one's only in holds one's saves
+ *  alone). Joined as their owner (joinDriveAtrium) wherever one signs in. */
+export async function ownHostedElsewhere(me: string): Promise<{ lobbyId: string; roster: string }[]> {
+  const root = (await myEntry()).hosted_root
+  if (!root) return []
+  const kept = allKept(me)
+  const found: { lobbyId: string; roster: string }[] = []
+  for (const folder of await hosted.listByLink(root)) {
+    if (folder.name in kept) continue
+    const roster = (await hosted.listByLink(folder.id)).find(file => file.name === 'atrium.roster')
+    if (roster) found.push({ lobbyId: folder.name, roster: roster.id })
+  }
+  return found
 }
 
 /** How far a join has got, to say while it's under way. */

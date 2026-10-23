@@ -7,8 +7,9 @@
 import { cloudClient } from './supabase'
 
 // `kind`: an email account's says so; a Google account's, kept before there
-// were others, doesn't.
-export interface WorkerAccount { id: string; email: string | null; name: string | null; kind?: 'google' | 'email' }
+// were others, doesn't. An existing account's ('supabase') is only ever the
+// desktop app's, signed in by the site (lib/emailAccount, linkDesktop).
+export interface WorkerAccount { id: string; email: string | null; name: string | null; kind?: 'google' | 'email' | 'supabase' }
 export type GoogleAccount = WorkerAccount
 const ACCOUNT = 'atrium.account'
 /** Fired on window as an account the worker holds signs in or out -- with
@@ -30,7 +31,7 @@ export function workerAccount(): WorkerAccount | null {
 /** A Google account, signed in here: its Google is its sign-in. */
 export function googleAccount(): GoogleAccount | null {
   const account = workerAccount()
-  return account && account.kind !== 'email' ? account : null
+  return account && (account.kind ?? 'google') === 'google' ? account : null
 }
 export function keepAccount(account: WorkerAccount | null, reason?: SignedOutReason): void {
   const was = workerAccount()?.id ?? null
@@ -50,9 +51,10 @@ export function keepAccount(account: WorkerAccount | null, reason?: SignedOutRea
 export async function whoIsSignedIn(): Promise<{ id: string; token: string } | null> {
   const account = workerAccount()
   if (account) {
-    const token = account.kind === 'email'
-      ? await (await import('./emailAccount')).emailSession()
-      : await (await import('./drive')).workerSession()
+    // A Google account renews by its grant; any other, by its renewal token.
+    const token = googleAccount()
+      ? await (await import('./drive')).workerSession()
+      : await (await import('./emailAccount')).emailSession()
     return token ? { id: account.id, token } : null
   }
   const session = (await cloudClient?.auth.getSession())?.data.session
@@ -64,8 +66,8 @@ export const accountToken = async () => (await whoIsSignedIn())?.token ?? null
 export async function signOutWorkerAccount(): Promise<void> {
   const account = workerAccount()
   if (!account) return
-  if (account.kind === 'email') (await import('./emailAccount')).signOutEmail()
-  else (await import('./drive')).signOutGoogle()
+  if (googleAccount()) (await import('./drive')).signOutGoogle()
+  else (await import('./emailAccount')).signOutEmail()
 }
 
 // Asked "who's signed in" -- the app asks Supabase's auth everywhere -- an

@@ -191,13 +191,18 @@ export const fromUrl = (text: string) => fromBase64(text.replace(/-/g, '+').repl
 const SESSION = 'a1.'
 const SESSION_MS = 60 * 60_000
 
-export async function signSession(env: Env, id: string, kind: 'google' | 'email' = 'google'): Promise<{ session: string; until: number }> {
+export async function signSession(env: Env, id: string, kind: Who['kind'] = 'google'): Promise<{ session: string; until: number }> {
   const until = Date.now() + SESSION_MS
-  const body = toUrl(new TextEncoder().encode(JSON.stringify({ id, until, ...(kind === 'email' ? { k: 'e' } : {}) })))
+  const body = toUrl(new TextEncoder().encode(JSON.stringify({ id, until, ...(kind === 'google' ? {} : { k: KINDS[kind] }) })))
   const key = await keyFrom(env.GOOGLE_CLIENT_SECRET!, 'atrium session', 'HMAC', ['sign'])
   const mac = toUrl(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))))
   return { session: `${SESSION}${body}.${mac}`, until }
 }
+
+// A session's kind of account, in its body: a Google account's says none (as
+// they did first); an existing account's is one only the desktop app holds
+// (auth.ts, link) -- elsewhere Supabase's own token is its sign-in.
+const KINDS = { email: 'e', supabase: 's', google: '' } as const
 
 async function sessionUser(env: Env, token: string): Promise<Who | null> {
   const [body, mac] = token.slice(SESSION.length).split('.')
@@ -206,7 +211,7 @@ async function sessionUser(env: Env, token: string): Promise<Who | null> {
     const key = await keyFrom(env.GOOGLE_CLIENT_SECRET, 'atrium session', 'HMAC', ['verify'])
     if (!(await crypto.subtle.verify('HMAC', key, fromUrl(mac), new TextEncoder().encode(body)))) return null
     const { id, until, k } = JSON.parse(new TextDecoder().decode(fromUrl(body))) as { id?: unknown; until?: unknown; k?: unknown }
-    return typeof id === 'string' && typeof until === 'number' && Date.now() < until ? { id, kind: k === 'e' ? 'email' : 'google' } : null
+    return typeof id === 'string' && typeof until === 'number' && Date.now() < until ? { id, kind: k === 'e' ? 'email' : k === 's' ? 'supabase' : 'google' } : null
   } catch {
     return null
   }

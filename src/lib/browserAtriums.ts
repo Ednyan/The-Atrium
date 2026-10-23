@@ -9,8 +9,9 @@
 // layer changes, a save -- is the client the cloud's again, so nothing of a
 // browser atrium is ever written to the cloud, nor the other way round.
 
-import { cloudClient, supabase, switchDataClient } from './supabase'
+import { cloudClient, isDesktop, localDbReady, supabase, switchDataClient } from './supabase'
 import { useGameStore } from '../store/gameStore'
+import { workerAccount } from './signedIn'
 import type { TranslationKey } from '../locales/en'
 
 const KEY = 'atrium.browserAtriums'
@@ -76,12 +77,18 @@ export function endGuest() {
 
 let inside: string | null = null
 let leaving: Promise<void> | null = null
+// On desktop, the device's person, while the account signed in stands in for
+// it inside an atrium kept with others (enterBrowserAtrium): put back on leaving.
+let device: { userId: string | undefined; username: string } | null = null
 
 /** The browser's engine, opened (VAULT_IN_USE when another tab has it), with
  *  `maker` as who's making things in it. */
 export async function browserEngine(maker = currentMaker()) {
   const local = await import('./localDb')
-  await local.openBrowserVault(maker)
+  // The desktop's vault is open from the start (lib/supabase): only who's
+  // making things is set.
+  if (isDesktop) await localDbReady.then(() => local.makeAs(maker))
+  else await local.openBrowserVault(maker)
   return local
 }
 
@@ -94,16 +101,26 @@ export async function clientFor(lobbyId: string) {
 /** Into a browser atrium: its data from here on -- made by the account
  *  signed in, or by `guest`. */
 export async function enterBrowserAtrium(lobbyId: string, guest: Maker | null) {
-  const maker = guest ?? currentMaker()
-  const local = await browserEngine(maker)
   // Kept in Drive too: shared, so it has a room; in step with Drive while open (lib/driveSync).
   const sync = await import('./driveSync')
   const shared = sync.isDriveAtrium(lobbyId)
+  // On desktop the device's person makes its vault's atriums; inside one kept
+  // with others, the account signed in does -- as its people know it.
+  const account = isDesktop && shared ? workerAccount() : null
+  if (account) {
+    const { userId, username, setUserId, setUsername } = useGameStore.getState()
+    device ??= { userId, username }
+    setUserId(account.id)
+    setUsername(account.name || username)
+  }
+  const maker = guest ?? currentMaker()
+  const local = await browserEngine(maker)
   // Whoever uses this browser owns its own atriums -- one made as a guest,
   // opened signed in, is still theirs to set up. A Drive atrium's owner,
   // admins and who may edit are as its roster says: someone else's isn't
   // one's to set up.
-  const row = shared ? sync.rowFromRoster(lobbyId, maker.id) : { owner_user_id: maker.id }
+  // (On desktop, one not kept for whoever's signed in now is left as it is.)
+  const row = shared ? sync.rowFromRoster(lobbyId, maker.id) : isDesktop ? null : { owner_user_id: maker.id }
   if (row) await local.localClient.from('lobbies').update(row).eq('id', lobbyId)
   if (shared) await sync.startDriveSync(lobbyId, maker.id)
   switchDataClient({
@@ -133,5 +150,10 @@ export function leaveBrowserAtrium(): Promise<void> {
     void (await import('./driveSync')).stopDriveSync()
     switchDataClient(null)
     inside = null
+    if (device) {
+      useGameStore.setState(device)
+      device = null
+      await browserEngine()
+    }
   })().finally(() => { leaving = null })
 }

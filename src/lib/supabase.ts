@@ -61,7 +61,9 @@ export let isSharedLocal = false
 /** The data client from here on: a browser atrium's engine, or (null) the
  *  cloud's again. lib/browserAtriums decides when -- never under a write. */
 export function switchDataClient(client: unknown | null, shared = false) {
-  if (isDesktop) return
+  // The desktop's client is its vault's always; an atrium kept with others
+  // in it has a room all the same.
+  if (isDesktop) { isSharedLocal = client !== null && shared; return }
   supabase = client ?? cloudClient
   isLocalData = client !== null
   isSharedLocal = client !== null && shared

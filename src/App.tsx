@@ -10,6 +10,7 @@ import ContributePanel from './components/ContributePanel'
 import { contributorsReturnPath, rememberContributorsReturn } from './lib/contributorsRoute'
 import { showToast } from './lib/toast'
 import PinterestDesktopLink from './components/PinterestDesktopLink'
+import DesktopLink, { afterSignIn } from './components/DesktopLink'
 import LandingPage from './components/LandingPage'
 import AboutPage from './components/AboutPage'
 import RichText from './components/RichText'
@@ -722,7 +723,7 @@ const STORAGE_KEYS = {
 // category -- donating needs no account. The Pinterest link page is the same
 // kind of thing from the other direction: a desktop app sends someone here
 // precisely because they have no account and should not need one.
-const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest'])
+const ACCOUNT_FREE_ROUTES = new Set(['landing', 'login', 'contributors', 'contributed', 'link-pinterest', 'link-desktop'])
 // And for somebody going on without an account (lib/browserAtriums): the
 // browser, and the atriums kept in it.
 const GUEST_ROUTES = new Set(['browse', 'atrium'])
@@ -769,6 +770,9 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
     // and no atrium behind it.
     case '/link-pinterest':
       return { page: 'link-pinterest' }
+    // Where the desktop app sends someone to sign it in (components/DesktopLink).
+    case '/link-desktop':
+      return { page: 'link-desktop' }
     // A page rather than a panel: it is a space to move through, and a modal
     // over the welcome screen would have been the wrong shape for that.
     case '/contributors':
@@ -792,6 +796,10 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
       return { page: 'landing' }
   }
 }
+
+// Where a sign-in ends: the welcome screen -- or the page it was asked
+// from (components/DesktopLink), once.
+const signedInTo = () => afterSignIn() ?? '/welcome'
 
 // Navigation helper - updates both URL and route state
 let setRouteCallback: ((route: { page: string; lobbyId?: string }) => void) | null = null
@@ -1535,7 +1543,7 @@ function AppInner() {
         setPlayerColor(entry.settings?.player_color ?? '#ffffff')
         setIsAuthenticated(true)
         wasSignedInRef.current = true
-        if (signingIn) navigate('/welcome')
+        if (signingIn) navigate(signedInTo())
       } catch (error) {
         // Its sign-in taken back (lib/drive signs it out, and this hears it),
         // or the worker out of reach: said, and the landing page meanwhile.
@@ -1558,8 +1566,13 @@ function AppInner() {
         navigate('/login')
       }
     }
-    window.addEventListener(ACCOUNT_EVENT, onAccount)
-    if (workerAccount()) void loadWorkerAccount(cameFromSignIn)
+    // Not on desktop, whose person is the device's (lib/localDb) and stays
+    // so: an account signed in there is for the atriums shared with it
+    // (components/DesktopAccount), and stands in only inside one of those.
+    if (!isDesktop) {
+      window.addEventListener(ACCOUNT_EVENT, onAccount)
+      if (workerAccount()) void loadWorkerAccount(cameFromSignIn)
+    }
 
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (!session?.user && workerAccount()) return
@@ -1657,6 +1670,7 @@ function AppInner() {
                 // Someone signed in here can still be linking a desktop app,
                 // and restoring their atrium over the code would lose it.
                 || urlRoute.page === 'link-pinterest'
+                || urlRoute.page === 'link-desktop'
 
               // A lobby id in the URL still wins -- that IS a request to open
               // that atrium. Only the fallback to the *stored* lobby is
@@ -1705,7 +1719,7 @@ function AppInner() {
                 // thought they had just left -- signed in, with nothing to say
                 // so. Checked before explicitRoute because "/" is only a
                 // request for the landing page when the person went there.
-                navigate('/welcome')
+                navigate(signedInTo())
               } else if (explicitRoute) {
                 // Already where the user asked to be.
                 // The stored atrium is deliberately left in localStorage so
@@ -1826,7 +1840,7 @@ function AppInner() {
           const isRealLogin = event !== 'INITIAL_SESSION' && justSignedIn
           if ((isRealLogin && currentRoute.page === 'login') ||
               (cameFromSignIn && (currentRoute.page === 'landing' || currentRoute.page === 'login'))) {
-            navigate('/welcome')
+            navigate(signedInTo())
           }
         }
         loadProfile()
@@ -1952,7 +1966,7 @@ function AppInner() {
     setUserId(userId)
     setUsername(username)
     setIsAuthenticated(true)
-    navigate('/welcome')
+    navigate(signedInTo())
   }
 
   const handleLandingGetStarted = () => {
@@ -2094,7 +2108,7 @@ function AppInner() {
           setUsername(chosen)
           setIsAuthenticated(true)
           setPendingUsernameUser(null)
-          navigate('/welcome')
+          navigate(signedInTo())
         }}
       />
     )
@@ -2118,6 +2132,9 @@ function AppInner() {
   // no account, arriving from a desktop app that has no account either.
   if (currentPage === 'link-pinterest') {
     return <PinterestDesktopLink />
+  }
+  if (currentPage === 'link-desktop') {
+    return <DesktopLink onSignIn={() => navigate('/login')} />
   }
 
   if (currentPage === 'contributed' || currentPage === 'contributors') {
@@ -2194,7 +2211,7 @@ function AppInner() {
   
   if (currentPage === 'login') {
     // Already authenticated, go to welcome
-    setTimeout(() => navigate('/welcome'), 0)
+    setTimeout(() => navigate(signedInTo()), 0)
     return (
       <div className="fixed inset-0 bg-nier-black flex items-center justify-center font-mono px-4">
         <div className="relative px-[5vw] sm:px-10 py-[3vw] sm:py-6">

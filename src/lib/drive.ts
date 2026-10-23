@@ -74,6 +74,19 @@ function keepGrant(grant: Grant | null) {
   try { if (grant) localStorage.setItem(GRANT, JSON.stringify(grant)); else localStorage.removeItem(GRANT) } catch { /* this visit only */ }
   connectionChanged()
 }
+/** The Google grant kept here for `user`, as text for the desktop app the
+ *  site signs in (lib/emailAccount, linkDesktop); null if none. */
+export const grantFor = (user: string): string | null => {
+  const kept = grantKept()
+  return kept?.user === user ? JSON.stringify({ grant: kept.grant, drive: kept.drive }) : null
+}
+/** One handed over so, kept here as the site keeps its own. */
+export function takeGrant(user: string, text: string) {
+  try {
+    const { grant, drive } = JSON.parse(text) as { grant?: unknown; drive?: boolean }
+    if (typeof grant === 'string') keepGrant({ user, grant, drive })
+  } catch { /* none to take */ }
+}
 /** Said whenever Drive's connection may have changed: the atrium browser's
  *  indicator (components/DriveConnection) looks again. */
 export const DRIVE_CONNECTION_EVENT = 'atrium:drive-connection'
@@ -360,6 +373,8 @@ async function googlePass(scope: string): Promise<string> {
 }
 
 async function askGoogle(me: Asker | null): Promise<string> {
+  // Google's window can't open in the desktop app; the site's can (lib/emailAccount, linkDesktop).
+  if (isDesktop) throw new Error('DESKTOP_GOOGLE')
   if (grantServer() && !codeFailed) return takeCode(await googleCode(), me)
   // Without the worker: an hour's pass for Drive, no account.
   if (!me) throw new Error("Google sign-in isn't available right now")
@@ -604,6 +619,8 @@ export const whoAmI = async (): Promise<{ displayName: string; emailAddress: str
  *  is what lets the app open it under drive.file: the head of a Drive
  *  atrium, for someone joining it. */
 export async function pickFile(id: string): Promise<string | null> {
+  // Google's Picker, too: picked once on the site, a file is the app's everywhere.
+  if (isDesktop) throw new Error('DESKTOP_GOOGLE')
   if (!GOOGLE_API_KEY) throw new Error("the Picker isn't set up in this build (VITE_GOOGLE_API_KEY)")
   const oauth = await driveToken()
   await script('https://apis.google.com/js/api.js')

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, lazy, Suspense, type ReactNode } from 'react'
 import { supabase, isDesktop } from '../lib/supabase'
+import DesktopAccount from './DesktopAccount'
 import { copyLobbyId } from '../lib/clipboard'
 import VaultRecoveryPanel from './VaultRecoveryPanel'
 import { useGameStore, useGamePick } from '../store/gameStore'
@@ -10,7 +11,7 @@ import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import KeptWhere, { type Where } from './KeptWhere'
 import { hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
-import { anotherAccountsDriveAtrium, askToJoin, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, ownHostedElsewhere, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -39,7 +40,7 @@ import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
 import { googleOpen } from '../lib/drive'
-import { googleAccount, workerAccount } from '../lib/signedIn'
+import { ACCOUNT_EVENT, googleAccount, workerAccount } from '../lib/signedIn'
 
 // An atrium in the browser's lists, the same in each (AtriumCard), two to a
 // row where there's room.
@@ -252,6 +253,22 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const noCloud = guest || !!workerAccount()
   // Atriums in the Atrium's cloud: for anyone signed in (phase 10).
   const canHost = !isDesktop && !guest
+  // On desktop: the account the site signed in (components/DesktopAccount),
+  // for the atriums shared with it -- the store's person is the device's.
+  const [deskAccount, setDeskAccount] = useState(() => (isDesktop ? workerAccount() : null))
+  useEffect(() => {
+    if (!isDesktop) return
+    const changed = () => setDeskAccount(workerAccount())
+    window.addEventListener(ACCOUNT_EVENT, changed)
+    return () => window.removeEventListener(ACCOUNT_EVENT, changed)
+  }, [])
+  /** Who's in atriums shared with others, here: the account signed in. */
+  const sharedId = () => (isDesktop ? workerAccount()?.id : useGameStore.getState().userId) ?? null
+  const sharedMe = async (): Promise<{ id: string; name: string }> => {
+    const id = isDesktop ? workerAccount()?.id : (await supabase.auth.getUser()).data.user?.id
+    if (!id) throw new Error(t('browser.errNotAuthenticated'))
+    return { id, name: (isDesktop && workerAccount()?.name) || username || 'You' }
+  }
   // One's atriums in the cloud, of the three one may have: hosted ones, and
   // any still in Supabase.
   const [ownedCloud, setOwnedCloud] = useState(0)
@@ -393,9 +410,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     setAskable(false)
     setJoining('signIn')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      const me = { id: user.id, name: username || 'You' }
+      const me = await sharedMe()
       let result = await joinDriveAtrium(asked.rosterId, me, setJoining)
       // Added, and let in by the next owner's or admin's app to look -- or
       // not added, asking an owner or admin in the atrium (its room): the
@@ -425,11 +440,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       }
       if (result.state === 'in') {
         setJoining('opening')
-        await keepJoined(result.lobbyId, asked.name, user.id)
+        await keepJoined(result.lobbyId, asked.name, me.id)
         setInvite(null)
         onJoinLobby(result.lobbyId)
       } else if (result.state === 'notAdded') {
-        const { data: profile } = await (supabase.from('profiles') as any).select('username').eq('id', user.id).maybeSingle()
+        const { data: profile } = await (supabase.from('profiles') as any).select('username').eq('id', me.id).maybeSingle()
         setJoinNote(t('browser.drive.notAdded', { owner: asked.owner, username: profile?.username ?? username }))
         setAskable(true)
       } else if (result.state === 'blocked') {
@@ -451,9 +466,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     setConverting(lobby.id)
     try {
       await ensureSignedIn()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      await how({ id: user.id, name: username || 'You' })
+      await how(await sharedMe())
     } catch (err) {
       setError(driveProblem(err))
     } finally {
@@ -491,9 +504,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     setConverting(lobby.id)
     try {
       if (toDrive) await ensureSignedIn()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error(t('browser.errNotAuthenticated'))
-      await (await import('../lib/moveToDrive')).restoreHeld(lobby.id, { id: user.id, name: username || 'You' }, !toDrive)
+      await (await import('../lib/moveToDrive')).restoreHeld(lobby.id, await sharedMe(), !toDrive)
       setHeldWaiting(shown => shown.filter(one => one.id !== lobby.id))
       showToast(t(toDrive ? 'browser.drive.moved' : 'browser.cloud.moved', { name: lobby.name }))
       void loadLobbies()
@@ -549,11 +560,12 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [driveSettingsId, setDriveSettingsId] = useState<string | null>(null)
   const [myId, setMyId] = useState('')
   useEffect(() => {
+    if (isDesktop) { setMyId(deskAccount?.id ?? ''); return }
     void supabase?.auth.getUser().then(({ data }: any) => {
       setMyId(data?.user?.id ?? '')
       setWithGoogle(!!googleAccount() || (data?.user?.app_metadata?.providers ?? []).includes('google'))
     })
-  }, [])
+  }, [deskAccount])
 
   // Invitations to Drive atriums: shown here, no link needed (lib/driveSync).
   const [invitations, setInvitations] = useState<Invitation[]>([])
@@ -563,16 +575,27 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // can't be (Drive to connect first, say) stays in the list, to join by hand.
   const triedJoining = useRef(new Set<string>())
   const lookForInvitations = () => {
-    if (!myId || !(canHost || canDrive)) return
+    if (!myId || !(canHost || canDrive || isDesktop)) return
     void myInvitations().then(async found => {
       let joined = 0
       for (const one of found.filter(one => one.auto && !triedJoining.current.has(one.roster))) {
         triedJoining.current.add(one.roster)
         try {
-          const result = await joinDriveAtrium(one.roster, { id: myId, name: username || 'You' })
+          const result = await joinDriveAtrium(one.roster, await sharedMe())
           if (result.state === 'in') { await keepJoined(result.lobbyId, one.name, myId); joined++ }
         } catch (error) {
           console.warn('[drive] joining by itself:', error)
+        }
+      }
+      // And one's own in the Atrium's cloud, made on another device.
+      const own = canHost || isDesktop ? await ownHostedElsewhere(myId).catch(() => []) : []
+      for (const one of own.filter(one => !triedJoining.current.has(one.roster))) {
+        triedJoining.current.add(one.roster)
+        try {
+          const result = await joinDriveAtrium(one.roster, await sharedMe())
+          if (result.state === 'in') { await keepJoined(result.lobbyId, (await readInvite(one.roster)).name, myId); joined++ }
+        } catch (error) {
+          console.warn('[drive] one’s own atrium, from elsewhere:', error)
         }
       }
       setInvitations(joined ? await myInvitations() : found)
@@ -580,6 +603,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }).catch(() => {})
   }
   useEffect(lookForInvitations, [myId])
+  // Its shared atriums, as the desktop's account signs in or out.
+  useEffect(() => { if (isDesktop) void loadBrowserLobbies() }, [deskAccount])
 
   useEffect(() => {
     if (!isDesktop) return
@@ -674,7 +699,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // owner's latest picture taken along the way.
   const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
     // The account, or this browser's guest (a public atrium's viewer).
-    const me = useGameStore.getState().userId
+    const me = sharedId()
     if (!me) return
     for (const lobby of lobbies) {
       const standing = await lookAtDriveAtrium(lobby.id, me)
@@ -714,7 +739,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const [openingPublic, setOpeningPublic] = useState<string | null>(null)
   const viewPublic = async (lobby: LobbyWithOwner) => {
     if (isDriveAtrium(lobby.id)) return enterBrowserLobby(lobby)
-    const me = useGameStore.getState().userId
+    const me = sharedId()
     if (!me || !lobby.publicRoster) return
     setOpeningPublic(lobby.id)
     try {
@@ -735,7 +760,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
   const loadBrowserLobbies = async () => {
     // Another account's Drive atriums on this browser aren't this one's.
-    const ids = isDesktop ? [] : browserAtriumIds().filter(id => !anotherAccountsDriveAtrium(id))
+    // On desktop: those shared with the account (the vault's own are listed as ever).
+    const ids = browserAtriumIds().filter(id => !anotherAccountsDriveAtrium(id) && (!isDesktop || isDriveAtrium(id)))
     if (ids.length === 0) { setBrowserLobbies([]); return }
     try {
       const { localClient } = await browserEngine()
@@ -1502,6 +1528,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
               )}
             </div>
           )}
+          {isDesktop && <DesktopAccount buttonClass="px-3 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50" />}
           {error && (
             <div className="mt-4 text-xs tracking-wide border border-nier-red/40 bg-nier-red/10 px-4 py-2" style={{ color: '#FF6161' }}>
               ⚠ {error}

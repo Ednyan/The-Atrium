@@ -27,9 +27,9 @@
 // it: a session alone, stolen, can't set a password here.
 
 import { authCode, goodbye, welcome } from './mail'
-import { forgetAccount, isBanned, supabaseUsername, takenInSupabase, tablesIn, USERNAME, allowedNow } from './people'
+import { forgetAccount, isBanned, meetExisting, supabaseUsername, takenInSupabase, tablesIn, USERNAME, allowedNow } from './people'
 import { dropOwnFiles } from './store'
-import { fromBase64, fromUrl, keyFrom, replies, signSession, toBase64, whoIs, type Env } from './who'
+import { fromBase64, fromUrl, keyFrom, replies, signSession, toBase64, whoIs, type Env, type Who } from './who'
 
 // The page's stretching: its rounds, for accounts made from now on (each
 // login keeps its own, so this can rise).
@@ -50,6 +50,13 @@ const CODES_A_DAY = 8
 const DAY_MS = 24 * 60 * 60 * 1000
 // An address never confirmed: its account let go after this, its username free.
 const UNCONFIRMED_MS = 24 * 60 * 60_000
+// The desktop app signed in by the site: how long its code holds, how many
+// links a network may ask for and how many codes an account may try, an hour.
+const LINK_MS = 10 * 60_000
+const LINKS_AN_HOUR = 10
+const LINK_TRIES_AN_HOUR = 20
+// Its code: eight of these, none mistaken for another (no 0/O, 1/I/L).
+const LINK_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 // Wrong passwords: this many, then a wait that doubles with each more, to this.
 const FREE_TRIES = 5
 const LONGEST_WAIT_MS = 60 * 60_000
@@ -97,9 +104,10 @@ export async function auth(request: Request, env: Env, what: string): Promise<Re
       return null
     }
   }
-  // Signed in, as an email account: a session, and who it's for.
+  // Signed in: a session, and who it's for -- an email account's, or any
+  // account's on the desktop app (link).
   const signedIn = async (account: Account, refresh?: string) => ({
-    ...(await signSession(env, account.id, 'email')),
+    ...(await signSession(env, account.id, account.kind as Who['kind'])),
     refresh: refresh ?? await newRefresh(db, account.id),
     account: shown(account),
   })
@@ -240,10 +248,58 @@ export async function auth(request: Request, env: Env, what: string): Promise<Re
       const held = await db.prepare('select account, expires_at from refresh_tokens where hash = ?').bind(hash).first<{ account: string; expires_at: number }>()
       if (!held || Date.now() > held.expires_at) return answer(401, { error: 'renew' })
       if (await isBanned(env, held.account)) return answer(403, { error: 'banned' })
+      // An email account's, or one the desktop app was given (link).
       const account = await accountOf(db, held.account)
-      if (!account || account.kind !== 'email') return answer(401, { error: 'renew' })
+      if (!account) return answer(401, { error: 'renew' })
       await db.prepare('update refresh_tokens set used_at = ?, expires_at = ? where hash = ?').bind(Date.now(), Date.now() + STAY_MS, hash).run()
       return answer(200, await signedIn(account, refresh))
+    }
+
+    // The desktop app signed in by the site (docs/DECENTRALIZING.md, step 8).
+    // Google's and Supabase's sign-ins can't be shown in its own window, so it
+    // asks for a link -- a code it shows, a secret it keeps -- and opens the
+    // site, where whoever's signed in there approves that code (link-approve).
+    // The app then takes a renewal token of its own, for any kind of account,
+    // and the Google grant the site holds for it, if any, for Drive
+    // (link-take). Asking someone to approve a code of one's own is how this
+    // is phished: the site says to approve only the code one's own app shows.
+    case 'link': {
+      if (!(await allowedNow(db, `link:${from}`, LINKS_AN_HOUR, HOUR_MS))) return answer(429, { error: 'wait' })
+      const device = secret()
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(8)), byte => LINK_LETTERS[byte % LINK_LETTERS.length]).join('')
+      await db.batch([
+        db.prepare('delete from desktop_links where created_at < ?').bind(Date.now() - LINK_MS),
+        db.prepare('insert into desktop_links (device, code, created_at) values (?, ?, ?)').bind(await digest(device), code, Date.now()),
+      ])
+      return answer(200, { device, code, until: Date.now() + LINK_MS })
+    }
+    case 'link-approve': {
+      const who = await whoIs(text('token', 4000), env)
+      if (!who) return answer(401, { error: 'sign-in' })
+      if (!(await allowedNow(db, `link-try:${who.id}`, LINK_TRIES_AN_HOUR, HOUR_MS))) return answer(429, { error: 'wait' })
+      const code = (text('code', 20) ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+      const grant = text('grant', 4000)
+      // An existing account the worker hasn't met yet: met now, with the
+      // site's Supabase sign-in -- the app's own session can't take its profile in.
+      if (who.kind === 'supabase') await meetExisting(env, db, who, text('token', 4000)!)
+      const approved = await db.prepare('update desktop_links set account = ?, google_grant = ? where code = ? and account is null and created_at > ?')
+        .bind(who.id, grant, code, Date.now() - LINK_MS).run()
+      return approved.meta.changes ? answer(200, { ok: true }) : answer(404, { error: 'code' })
+    }
+    case 'link-take': {
+      const device = text('device', 100)
+      if (!device) return answer(400, { error: 'body' })
+      const hash = await digest(device)
+      const link = await db.prepare('select account, google_grant, created_at from desktop_links where device = ?').bind(hash)
+        .first<{ account: string | null; google_grant: string | null; created_at: number }>()
+      if (!link || Date.now() - link.created_at > LINK_MS) return answer(410, { error: 'gone' })
+      if (!link.account) return answer(202, { waiting: true })
+      // Taken once.
+      await db.prepare('delete from desktop_links where device = ?').bind(hash).run()
+      if (await isBanned(env, link.account)) return answer(403, { error: 'banned' })
+      const account = await accountOf(db, link.account)
+      if (!account) return answer(410, { error: 'gone' })
+      return answer(200, { ...(await signedIn(account)), ...(link.google_grant ? { grant: link.google_grant } : {}) })
     }
 
     // Signed out here: the renewal token no use from now on.
@@ -379,8 +435,11 @@ async function setKeys(db: D1Database, found: Login, keys: { email: Uint8Array |
     .bind(toBase64(seal), await verifierOf(seal, keys.email!), keys.name ? await verifierOf(seal, keys.name) : null, Date.now(), found.account).run()
 }
 
+// 32 random bytes, base64url: a renewal token, a desktop link's secret.
+const secret = () => toBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
 async function newRefresh(db: D1Database, account: string): Promise<string> {
-  const refresh = toBase64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const refresh = secret()
   const now = Date.now()
   await db.prepare('insert into refresh_tokens (hash, account, created_at, used_at, expires_at) values (?, ?, ?, ?, ?)').bind(await digest(refresh), account, now, now, now + STAY_MS).run()
   return refresh
