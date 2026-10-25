@@ -48,8 +48,9 @@ import { ACCOUNT_EVENT, googleAccount, workerAccount } from '../lib/signedIn'
 // An atrium in the browser's lists, the same in each (AtriumCard): as cards,
 // three to a row where there's room, or as a list, a row each.
 export type BrowserView = 'grid' | 'list'
-const ROW_GRID = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
-const ROW_LIST = 'flex flex-col gap-2'
+// Each list's cards rise one after another as it opens (index.css, enter-cards).
+const ROW_GRID = 'enter-cards grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
+const ROW_LIST = 'enter-cards flex flex-col gap-2'
 const ROW = 'border border-nier-border/25 p-4 hover:border-nier-border/60 transition-colors'
 const ROW_FILL = { backgroundColor: 'rgb(var(--c-ground) / 0.75)' }
 const ICON_BUTTON = 'w-8 h-8 flex items-center justify-center border border-nier-border/30 text-nier-bg/80 hover:text-nier-bg hover:border-nier-border/60 transition-colors disabled:opacity-50'
@@ -201,7 +202,7 @@ function CardMenu({ items, label }: { items: CardAction[]; label: string }) {
     <div ref={box} className="relative">
       <button onClick={() => setOpen(!open)} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} className={`${ROW_BUTTON} px-3 tracking-normal`}>⋯</button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full mt-1 z-20 min-w-[12rem] bg-nier-blackLight border border-nier-border/40 py-1 shadow-lg">
+        <div role="menu" className="menu-pop absolute right-0 top-full mt-1 z-20 min-w-[12rem] bg-nier-blackLight border border-nier-border/40 py-1 shadow-lg">
           {items.map(item => (
             <button
               key={item.label}

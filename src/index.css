@@ -61,6 +61,89 @@
 :root[data-morph]::view-transition-new(*.atrium-card) { animation: 210ms ease-in 210ms both morph-in; }
 @keyframes morph-out { to { opacity: 0; } }
 @keyframes morph-in { from { opacity: 0; } }
+/* Entrances: each part of a screen slides in from where it belongs, one after
+   another -- the welcome screen, the atrium browser's cards, the atrium's
+   controls from their edges. By the `translate` property, not transform, so
+   it adds to a part's own transform (a bar centred by -50%); `backwards`,
+   never `both`, as screen-rise explains. --i orders them, --base starts them. */
+.enter-up, .enter-down, .enter-left, .enter-zoom, .enter-fade,
+.enter-stagger > .menu-row, .enter-cards > *,
+.hud-in-left, .hud-in-right, .hud-in-top, .hud-in-bottom {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(.16, 1, .3, 1);
+  animation-fill-mode: backwards;
+  animation-delay: calc(var(--base, 0ms) + var(--i, 0) * 55ms);
+}
+.enter-up, .enter-cards > *, .hud-in-bottom { animation-name: enter-up; }
+.enter-down, .hud-in-top { animation-name: enter-down; }
+.enter-left, .enter-stagger > .menu-row, .hud-in-left { animation-name: enter-left; }
+.hud-in-right { animation-name: enter-right; }
+.enter-zoom { animation-name: enter-zoom; animation-duration: 900ms; }
+.enter-fade { animation-name: enter-fade; }
+@keyframes enter-up { from { opacity: 0; translate: 0 16px; } }
+@keyframes enter-down { from { opacity: 0; translate: 0 -16px; } }
+@keyframes enter-left { from { opacity: 0; translate: -22px 0; } }
+@keyframes enter-right { from { opacity: 0; translate: 22px 0; } }
+@keyframes enter-zoom { from { opacity: 0; scale: 0.92; } }
+@keyframes enter-fade { from { opacity: 0; } }
+/* A column's rows, and a list's cards, in order -- the cards a few at a time
+   after the first dozen, so a long list isn't a long wait. */
+.enter-stagger > :nth-child(1), .enter-cards > :nth-child(1) { --i: 1; }
+.enter-stagger > :nth-child(2), .enter-cards > :nth-child(2) { --i: 2; }
+.enter-stagger > :nth-child(3), .enter-cards > :nth-child(3) { --i: 3; }
+.enter-stagger > :nth-child(4), .enter-cards > :nth-child(4) { --i: 4; }
+.enter-stagger > :nth-child(5), .enter-cards > :nth-child(5) { --i: 5; }
+.enter-stagger > :nth-child(6), .enter-cards > :nth-child(6) { --i: 6; }
+.enter-stagger > :nth-child(7), .enter-cards > :nth-child(7) { --i: 7; }
+.enter-stagger > :nth-child(8), .enter-cards > :nth-child(8) { --i: 8; }
+.enter-stagger > :nth-child(9), .enter-cards > :nth-child(9) { --i: 9; }
+.enter-stagger > :nth-child(10), .enter-cards > :nth-child(10) { --i: 10; }
+.enter-stagger > :nth-child(11), .enter-cards > :nth-child(11) { --i: 11; }
+.enter-stagger > :nth-child(n+12), .enter-cards > :nth-child(n+12) { --i: 12; }
+.enter-cards > * { --base: 160ms; animation-duration: 640ms; }
+@media (prefers-reduced-motion: reduce) {
+  .enter-up, .enter-down, .enter-left, .enter-zoom, .enter-fade,
+  .enter-stagger > .menu-row, .enter-cards > *,
+  .hud-in-left, .hud-in-right, .hud-in-top, .hud-in-bottom { animation: none; }
+}
+
+/* The welcome screen's column of rows: one light glides to the row pointed at
+   (WelcomeScreen), rather than each row lighting up on its own -- the
+   atrium browser's view switch, as a column. */
+.menu-glide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  pointer-events: none;
+  background: rgb(var(--c-fg) / 0.06);
+  border-left: 2px solid rgb(var(--c-accent));
+  transition: transform 320ms cubic-bezier(.2, .8, .2, 1), height 320ms cubic-bezier(.2, .8, .2, 1),
+    opacity 200ms ease, background-color 200ms ease, border-color 200ms ease;
+}
+.menu-glide[data-danger] { background: rgba(255, 97, 97, 0.08); border-left-color: #ff6161; }
+.menu-glide-host .menu-row:hover { background: transparent; }
+@media (prefers-reduced-motion: reduce) { .menu-glide { transition: opacity 200ms ease; } }
+
+/* A light that sweeps across a button as it's pointed at (the welcome
+   screen's Enter). */
+.sheen { overflow: hidden; }
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgb(255 255 255 / 0.32) 50%, transparent 65%);
+  translate: -110% 0;
+}
+.sheen:hover::after { translate: 110% 0; transition: translate 800ms cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .sheen::after { display: none; } }
+
+/* A menu that drops from its button (the atrium browser's ⋯). */
+.menu-pop { animation: menu-pop 200ms cubic-bezier(.2, .8, .2, 1) backwards; transform-origin: top right; }
+@keyframes menu-pop { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
+@media (prefers-reduced-motion: reduce) { .menu-pop { animation: none; } }
+
 /* A screen's code on its way (PageLoading): nothing for a quick load, then the bar. */
 .page-loading { animation: page-loading-in 0.3s ease 0.25s both; }
 @keyframes page-loading-in { from { opacity: 0; } }

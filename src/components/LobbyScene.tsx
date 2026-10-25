@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
@@ -4915,7 +4915,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           order, so the one you press by accident least often is furthest from
           the corner. Each its icon, its name drawn out below it under the
           pointer (HudIconButton). Viewing the atrium is the right bar's. */}
-      <div ref={sessionBarRef} className="fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto">
+      <div ref={sessionBarRef} className="hud-in-right fixed top-4 right-4 z-[10000] flex items-center gap-2 font-mono pointer-events-auto" style={{ '--base': '180ms', '--i': 1 } as CSSProperties}>
         {!uiHidden && (
           <>
             {/* Who's here: how many, and pressed, the list -- with Kick, for
@@ -4998,7 +4998,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           them beside the atrium's name -- and in the bottom-right corner, the
           usage, which a phone does without. */}
       {!uiHidden && !narrow && (
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex items-start">
+      <div className="hud-in-top fixed top-4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex items-start" style={{ '--base': '180ms', '--i': 1 } as CSSProperties}>
         <ViewBar items={viewItems} />
         {/* The palette slides out beside it, and the two stay in the middle
             together: this row is what's centred, and it widens. */}
@@ -5019,7 +5019,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       </div>
       )}
       {!uiHidden && !narrow && (
-      <div className="fixed bottom-4 right-4 z-[9999] pointer-events-none">
+      <div className="hud-in-bottom fixed bottom-4 right-4 z-[9999] pointer-events-none" style={{ '--base': '180ms', '--i': 3 } as CSSProperties}>
         {/* How much the atrium holds: the size alone, in the unit it has
             reached (lib/size); its limit, on the web, when pointed at -- and
             the thin line along its foot, how near that it is. As tall as a
@@ -5066,7 +5066,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           bar in what's left, Controls at the bottom. Each was placed on the
           screen by itself, so the menu opened over the quick bar, and Controls
           opened under it; in one column, each opening makes room. */}
-      <div className={`fixed top-4 left-4 z-[9999] flex flex-col items-start gap-2 pointer-events-none ${narrow ? 'right-4' : 'bottom-4'}`}>
+      <div className={`hud-in-left fixed top-4 left-4 z-[9999] flex flex-col items-start gap-2 pointer-events-none ${narrow ? 'right-4' : 'bottom-4'}`} style={{ '--base': '180ms' } as CSSProperties}>
       {/* HUD + presentation quick-toggle, in one row so the toggle always
           sits just to the right of the HUD regardless of its width. */}
       <div data-hud="true" className="shrink-0 flex items-start gap-2 pointer-events-none">
@@ -5251,7 +5251,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* A phone's foot, within a thumb's reach: the zoom, undo and redo, and
           under them the tools, across. */}
       {narrow && (
-        <div className="fixed left-4 right-4 bottom-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+        <div className="hud-in-bottom fixed left-4 right-4 bottom-4 z-[9999] flex flex-col gap-2 pointer-events-none" style={{ '--base': '180ms', '--i': 2 } as CSSProperties}>
           <div className="flex items-end justify-between gap-2">
             {readout}
             {canEdit && history}
@@ -5263,7 +5263,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* At the foot of the screen, in the middle: what's true of this visit
           (hidden, view only), how many are selected, and what the tool in
           hand does (QuickBar's ToolHint). */}
-      <div data-hud="true" className={`fixed ${narrow ? 'bottom-[7.75rem]' : 'bottom-4'} left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1`}>
+      <div data-hud="true" className={`hud-in-bottom fixed ${narrow ? 'bottom-[7.75rem]' : 'bottom-4'} left-1/2 -translate-x-1/2 z-[9999] pointer-events-none flex flex-col items-center gap-1`} style={{ '--base': '180ms', '--i': 2 } as CSSProperties}>
             {previewDraft && (
               <button
                 type="button"

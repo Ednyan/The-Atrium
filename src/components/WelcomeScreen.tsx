@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useGamePick } from '../store/gameStore'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import ProfileSettings from './ProfileSettings'
@@ -56,6 +56,16 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   // Only ever down. Blowing the menu up to fill a large monitor would make it
   // enormous, and the clamps already grow it as far as it should go.
   const menuRef = useRef<HTMLDivElement | null>(null)
+  // The light that glides to the row pointed at or focused (index.css,
+  // menu-glide), by the row's place in the column: kept where it was as it
+  // fades, so it comes back from there.
+  const rowsRef = useRef<HTMLDivElement | null>(null)
+  const [glide, setGlide] = useState({ top: 0, height: 0, danger: false, on: false })
+  const glideTo = (target: EventTarget) => {
+    const row = (target as HTMLElement).closest?.('.menu-row') as HTMLElement | null
+    if (!row || row.parentElement !== rowsRef.current) return
+    setGlide({ top: row.offsetTop, height: row.offsetHeight, danger: row.classList.contains('menu-row-danger'), on: true })
+  }
   const [menuScale, setMenuScale] = useState(1)
 
   useEffect(() => {
@@ -242,7 +252,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
             somewhere outside the app -- and the corner opposite the theme
             switch was empty, at the same height and in the same shape. */}
         {isDesktop && (
-          <div className="absolute top-6 left-6 z-30 flex items-center gap-2">
+          <div className="enter-down absolute top-6 left-6 z-30 flex items-center gap-2">
             <button
               type="button"
               onClick={() => openExternalUrl(ATRIUM_WEBSITE)}
@@ -255,7 +265,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
           </div>
         )}
 
-        <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
+        <div className="enter-down absolute top-6 right-6 z-30 flex items-center gap-2" style={{ '--i': 1 } as CSSProperties}>
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} />
         </div>
@@ -279,7 +289,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               setLeaving(true)
               setTimeout(onBackToLanding, 210)
             }}
-            className="cut-corner absolute top-6 left-6 z-20 group inline-flex items-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors"
+            className="enter-down cut-corner absolute top-6 left-6 z-20 group inline-flex items-center gap-2 h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/70 text-[11px] tracking-[0.15em] uppercase leading-none transition-colors"
             style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
           >
             <span className="transition-transform duration-300 group-hover:-translate-x-1">◁</span>
@@ -318,12 +328,12 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
                 has room to fade -- and softened at the top and sides, where on a
                 small screen it would still meet the canvas's edge. Wider than the
                 column too, so centred by a flex row, which lets it spill evenly. */}
-            <div className="flex justify-center">
+            <div className="enter-zoom flex justify-center">
               <div className="portal-soft-edge shrink-0">
                 <PortalScene ink={theme.resolved === 'light'} className="w-[min(92vw,620px)] h-[clamp(7rem,24vh,15rem)]" />
               </div>
             </div>
-            <div className="flex items-center justify-center gap-4">
+            <div className="enter-up flex items-center justify-center gap-4" style={{ '--i': 1 } as CSSProperties}>
               <div className="w-12 h-[1px] bg-gradient-to-r from-transparent to-nier-border/60" />
               <span className="text-nier-bg/75 text-xs tracking-[0.3em] uppercase">{t('welcome.welcomeToThe')}</span>
               <div className="w-12 h-[1px] bg-gradient-to-l from-transparent to-nier-border/60" />
@@ -332,24 +342,32 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
                 the page's brightest, ATRIUM in its metal -- silver on black,
                 gold on paper -- each with its glow. One name, one face, on both
                 screens. On one line, as it is there. */}
-            <h1 translate="no" className="uppercase font-light tracking-[-0.01em] leading-[0.95] whitespace-nowrap" style={{ fontSize: 'clamp(1.8rem, 5.4vh, 3.1rem)' }}>
+            <h1 translate="no" style={{ fontSize: 'clamp(1.8rem, 5.4vh, 3.1rem)', '--i': 2 } as CSSProperties} className="enter-up uppercase font-light tracking-[-0.01em] leading-[0.95] whitespace-nowrap">
               <span className="text-nier-strong" style={{ textShadow: '0 0 60px rgb(var(--c-strong) / 0.14)' }}>DIGITAL</span>{' '}
               <span className="tt-metal" style={{ filter: 'drop-shadow(0 0 34px rgb(var(--c-shimmer) / 0.22))' }}>ATRIUM</span>
             </h1>
-            <p className="text-nier-bg/80 text-xs tracking-[0.2em] uppercase">
+            <p className="enter-up text-nier-bg/80 text-xs tracking-[0.2em] uppercase" style={{ '--i': 3 } as CSSProperties}>
               {t('welcome.tagline')}
             </p>
           </div>
 
           {/* Diamond separator */}
-          <div className="flex items-center justify-center gap-3 my-[clamp(0.75rem,2.5vh,1.75rem)]">
+          <div className="enter-fade flex items-center justify-center gap-3 my-[clamp(0.75rem,2.5vh,1.75rem)]" style={{ '--i': 4 } as CSSProperties}>
             <div className="w-20 h-[1px] bg-gradient-to-r from-transparent to-nier-border/40" />
             <div className="w-2 h-2 rotate-45 border border-nier-border/60" />
             <div className="w-20 h-[1px] bg-gradient-to-l from-transparent to-nier-border/40" />
           </div>
 
           {/* Welcome message */}
-          <div className="space-y-[clamp(0.4rem,1.2vh,0.6rem)]">
+          <div
+            ref={rowsRef}
+            className="enter-stagger menu-glide-host relative space-y-[clamp(0.4rem,1.2vh,0.6rem)]"
+            style={{ '--base': '220ms' } as CSSProperties}
+            onMouseOver={event => glideTo(event.target)}
+            onFocus={event => glideTo(event.target)}
+            onMouseLeave={() => setGlide(was => ({ ...was, on: false }))}
+            onBlur={() => setGlide(was => ({ ...was, on: false }))}
+          >
             {/* Editable in place on desktop. The name is the one thing here
                 someone actually wants to change, and sending them into Profile
                 Settings for a single field was the long way round. Web keeps
@@ -361,7 +379,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               // read "User: name" in the same small type as the position
               // readout -- a field label and its value, which is how you write
               // a record, not how you greet somebody.
-              <div className="flex flex-col items-center gap-2">
+              <div className="enter-up flex flex-col items-center gap-2">
                 {editingName ? (
                   <input
                     autoFocus
@@ -403,7 +421,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               // the screen arrives, and a rule draws itself out from the
               // middle underneath. A name that is simply there is a record --
               // a name that is written is a greeting.
-              <div className="flex flex-col items-center gap-2">
+              <div className="enter-up flex flex-col items-center gap-2">
                 <div className="flex items-center gap-3">
                   <span className="text-nier-bg/40 text-[0.7em]">◇</span>
                   <span className="name-sheen text-[clamp(1.3rem,3.4vh,2rem)] tracking-[0.14em] uppercase leading-none">
@@ -436,12 +454,13 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               }}
               onMouseEnter={() => setIsHovered('enter')}
               onMouseLeave={() => setIsHovered(null)}
-              className="relative w-full py-4 text-sm tracking-[0.22em] uppercase font-medium transition-transform duration-300 hover:scale-[1.015] active:scale-[0.995] group"
+              className="enter-up sheen relative w-full py-4 text-sm tracking-[0.22em] uppercase font-medium transition-transform duration-300 hover:scale-[1.015] active:scale-[0.995] group"
               style={{
                 background: 'rgb(var(--c-accent))',
                 color: 'rgb(var(--c-ground))',
                 clipPath: DONATE_CUT,
-              }}
+                '--i': 2,
+              } as CSSProperties}
             >
               <span className="relative z-10">{t('welcome.enter')}</span>
               {/* Animated brackets on hover */}
@@ -563,6 +582,12 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
                 <span className="relative z-10">◇ {t('welcome.exit')}</span>
               </button>
             )}
+            <span
+              aria-hidden="true"
+              className="menu-glide"
+              data-danger={glide.danger || undefined}
+              style={{ transform: `translateY(${glide.top}px)`, height: glide.height, opacity: glide.on ? 1 : 0 }}
+            />
           </div>
 
           {/* The hardcoded "v.1.0.0" that used to sit here would have gone
