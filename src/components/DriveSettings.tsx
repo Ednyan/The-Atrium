@@ -21,7 +21,15 @@ import { FIELD, FIELD_LABEL, Nobody, OwnerBadge, REMOVE_BUTTON, SettingsFrame, S
 // Each change is made at once: there's nothing to save.
 type Assignable = Exclude<Role, 'owner'>
 
-export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: string; me: string; onClose: () => void }) {
+export default function DriveSettings({ lobbyId, me, name, onRename, onClose }: {
+  lobbyId: string
+  me: string
+  // The atrium's name, and how it's changed (LobbyScene renameAtrium).
+  name: string
+  onRename: (name: string) => Promise<void>
+  onClose: () => void
+}) {
+  const [nameDraft, setNameDraft] = useState(name)
   const { t, language } = useTranslation()
   const [tab, setTab] = useState<SettingsTab>('general')
   const [roster, setRoster] = useState<Roster | null>(null)
@@ -44,11 +52,13 @@ export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: strin
   const explain = driveProblem
   // Each change: Google's window first, while the click still counts -- for
   // a hosted atrium, one's sign-in only.
-  const act = async (task: () => Promise<string | void>) => {
+  // `signIn` false for what's only the atrium's own row (its name): the sync
+  // asks for Google when it needs it, not a rename.
+  const act = async (task: () => Promise<string | void>, signIn = true) => {
     setBusy(true)
     setNotice(null)
     try {
-      await ensureSignedIn(lobbyId)
+      if (signIn) await ensureSignedIn(lobbyId)
       const said = await task()
       if (said) setNotice({ text: said })
       await load()
@@ -145,6 +155,25 @@ export default function DriveSettings({ lobbyId, me, onClose }: { lobbyId: strin
     <SettingsFrame tab={tab} onTab={setTab} people={people} notice={notice} onClose={onClose}>
       {tab === 'general' && (
         <div className="space-y-5">
+          {/* Its name: changed as it's left, or on Enter -- the settings are
+              the owner's and admins' alone, as is the atrium's own row. */}
+          <div>
+            <label htmlFor="atrium-name" className={FIELD_LABEL}>{t('atrium.manage.atriumName')}</label>
+            <input
+              id="atrium-name"
+              type="text"
+              maxLength={50}
+              value={nameDraft}
+              onChange={event => setNameDraft(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+              onBlur={() => {
+                const next = nameDraft.trim()
+                if (!next || next === name) { setNameDraft(name); return }
+                void act(async () => { await onRename(next); return t('atrium.manage.settingsSaved') }, false)
+              }}
+              className={`w-full ${FIELD}`}
+            />
+          </div>
           {/* Public: the owner's to say -- asked first, as anyone may then
               look at all of it; private again at once. */}
           {roster && (myRole === 'owner' ? (

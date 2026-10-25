@@ -74,7 +74,7 @@ async function emptySlide(background: string): Promise<Blob> {
   return blob
 }
 
-const base64 = (bytes: Uint8Array) => {
+export const base64 = (bytes: Uint8Array) => {
   let text = ''
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(text)
@@ -135,7 +135,7 @@ export async function pptxOf(slides: Slide[], title: string): Promise<Blob> {
   return await pptx.write({ outputType: 'blob' }) as Blob
 }
 
-const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+export const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 /** The whole presentation as one web page: its slides inside it, so it opens
  *  offline and can be put up on any site as it is. Arrow keys, a click or a

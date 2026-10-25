@@ -2953,6 +2953,29 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     })
   }
 
+  // The whole atrium as a web page to look around (lib/atriumPage), on its theme's background.
+  const exportAtriumPage = async () => {
+    const { traces: all, links, layers, locations: spots } = useGameStore.getState()
+    const title = currentLobby?.name ?? 'atrium'
+    try {
+      showToast(t('atrium.export.pageMaking'))
+      const { atriumPageOf } = await import('../lib/atriumPage')
+      const blob = await atriumPageOf(all, links, layers, spots, title, viewTheme?.backgroundColor || '#0a0a0f')
+      if (await saveFile(blob, `${fileNameOf(title)}.html`, { name: 'Web page', extensions: ['html'] })) showToast(t('atrium.export.done'))
+    } catch (error) {
+      showToast(t('atrium.export.failed', { message: error instanceof Error ? error.message : '' }))
+    }
+  }
+
+  // The atrium renamed (Atrium Settings): its own row, which the sync carries
+  // to everyone, as the atrium browser renames it.
+  const renameAtrium = async (name: string) => {
+    if (!currentLobby || !supabase) return
+    const { error } = await (supabase.from('lobbies') as any).update({ name }).eq('id', currentLobby.id)
+    if (error) throw new Error(t('browser.errRenameLobby'))
+    setCurrentLobby({ ...currentLobby, name })
+  }
+
   // The locations as a presentation, saved as a file (lib/presentationExport).
   const [presentationBusy, setPresentationBusy] = useState<string | null>(null)
   const exportPresentation = async (format: PresentationFormat, background: string) => {
@@ -5182,6 +5205,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           ...(currentLobby ? [{
             id: 'export', icon: MENU_ICONS.image, label: t('atrium.menu.exportImage'), hint: 'Ctrl+Shift+E',
             onSelect: fromMenu(() => setExportOf({ ids: selectionRef.current })),
+          }, {
+            id: 'exportPage', icon: MENU_ICONS.web, label: t('atrium.menu.exportPage'),
+            onSelect: fromMenu(() => void exportAtriumPage()),
           }] : []),
           ...(currentLobby ? [{
             id: 'share', icon: MENU_ICONS.share, label: t('atrium.hud.share'),
@@ -5196,7 +5222,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             ),
           }] : []),
           ...((isLobbyOwner || isLobbyAdmin) && currentLobby ? [{
-            id: 'permissions', icon: MENU_ICONS.permissions, label: t('atrium.hud.manage'), apart: true,
+            id: 'permissions', icon: MENU_ICONS.settings, label: t('atrium.hud.manage'), apart: true,
             onSelect: fromMenu(() => setShowLobbyManagement(true)),
           }] : []),
           {
@@ -6146,7 +6172,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       {/* Atrium settings: the same window for an atrium kept in Google Drive
           (its roster's say) as for a cloud one. */}
       {showLobbyManagement && currentLobby && (isLocalData && isDriveAtrium(currentLobby.id) ? (
-        <DriveSettings lobbyId={currentLobby.id} me={userId} onClose={() => setShowLobbyManagement(false)} />
+        <DriveSettings lobbyId={currentLobby.id} me={userId} name={currentLobby.name} onRename={renameAtrium} onClose={() => setShowLobbyManagement(false)} />
       ) : (
         <LobbyManagement
           lobby={currentLobby}

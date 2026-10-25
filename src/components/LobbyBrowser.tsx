@@ -1871,7 +1871,15 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       </main>
 
       {/* Atrium settings, without going in: a Drive atrium's, or a cloud one's -- the same window. */}
-      {driveSettingsId && <DriveSettings lobbyId={driveSettingsId} me={myId} onClose={() => { setDriveSettingsId(null); void loadBrowserLobbies() }} />}
+      {driveSettingsId && (
+        <DriveSettings
+          lobbyId={driveSettingsId}
+          me={myId}
+          name={[...userLobbies, ...browserLobbies, ...adminLobbies].find(l => l.id === driveSettingsId)?.name ?? ''}
+          onRename={name => renameLobby(driveSettingsId, name)}
+          onClose={() => { setDriveSettingsId(null); void loadBrowserLobbies() }}
+        />
+      )}
       {managingLobbyId && (() => {
         const ownedMatch = userLobbies.find(l => l.id === managingLobbyId)
         const managedLobby = ownedMatch ?? adminLobbies.find(l => l.id === managingLobbyId)

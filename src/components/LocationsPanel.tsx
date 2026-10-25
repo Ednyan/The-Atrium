@@ -29,11 +29,20 @@ interface LocationsPanelProps {
   presentationMode: boolean
   onTogglePresentation: () => void
   presentationIndex: number
-  // The locations as a presentation (lib/presentationExport), and what it's
-  // doing meanwhile; and, on the web, a link that opens the atrium presenting.
-  onExport: (format: PresentationFormat) => void
+  // The locations as a presentation (lib/presentationExport) on a background
+  // -- the atrium's theme's unless another is chosen -- and what it's doing meanwhile.
+  onExport: (format: PresentationFormat, background: string) => void
   exporting: string | null
-  onCopyPresentLink?: () => void
+  themeBackground: string
+}
+
+// A colour as the colour input takes it (#rrggbb), from any the theme may hold.
+function asHex(colour: string): string {
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return '#000000'
+  context.fillStyle = '#000000'
+  context.fillStyle = colour
+  return /^#[0-9a-f]{6}$/i.test(context.fillStyle) ? context.fillStyle : '#000000'
 }
 
 // The four things you can do to a location, drawn rather than typed.
@@ -116,9 +125,12 @@ export default function LocationsPanel({
   presentationIndex,
   onExport,
   exporting,
-  onCopyPresentLink,
+  themeBackground,
 }: LocationsPanelProps) {
   const { t } = useTranslation()
+  // The slides' background: the theme's, until another is picked.
+  const [background, setBackground] = useState<string | null>(null)
+  const slideBackground = background ?? asHex(themeBackground)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
@@ -199,9 +211,9 @@ export default function LocationsPanel({
         </button>
       </div>
 
-      {/* The locations as a presentation: a slide each, in order -- to keep
-          (PowerPoint, PDF), to open anywhere offline or put up on a site
-          (one web page), or the atrium itself, presenting (a link). */}
+      {/* The locations as a presentation: a slide each, in order, on a
+          background -- to keep (PowerPoint, PDF), or to open anywhere offline
+          or put up on a site (one web page). */}
       <div className="bg-nier-black/60 border-b border-nier-border/30 px-3 py-2 flex flex-col gap-2">
         <div className="flex flex-col">
           <span className="text-nier-bg/80 text-xs tracking-wider uppercase">{t('atrium.locations.export')}</span>
@@ -213,7 +225,7 @@ export default function LocationsPanel({
               key={format}
               type="button"
               data-export={format}
-              onClick={() => onExport(format)}
+              onClick={() => onExport(format, slideBackground)}
               disabled={locations.length === 0 || !!exporting}
               className="flex-1 px-2 py-1 text-[11px] tracking-wider uppercase border border-nier-border/40 bg-nier-black text-nier-bg/80 hover:border-nier-bg hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -221,17 +233,22 @@ export default function LocationsPanel({
             </button>
           ))}
         </div>
+        <label className="flex items-center gap-2 text-nier-bg/80 text-[11px] tracking-wider uppercase">
+          {t('atrium.locations.exportBackground')}
+          <input
+            type="color"
+            data-export-background=""
+            value={slideBackground}
+            onChange={event => setBackground(event.target.value)}
+            className="w-8 h-6 p-0 border border-nier-border/40 bg-transparent cursor-pointer"
+          />
+          {background !== null && (
+            <button type="button" onClick={() => setBackground(null)} className="text-nier-bg/70 hover:text-nier-strong normal-case tracking-normal" title={t('atrium.locations.exportBackgroundTheme')}>
+              ↺ {t('atrium.locations.exportBackgroundTheme')}
+            </button>
+          )}
+        </label>
         {exporting && <p role="status" className="text-nier-strong text-[11px] tracking-wide">◇ {exporting}</p>}
-        {onCopyPresentLink && (
-          <button
-            type="button"
-            onClick={onCopyPresentLink}
-            disabled={locations.length === 0}
-            className="self-start text-nier-bg/80 hover:text-nier-strong text-[11px] tracking-wider uppercase underline underline-offset-4 decoration-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {t('atrium.locations.presentLink')}
-          </button>
-        )}
       </div>
 
       {/* Location list */}
