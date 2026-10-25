@@ -61,6 +61,9 @@
 :root[data-morph]::view-transition-new(*.atrium-card) { animation: 210ms ease-in 210ms both morph-in; }
 @keyframes morph-out { to { opacity: 0; } }
 @keyframes morph-in { from { opacity: 0; } }
+/* A screen's code on its way (PageLoading): nothing for a quick load, then the bar. */
+.page-loading { animation: page-loading-in 0.3s ease 0.25s both; }
+@keyframes page-loading-in { from { opacity: 0; } }
 /* The creator's panel (CreatorPanel): from the side, over a dimmed page. */
 .creator-backdrop { background: rgb(var(--c-ground) / 0.55); backdrop-filter: blur(3px); animation: creator-fade 0.3s ease; }
 .creator-panel { background: rgb(var(--c-ground) / 0.97); box-shadow: -30px 0 60px rgb(0 0 0 / 0.35); animation: creator-in 0.5s cubic-bezier(0.22, 1, 0.36, 1); }

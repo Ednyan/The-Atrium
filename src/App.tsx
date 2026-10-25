@@ -14,6 +14,8 @@ import DesktopLink, { afterSignIn } from './components/DesktopLink'
 import LandingPage from './components/LandingPage'
 import AboutPage from './components/AboutPage'
 import NotFoundPage from './components/NotFoundPage'
+import PageLoading from './components/PageLoading'
+import type { TranslationKey } from './locales/en'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
@@ -949,6 +951,16 @@ function MovedNotice() {
   )
 }
 
+// The tab's title, each screen's own: the name first, as index.html explains,
+// and the landing and the welcome screen keep its title. An atrium names its
+// tab itself (LobbyScene), and so does an address that isn't a page
+// (NotFoundPage).
+const HOME_TITLE = document.title
+const SCREEN_TITLES: Record<string, TranslationKey> = {
+  browse: 'browser.title', contributors: 'wall.title', contributed: 'wall.title',
+  developers: 'developers.title', about: 'welcome.about', login: 'auth.logIn',
+}
+
 function AppInner() {
   const { t } = useTranslation()
   const { setUsername, setUserId, setPlayerColor, clearLobbyData } = useGamePick('setUsername', 'setUserId', 'setPlayerColor', 'clearLobbyData')
@@ -966,6 +978,11 @@ function AppInner() {
 
   // URL-based routing state
   const [route, setRoute] = useState(parseRoute)
+  useEffect(() => {
+    if (route.page === 'atrium' || route.page === 'notfound') return
+    const named = SCREEN_TITLES[route.page]
+    document.title = named ? `Digital Atrium — ${t(named)}` : HOME_TITLE
+  }, [route.page, t])
   useEffect(() => {
     if (route.page === 'landing') return
     const timer = window.setTimeout(() => { void loadPagesAhead() }, 800)
@@ -2151,7 +2168,7 @@ function AppInner() {
   if (currentPage === 'contributed' || currentPage === 'contributors') {
     return (
       <>
-        <Suspense fallback={null}>
+        <Suspense fallback={<PageLoading />}>
           <ContributorsAtrium
             thanks={currentPage === 'contributed'}
             thanksName={thanksName}
@@ -2245,18 +2262,18 @@ function AppInner() {
   }
 
   if (currentPage === 'developers') {
-    return <Suspense fallback={null}><DevelopersPage onBack={() => navigate('/welcome')} onEnterAtrium={lobbyId => { void handleJoinLobby(lobbyId) }} /></Suspense>
+    return <Suspense fallback={<PageLoading />}><DevelopersPage onBack={() => navigate('/welcome')} onEnterAtrium={lobbyId => { void handleJoinLobby(lobbyId) }} /></Suspense>
   }
 
   if (currentPage === 'welcome') {
-    return <Suspense fallback={null}><WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} onDevelopers={() => navigate('/developers')} /></Suspense>
+    return <Suspense fallback={<PageLoading />}><WelcomeScreen onEnter={handleEnter} onBackToLanding={handleBackToLanding} onAbout={() => navigate('/about')} onDevelopers={() => navigate('/developers')} /></Suspense>
   }
 
   
   if (currentPage === 'browse') {
     return (
       <>
-        <Suspense fallback={null}>
+        <Suspense fallback={<PageLoading />}>
           <LobbyBrowser
             onJoinLobby={handleJoinLobby}
             onClose={() => navigate(isAuthenticated ? '/welcome' : '/')}
@@ -2385,7 +2402,7 @@ function AppInner() {
       // cinematic -- opening an atrium any other way has nothing to fade from.
       return (
         <>
-          <Suspense fallback={null}>
+          <Suspense fallback={<PageLoading />}>
             <LobbyScene lobbyId={route.lobbyId} onLeaveLobby={handleLeaveLobby} onKicked={(blacklisted, drive) => setKickedNotice({ blacklisted, drive })} />
             <DriveStatus />
           </Suspense>

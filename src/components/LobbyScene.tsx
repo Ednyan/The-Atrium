@@ -766,6 +766,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // Customize quick bar (QuickBarEditor), from the bar's More.
   const [showQuickBarEditor, setShowQuickBarEditor] = useState(false)
   const [currentLobby, setCurrentLobby] = useState<Lobby | null>(null)
+  // The tab named after the atrium, its own name first: one among several tabs reads at a glance.
+  useEffect(() => { if (currentLobby?.name) document.title = `${currentLobby.name} — Digital Atrium` }, [currentLobby?.name])
   // The atrium's theme as you see it (lib/customThemes): its own, until you
   // pick another in Atrium Themes or press light/dark -- for you alone,
   // remembered for this atrium on this device.
