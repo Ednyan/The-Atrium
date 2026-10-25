@@ -122,7 +122,9 @@
     opacity 200ms ease, background-color 200ms ease, border-color 200ms ease;
 }
 .menu-glide[data-danger] { background: rgba(255, 97, 97, 0.08); border-left-color: #ff6161; }
-.menu-glide-host .menu-row:hover { background: transparent; }
+/* The light is the row's lit look, its bar included: a row's own would
+   light at once where the light is still on its way. */
+.menu-glide-host .menu-row:hover { background: transparent; border-left-color: transparent; }
 @media (prefers-reduced-motion: reduce) { .menu-glide { transition: opacity 200ms ease; } }
 
 /* A light that sweeps across a button as it's pointed at (the welcome

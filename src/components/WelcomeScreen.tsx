@@ -23,7 +23,7 @@ import PortalScene from './PortalScene'
 import Atmosphere from './Atmosphere'
 import { supabase, isDesktop } from '../lib/supabase'
 import { goTo } from '../lib/route'
-import { checkPlatformAdmin } from '../lib/platformAdmin'
+import { checkPlatformAdmin, knownPlatformAdmin } from '../lib/platformAdmin'
 
 // Lazy load desktop-only components to avoid importing Tauri deps in web mode
 
@@ -39,7 +39,7 @@ interface WelcomeScreenProps {
 export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDevelopers }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showPinterest, setShowPinterest] = useState(false)
-  const [isDeveloper, setIsDeveloper] = useState(false)
+  const [isDeveloper, setIsDeveloper] = useState(knownPlatformAdmin)
   useEffect(() => { void checkPlatformAdmin().then(setIsDeveloper) }, [])
   const theme = useLandingTheme()
 
@@ -586,7 +586,9 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               aria-hidden="true"
               className="menu-glide"
               data-danger={glide.danger || undefined}
-              style={{ transform: `translateY(${glide.top}px)`, height: glide.height, opacity: glide.on ? 1 : 0 }}
+              // No margin: the column's spacing gives every child after the
+              // first one, this too, and it put the light a gap below its row.
+              style={{ transform: `translateY(${glide.top}px)`, height: glide.height, opacity: glide.on ? 1 : 0, margin: 0 }}
             />
           </div>
 

@@ -64,7 +64,7 @@ interface GameState {
   quickBarOrder: string[] | null
   // A playing trace heard from where it is (lib/spatialSound); off by default.
   spatialSound: boolean
-  // The atrium in miniature in a corner while the view moves (Minimap); off by default.
+  // The atrium in miniature in a corner while the view moves (Minimap); on unless turned off.
   showMinimap: boolean
   // Changes saved as they're made (lib/traceSave startAutosave); off, Save is pressed.
   autoSave: boolean
@@ -232,7 +232,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   })(),
   confirmDelete: localStorage.getItem('dontAskDeleteTrace') !== 'true',
   spatialSound: localStorage.getItem('spatialSound') === 'true',
-  showMinimap: localStorage.getItem('atrium.minimap') === 'on',
+  showMinimap: localStorage.getItem('atrium.minimap') !== 'off',
   autoSave: localStorage.getItem('autoSave') === 'true',
   autoSaveMinutes: (() => {
     // Read as set, 0 included: 0 is a choice (constantly), not "unset".
