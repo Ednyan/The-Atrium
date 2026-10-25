@@ -1167,6 +1167,63 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
   }
 
+  // The desktop app's window, in front or not. WebView2 never tells the page
+  // it's out of sight -- minimised or behind another app it stays "visible"
+  // and focused -- so the atrium drew every frame in the background as hard
+  // as in front (measured: 75 a second, minimised), where a browser pauses a
+  // tab, and the return below never ran. The window says instead: minimised,
+  // the canvas stops; behind another app, BACKGROUND_FPS, so others' cursors
+  // still move; pointed at or scrolled over while behind, full again at once;
+  // back in front, full, its clock reset as on the web.
+  useEffect(() => {
+    if (!isDesktop) return
+    const BACKGROUND_FPS = 20
+    let gone = false, focused = true, minimised = false, pointedAt = 0
+    const offs: (() => void)[] = []
+    const apply = () => {
+      const ticker = appRef.current?.ticker
+      if (!ticker || gone) return
+      if (minimised) { ticker.stop(); return }
+      const full = focused || performance.now() - pointedAt < 2000
+      ticker.maxFPS = full ? 0 : BACKGROUND_FPS
+      if (!ticker.started) ticker.start()
+      if (focused) {
+        ;(ticker as any).lastTime = performance.now()
+        zoomRef.current = targetZoomRef.current
+      }
+    }
+    // Something done to the window from behind: full until it's been still a moment.
+    let settle = 0
+    const touched = () => {
+      if (focused) return
+      pointedAt = performance.now()
+      apply()
+      window.clearTimeout(settle)
+      settle = window.setTimeout(apply, 2100)
+    }
+    window.addEventListener('pointermove', touched, { passive: true })
+    window.addEventListener('wheel', touched, { passive: true })
+    void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+      const win = getCurrentWindow()
+      const read = async () => { minimised = await win.isMinimized().catch(() => false); apply() }
+      offs.push(await win.onFocusChanged(({ payload }) => { focused = payload; void read() }))
+      offs.push(await win.onResized(() => void read()))
+      if (gone) { offs.forEach(off => off()); return }
+      // As it is now: opened behind another app, it was never focused, and no change says so.
+      focused = await win.isFocused().catch(() => true)
+      void read()
+    })
+    return () => {
+      gone = true
+      window.clearTimeout(settle)
+      window.removeEventListener('pointermove', touched)
+      window.removeEventListener('wheel', touched)
+      offs.forEach(off => off())
+      const ticker = appRef.current?.ticker
+      if (ticker) { ticker.maxFPS = 0; if (!ticker.started) ticker.start() }
+    }
+  }, [])
+
   // Reset PixiJS ticker when returning from Alt-Tab to prevent cursor sluggishness
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -2898,10 +2955,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   // The locations as a presentation, saved as a file (lib/presentationExport).
   const [presentationBusy, setPresentationBusy] = useState<string | null>(null)
-  const exportPresentation = async (format: PresentationFormat) => {
+  const exportPresentation = async (format: PresentationFormat, background: string) => {
     const { locations: list, traces: all, links, layers } = useGameStore.getState()
     if (!list.length || presentationBusy) return
-    const background = viewTheme?.backgroundColor || '#0a0a0f'
     const title = currentLobby?.name ?? 'atrium'
     const making = (done: number, total: number) => setPresentationBusy(t('atrium.locations.exporting', { done, total }))
     try {
@@ -2938,16 +2994,6 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       goToPresentationIndex(presentationIndexRef.current)
     }
   }, [goToPresentationIndex])
-
-  // Opened by a presentation link (LocationsPanel): presenting at once, the
-  // interface out of the way -- once, as soon as the atrium's locations are in.
-  const presentAsked = useRef(!isDesktop && new URLSearchParams(window.location.search).has('present'))
-  useEffect(() => {
-    if (!presentAsked.current || locations.length === 0) return
-    presentAsked.current = false
-    setUiHidden(true)
-    if (!presentationModeRef.current) togglePresentationMode()
-  }, [locations, togglePresentationMode])
 
   // Arrow keys step through locations while presentation mode is on. Stable
   // listener (reads refs), so it keeps working even with the panel closed.
@@ -6007,10 +6053,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           presentationIndex={presentationIndex}
           onExport={exportPresentation}
           exporting={presentationBusy}
-          onCopyPresentLink={isDesktop ? undefined : () => {
-            void navigator.clipboard.writeText(`${window.location.origin}/atrium/${lobbyId}?present`)
-              .then(() => showToast(t('atrium.locations.presentLinkCopied')), () => {})
-          }}
+          themeBackground={viewTheme?.backgroundColor || '#0a0a0f'}
         />
       )}
 
