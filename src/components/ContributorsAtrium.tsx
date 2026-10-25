@@ -37,6 +37,22 @@ interface ContributorsAtriumProps {
   thanksName?: string
 }
 
+// How far past the screen's edge traces are kept on the page, in screen pixels.
+const CULL_MARGIN = 460
+// The grid behind them: a cell, in world pixels, and how far its layer
+// reaches past the screen -- a cell at the closest zoom (2.5x).
+const GRID = 80
+const GRID_SLACK = GRID * 2.5
+// Moved by its layer's transform, never its background's position: the
+// pattern repeats every cell, so a shift by the remainder is the same picture,
+// and a transform is the compositor's alone. Moving the background repainted
+// it every frame, and any paint makes the browser regroup the whole page into
+// layers -- every trace on it, each frame: most of a frame, zoomed out.
+const gridShift = (x: number, y: number, zoom: number) => {
+  const cell = GRID * zoom
+  return `translate(${((x % cell) + cell) % cell}px, ${((y % cell) + cell) % cell}px)`
+}
+
 // Slow enough to feel like an arrival rather than a notification.
 const THANKS_FADE_MS = 900
 
@@ -388,11 +404,36 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     return () => { cancelled = true }
   }, [])
 
-  // Where the view is looking. Kept in state rather than a ref because the
-  // whole page is one transform -- there is no per-frame animation to protect,
-  // and a re-render per drag frame is cheap for a few dozen elements.
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
+  // Where the view is looking: written straight onto the space and its grid,
+  // once a frame (moveCamera), never through a render. A render per wheel
+  // tick redrew the whole page and every trace on it -- at a thousand traces,
+  // zoomed out, a frame took 400 ms. `cull` is the view the traces on the
+  // page were chosen for, moved only once the view strays far from it.
+  const camera = useRef({ x: 0, y: 0, zoom: 1 })
+  const [cull, setCull] = useState(camera.current)
+  const spaceRef = useRef<HTMLDivElement>(null)
+  const scaleRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const frame = useRef(0)
+  const moveCamera = useCallback((next: { x: number; y: number; zoom: number }) => {
+    camera.current = next
+    if (frame.current) return
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0
+      const { x, y, zoom } = camera.current
+      if (spaceRef.current) spaceRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`
+      if (scaleRef.current) scaleRef.current.style.transform = `scale(${zoom})`
+      if (gridRef.current) {
+        gridRef.current.style.backgroundSize = `${GRID * zoom}px ${GRID * zoom}px`
+        gridRef.current.style.transform = gridShift(x, y, zoom)
+      }
+      // Chosen again once it's moved half the margin the traces are kept
+      // beyond the screen by, or zoomed by an eighth: before the edge shows.
+      setCull(chosen => (Math.abs(x - chosen.x) > CULL_MARGIN / 2 || Math.abs(y - chosen.y) > CULL_MARGIN / 2
+        || Math.abs(Math.log(zoom / chosen.zoom)) > Math.log(1.125) ? camera.current : chosen))
+    })
+  }, [])
+  useEffect(() => () => cancelAnimationFrame(frame.current), [])
   const dragRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [legendOpen, setLegendOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 640)
@@ -452,13 +493,6 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   // pan and a pinch zooms here exactly as they do on the canvas.
   const gestures = useMemo(() => createWheelGestures(), [])
 
-  // Refs as well as state: the wheel listener is attached once and would
-  // otherwise close over the values from the render that attached it.
-  const offsetRef = useRef(offset)
-  const zoomRef = useRef(zoom)
-  useEffect(() => { offsetRef.current = offset }, [offset])
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
-
   useEffect(() => {
     const onWheel = (event: WheelEvent) => {
       // Non-passive, so the page itself never scrolls underneath and a pinch
@@ -468,11 +502,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
       if (gestures.classify(event) === 'pan') {
         // Screen-space, so two fingers moving an inch move the view an inch
         // whatever the zoom -- the same rule the atrium pans by.
-        setOffset(current => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }))
+        const { x, y, zoom } = camera.current
+        moveCamera({ x: x - event.deltaX, y: y - event.deltaY, zoom })
         return
       }
 
-      const nextZoom = Math.max(0.25, Math.min(2.5, zoomRef.current * (1 + gestures.zoomDelta(event))))
+      const now = camera.current
+      const nextZoom = Math.max(0.25, Math.min(2.5, now.zoom * (1 + gestures.zoomDelta(event))))
 
       // Zoom toward the cursor rather than the centre: the thing under the
       // pointer is the thing being looked at, and it should stay put.
@@ -481,16 +517,15 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         y: event.clientY - window.innerHeight / 2,
       }
       const world = {
-        x: (pointer.x - offsetRef.current.x) / zoomRef.current,
-        y: (pointer.y - offsetRef.current.y) / zoomRef.current,
+        x: (pointer.x - now.x) / now.zoom,
+        y: (pointer.y - now.y) / now.zoom,
       }
-      setOffset({ x: pointer.x - world.x * nextZoom, y: pointer.y - world.y * nextZoom })
-      setZoom(nextZoom)
+      moveCamera({ x: pointer.x - world.x * nextZoom, y: pointer.y - world.y * nextZoom, zoom: nextZoom })
     }
 
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
-  }, [gestures])
+  }, [gestures, moveCamera])
 
   // Keyboard zoom, matching the atrium's: +/- to step, 0 to reset.
   useEffect(() => {
@@ -502,14 +537,13 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
       if (event.key === '+' || event.key === '=') {
         event.preventDefault()
-        setZoom(current => Math.min(2.5, current * 1.12))
+        moveCamera({ ...camera.current, zoom: Math.min(2.5, camera.current.zoom * 1.12) })
       } else if (event.key === '-' || event.key === '_') {
         event.preventDefault()
-        setZoom(current => Math.max(0.25, current / 1.12))
+        moveCamera({ ...camera.current, zoom: Math.max(0.25, camera.current.zoom / 1.12) })
       } else if (event.key === '0') {
         event.preventDefault()
-        setZoom(1)
-        setOffset({ x: 0, y: 0 })
+        moveCamera({ x: 0, y: 0, zoom: 1 })
       } else if (event.key === 'Escape') {
         // While the thanks is up, Escape means "clear this", not "leave the
         // page I have just been sent to".
@@ -519,7 +553,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, dismissThanks, thanksGone])
+  }, [onClose, dismissThanks, thanksGone, moveCamera])
 
   // Placed on a phyllotaxis spiral, sorted by what each person has given.
   //
@@ -627,20 +661,23 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     // Generous, because leaving the document is not free here: a trace that
     // unmounts loses its running light and starts a fresh lap when it returns.
     // Holding a screen's worth on each side means ordinary panning stops
-    // crossing that boundary at all.
-    const margin = 460
-    const halfWidth = viewport.width / 2 + margin
-    const halfHeight = viewport.height / 2 + margin
+    // crossing that boundary at all -- and that the choice can wait until the
+    // view has moved half of it (moveCamera).
+    const halfWidth = viewport.width / 2 + CULL_MARGIN
+    const halfHeight = viewport.height / 2 + CULL_MARGIN
     return placed.filter(({ x, y }) =>
-      Math.abs(x * zoom + offset.x) < halfWidth && Math.abs(y * zoom + offset.y) < halfHeight)
-  }, [placed, offset, viewport, zoom])
+      Math.abs(x * cull.zoom + cull.x) < halfWidth && Math.abs(y * cull.zoom + cull.y) < halfHeight)
+  }, [placed, cull, viewport])
+  // Far out, a trace is a few pixels across: its running light and its glow
+  // can't be seen there, and drawing a thousand of each was most of the cost.
+  const far = cull.zoom < 0.5
 
   // Puts a trace in the middle of the screen at the current zoom. The page is
   // one transform, so this is just the inverse of it.
   const focusOn = (index: number) => {
     const target = matches[index]
     if (!target) return
-    setOffset({ x: -target.x * zoom, y: -target.y * zoom })
+    moveCamera({ x: -target.x * camera.current.zoom, y: -target.y * camera.current.zoom, zoom: camera.current.zoom })
   }
 
   // A new search jumps to the best hit; Enter walks through the rest. Both live
@@ -649,7 +686,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
     setMatchIndex(0)
     if (matches.length > 0) {
       const first = matches[0]
-      setOffset({ x: -first.x * zoom, y: -first.y * zoom })
+      moveCamera({ x: -first.x * camera.current.zoom, y: -first.y * camera.current.zoom, zoom: camera.current.zoom })
     }
     // Deliberately not depending on zoom: re-centring every time someone zooms
     // would fight them for control of the view.
@@ -665,7 +702,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
 
   const onPointerDown = (event: React.PointerEvent) => {
     if ((event.target as HTMLElement).closest('button')) return
-    dragRef.current = { x: offset.x, y: offset.y, startX: event.clientX, startY: event.clientY }
+    dragRef.current = { x: camera.current.x, y: camera.current.y, startX: event.clientX, startY: event.clientY }
     setDragging(true)
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }
@@ -673,9 +710,10 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
   const onPointerMove = (event: React.PointerEvent) => {
     const drag = dragRef.current
     if (!drag) return
-    setOffset({
+    moveCamera({
       x: drag.x + (event.clientX - drag.startX),
       y: drag.y + (event.clientY - drag.startY),
+      zoom: camera.current.zoom,
     })
   }
 
@@ -737,12 +775,16 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         }}
       />
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.05]"
+        ref={gridRef}
+        className="absolute pointer-events-none opacity-[0.05]"
         style={{
+          inset: -GRID_SLACK,
           backgroundImage:
             'linear-gradient(rgb(var(--c-fg) / 0.5) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--c-fg) / 0.5) 1px, transparent 1px)',
-          backgroundSize: `${80 * zoom}px ${80 * zoom}px`,
-          backgroundPosition: `${offset.x}px ${offset.y}px`,
+          backgroundSize: `${GRID * camera.current.zoom}px ${GRID * camera.current.zoom}px`,
+          backgroundPosition: `${GRID_SLACK}px ${GRID_SLACK}px`,
+          transform: gridShift(camera.current.x, camera.current.y, camera.current.zoom),
+          willChange: 'transform',
         }}
       />
 
@@ -757,20 +799,30 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
+        {/* Panned by one layer, zoomed by the one inside it: a pan then
+            changes a translation alone. */}
         <div
           className="absolute left-1/2 top-1/2"
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
+          ref={spaceRef}
+          style={{ transform: `translate(${camera.current.x}px, ${camera.current.y}px)`, willChange: 'transform' }}
         >
+          <div ref={scaleRef} style={{ transform: `scale(${camera.current.zoom})`, transformOrigin: '0 0' }}>
           {visible.map(({ person, x, y, order, folded }) => {
             const draw = drawFor(person, isLight)
             const dimmed = query.trim().length > 0 && !matchedNames.has(folded)
             return (
+              // Centred on its point by a box of no size around it, not by a
+              // transform of its own: a thousand traces each with a transform
+              // were a thousand pieces the browser regrouped into layers on
+              // every frame of a pan -- most of the frame, zoomed out.
               <div
                 key={`${person.isSeed ? 's' : person.isBeyondWall ? 'b' : 'r'}|${person.displayName}`}
-                className="wall-trace absolute px-4 py-3"
+                className="absolute w-0 h-0 flex items-center justify-center"
+                style={{ left: x, top: y }}
+              >
+              <div
+                className="wall-trace relative shrink-0 px-4 py-3"
                 style={{
-                  left: x,
-                  top: y,
                   // Sized by its contents rather than guessed from the length of
                   // the name. The guess only measured the name, so a long date
                   // underneath -- "19 de agosto de 2026", in whatever language
@@ -779,8 +831,8 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   // line beneath always fits inside it.
                   width: 'max-content',
                   maxWidth: 300,
-                  transform: 'translate(-50%, -50%)',
-                  opacity: dimmed ? 0.12 : 1,
+                  // Set only while dimmed: an opacity of its own is one more such piece.
+                  opacity: dimmed ? 0.12 : undefined,
                   transition: 'opacity 220ms ease-out',
                   // A hairline was thinner than these needed to be in either
                   // room. On paper the weight is what earns the lighter line
@@ -789,7 +841,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   border: '1.5px solid',
                   borderColor: draw.borderColor,
                   borderImage: draw.borderImage,
-                  boxShadow: `inset 0 1px 0 rgb(255 255 255 / ${isLight ? 0.7 : 0.1}), 0 0 24px ${draw.glow}`,
+                  boxShadow: far ? undefined : `inset 0 1px 0 rgb(255 255 255 / ${isLight ? 0.7 : 0.1}), 0 0 24px ${draw.glow}`,
                   // The monthly animation lives on the border now (below),
                   // not on the box's opacity.
                 }}
@@ -801,7 +853,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                     a non-match is the one thing on the page that should not be
                     asking for any. Staggered so the wall has a current running
                     through it rather than everything moving in lockstep. */}
-                {person.monthlyActive && !dimmed && (
+                {person.monthlyActive && !dimmed && !far && (
                   <svg
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ overflow: 'visible' }}
@@ -873,6 +925,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
                   </span>
                 </div>
               </div>
+              </div>
             )
           })}
 
@@ -887,6 +940,7 @@ export default function ContributorsAtrium({ onClose, onContribute, thanks = fal
               </p>
             </div>
           )}
+          </div>
         </div>
       </div>
 
