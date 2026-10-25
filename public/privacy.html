@@ -291,7 +291,7 @@
 <div class="page">
 <main>
 <h1>Privacy Policy — The Digital Atrium</h1>
-<p class="meta">Last updated: 2026-07-27. Contact: <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a></p>
+<p class="meta">Last updated: 2026-10-25. Contact: <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a></p>
 
 <p>
   The Digital Atrium ("the app", "we", "us") is a collaborative canvas application developed by Eduardo Paranhos.
@@ -304,29 +304,60 @@
 </p>
 
 <h2>Account data</h2>
-<p>On the web app, creating an account requires an email address, a username, and a password. This is handled by our backend provider, Supabase, which stores and encrypts your credentials — we do not see or store your raw password ourselves.</p>
-<p>On the desktop app, no account or sign-in is required by default: your username and preferences are stored locally on your device.</p>
+<p>You can use much of the app without an account: atriums kept in your browser need none. An account is needed to share atriums, keep them online, and collaborate.</p>
+<ul>
+  <li><strong>An account with an email address</strong> needs your email address, a username and a password. <strong>Your password never leaves your device</strong>: your browser turns it into a key (600,000 rounds of PBKDF2), and only that key is sent. Our server keeps a salted hash of the key, never the password itself. We email a code to confirm your address and to reset a forgotten password.</li>
+  <li><strong>Signing in with Google</strong> gives us your name, your email address and your Google account's ID, as Google states them. We never see your Google password.</li>
+  <li>Accounts made before October 2026 were created with Supabase, a backend provider. Until each one is moved over, Supabase still holds its sign-in.</li>
+</ul>
+<p>On the desktop app, no account is needed: your username and preferences are stored on your device. You can sign the desktop app in to your account to open atriums shared with you; it then keeps a sign-in for that account.</p>
 
 <h2>Content you create</h2>
 <p>
-  Anything you place on a canvas — text, images, shapes, embedded links, audio, or video — is stored so it can be shown to you (and to other collaborators, if the atrium/lobby you're in allows editing or is shared) the next time it's opened. On the web app this is stored in our backend database and file storage. On the desktop app this is stored locally in a database file on your device, and only leaves your device if you explicitly use a feature that uploads or shares it.
+  Anything you place on a canvas — text, images, shapes, drawings, embedded links, audio or video — is kept so it can be shown to you and to the people you share the atrium with. Where it's kept depends on the kind of atrium:
+</p>
+<ul>
+  <li><strong>In your browser:</strong> on your device only. It leaves it only if you share the atrium, put it online, or move it to Google Drive.</li>
+  <li><strong>On the desktop app:</strong> in the vault folder on your computer, under the same conditions.</li>
+  <li><strong>In your Google Drive:</strong> in your own Drive, encrypted in your browser before it's uploaded. The keys are kept in your Drive too, so <strong>we cannot read these atriums</strong>. The app asks Google only for access to the files it creates and to its own hidden folder in your Drive, never the rest of your Drive.</li>
+  <li><strong>Online:</strong> on our servers (Cloudflare), encrypted. If your account keeps its keys with us — an account without Google Drive — this encryption protects the files where they're stored, but not from us; see "Administrator access" below.</li>
+</ul>
+<p>
+  A <strong>public</strong> atrium can be opened by anyone with its address, and its owner can list it publicly. A copy of it is kept on our servers so visitors can open it quickly.
 </p>
 
-<h2>Presence data</h2>
+<h2>Live collaboration and your IP address</h2>
 <p>
-  While you're active in a shared atrium, your approximate cursor position, chosen display color, and online status are broadcast in real time to other people currently in that same atrium, so collaboration feels live. This is not stored permanently — it exists only while you're connected.
+  While you're in an atrium with other people, your name, chosen colour, cursor, laser pointer and online status are shared with them in real time, and the changes you make reach them as you make them. This goes through our servers (Cloudflare) and, where possible, <strong>directly between your device and theirs</strong>. None of it is stored, apart from the changes themselves, which are saved as described above.
+</p>
+<p>
+  A direct connection means the people you connect with can see your <strong>IP address</strong>, as with any peer-to-peer call. If you'd rather they didn't, turn on <em>Hide My IP Address</em> in your profile: your connections then go through Cloudflare's relay, and the others see the relay's address instead of yours.
+</p>
+
+<h2>Emails</h2>
+<p>
+  We send emails only for what you do: sign-up and password-reset codes, a welcome when you join and a goodbye when you leave, and messages about your contributions. They're delivered by two email services, Resend and Brevo, which process your email address and the message to deliver it.
+</p>
+<p>
+  The report form sends what you write to our support inbox, the same way. If you're signed in with a confirmed address, that address is included so we can answer you.
+</p>
+
+<h2>Contributions</h2>
+<p>
+  Contributions are paid through Stripe; <strong>we never see your card details</strong>. We keep the amount, the currency, the date, Stripe's reference for the payment, and — if you give them — the name you'd like shown on the contributors wall (shown only once approved) and an email address to reach you about your contribution. Records of payments are kept as long as accounting requires.
 </p>
 
 <h2>Cookies and local storage</h2>
 <p>
-  The Digital Atrium does not use tracking or advertising cookies. On the web app, your browser's local storage (not cookies) is used only for things the app needs to function:
+  The Digital Atrium does not use tracking or advertising cookies. Your browser's own storage (not cookies) is used only for what the app needs to work:
 </p>
 <ul>
-  <li>Keeping you signed in between visits (handled by our authentication provider, Supabase).</li>
-  <li>Remembering interface preferences — e.g. which atrium you were last in, your chosen player color, zoom sensitivity, undo history depth, and similar display toggles.</li>
+  <li>Keeping you signed in between visits.</li>
+  <li>Atriums kept in your browser, and working copies of the ones you open.</li>
+  <li>Interface preferences — e.g. which atrium you were last in, your chosen colour, language, zoom sensitivity, and similar display settings.</li>
 </ul>
 <p>
-  None of this is used to track you across other sites, build an advertising profile, or shared with any third party — so no cookie-consent banner is shown. You're welcome to clear your browser's local storage for this site at any time; it simply signs you out and resets these preferences to their defaults.
+  None of this is used to track you across other sites, build an advertising profile, or shared with any third party — so no cookie-consent banner is shown. You can clear this site's storage at any time; it signs you out, resets these preferences, and <strong>deletes any atriums kept only in your browser</strong>.
 </p>
 
 <h2>Pinterest integration (optional)</h2>
@@ -335,42 +366,45 @@
 </p>
 <ul>
   <li>We request read-only access to your boards and pins, and your Pinterest username, solely so you can choose a board and import its pins as images onto your own canvas.</li>
-  <li>The access token Pinterest gives us is stored server-side and is never exposed to other users of the app, including collaborators in a shared atrium.</li>
+  <li>The access token Pinterest gives us is stored on our servers and is never exposed to other users of the app, including collaborators in a shared atrium.</li>
   <li>We do not post, modify, or delete anything on your Pinterest account — access is read-only.</li>
   <li>We do not use your Pinterest data for advertising, and we do not sell or share it with third parties beyond what's needed to make the requested API calls to Pinterest itself.</li>
-  <li>You can disconnect at any time from Profile Settings, which deletes your stored Pinterest tokens immediately. Pins you've already imported remain on your canvas as ordinary content (see "Content you create" above) unless you delete them yourself.</li>
+  <li>You can disconnect at any time from Profile Settings, which deletes your stored Pinterest tokens immediately. Pins you've already imported remain on your canvas as ordinary content unless you delete them yourself.</li>
 </ul>
 
-<h2>Other third-party services we use</h2>
+<h2>Services we use</h2>
 <ul>
-  <li><strong>Supabase</strong> — database, authentication, file storage, and realtime messaging for the web app.</li>
-  <li><strong>Cloudflare Pages</strong> — hosts the web app.</li>
-  <li><strong>Pinterest API</strong> — only used for accounts that explicitly connect Pinterest, as described above.</li>
+  <li><strong>Cloudflare</strong> — hosts the website and runs our servers: accounts, online and public atriums, live collaboration, the relay, and file storage.</li>
+  <li><strong>Google</strong> — signing in with Google, and Google Drive for atriums you keep there. Only if you use them.</li>
+  <li><strong>Resend</strong> and <strong>Brevo</strong> — deliver the emails described above.</li>
+  <li><strong>Stripe</strong> — processes contributions.</li>
+  <li><strong>Pinterest</strong> — only for accounts that connect it, as described above.</li>
+  <li><strong>Supabase</strong> — the sign-in of accounts made before October 2026, and some image files (atrium previews, drawings), while we finish moving them to Cloudflare.</li>
 </ul>
 <p>We do not run any advertising or analytics/tracking scripts on this site.</p>
 
 <h2>Data retention and deletion</h2>
 <p>
-  You can delete individual pieces of content yourself at any time from within the app. On the web app, you can also delete your entire account yourself, immediately, from Profile Settings → Delete Account — this removes your profile, every atrium you own, and any connected Pinterest tokens. Content you placed in atriums owned by other people is not deleted, since removing it could take content other people are relying on out of their shared atrium — instead it's anonymized so it's no longer linked to you or your name. This cannot be undone. If you'd rather we do it for you, or you're on desktop, contact <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a> and we'll process the request promptly.
+  You can delete individual pieces of content yourself at any time from within the app. You can also delete your whole account yourself, immediately, from Profile Settings → Delete Account. This removes your account, your sign-in, your online atriums and their files, and any connected Pinterest tokens. Atriums in your Google Drive stay in your Drive, as yours; delete them there if you want them gone. The people you shared those atriums with keep the copies already on their own devices. Atriums other people own aren't deleted with your account, and what you placed in them can stay in their copies. This cannot be undone. If you'd rather we do it for you, or you're on desktop, contact <a href="mailto:thedigitalatrium@gmail.com">thedigitalatrium@gmail.com</a> and we'll process the request promptly.
 </p>
 
 <h2>Security</h2>
 <p>
-  Access to your data is scoped per account and, for shared atriums, per the permissions the atrium's owner configures (who can view, edit, or is blocked). Sensitive credentials (passwords, Pinterest tokens) are never exposed to other users through the app's normal features.
+  Access is scoped per account and, for shared atriums, per the roles their owner gives (owner, admin, editor, viewer). Atriums are encrypted where they're kept online or in Google Drive. Your password never reaches us, and Pinterest tokens are never exposed to other users through the app's normal features.
 </p>
 
 <h2>Administrator access</h2>
 <p>
-  I operate this service, which means I hold the keys to the database it runs on. In practice that is true of anyone running any hosted app, but I would rather state it plainly than leave you to assume otherwise.
+  I operate this service, which means I hold the keys to the servers it runs on. In practice that is true of anyone running any hosted app, but I would rather state it plainly than leave you to assume otherwise.
 </p>
 <p>
-  My account can open any atrium, including private and password-protected ones, without being whitelisted or knowing the password. I may do this to investigate a bug you report, to look into content reported as abusive or illegal, or to recover data after something goes wrong. <strong>When I open an atrium I would not otherwise have access to, I do so invisibly</strong> — I will not appear in the list of people present and my cursor will not be shown. This is so that looking into a report doesn't announce itself to whoever is being reported.
+  That reaches as far as what's kept on those servers: online atriums, public atriums, and account records. It does not reach atriums kept in your browser, on the desktop app, or in your Google Drive — I cannot open those.
 </p>
 <p>
-  This access is <strong>read-only</strong>. The administrator privilege does not allow editing, adding, or deleting anything in an atrium I don't own or haven't been invited to.
+  I may look at an online atrium to investigate a bug you report, to look into content reported as abusive or illegal, or to recover data after something goes wrong. <strong>When I do, I do so invisibly</strong> — I will not appear in the list of people present and my cursor will not be shown — so that looking into a report doesn't announce itself to whoever is being reported.
 </p>
 <p>
-  I don't browse people's private atriums out of curiosity, and I'm not doing anything automated with their contents — no analysis, no training data, no sharing with anyone else. If you would rather your references never sit on someone else's server at all, the desktop app stores everything locally on your own device and this section doesn't apply to it.
+  I don't browse people's private atriums out of curiosity, and I'm not doing anything automated with their contents — no analysis, no training data, no sharing with anyone else. If you would rather your references never sit on someone else's server at all, keep your atriums in your browser, on the desktop app, or in your own Google Drive.
 </p>
 
 <div class="note">
@@ -386,7 +420,7 @@
 <p>If this policy changes in a meaningful way, the "Last updated" date above will change. Check back here if you want to stay current.</p>
 
 <h2>Terms of use</h2>
-<p>Your use of the app is also covered by the <a href="/terms.html">Terms of Service</a>.</p>
+<p>Your use of the app is also covered by the <a href="/terms">Terms of Service</a>.</p>
 
 </main>
 
