@@ -697,6 +697,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const mouseDownScreenPosRef = useRef<{ x: number; y: number } | null>(null)
   const [imageDimensions, setImageDimensions] = useState<Record<string, { width: number; height: number }>>({})
   const [modalTrace, setModalTrace] = useState<Trace | null>(null)
+  // The enlarged trace's look, from the trace as it is now (its filter, look-modal).
+  const modalLive = modalTrace ? traces.find(trace => trace.id === modalTrace.id) ?? modalTrace : null
+  const modalLook = modalLive && takesLook(modalLive) && !isNeutral(modalLive.look) ? modalLive.look! : null
+  const modalFilter = modalLook ? 'url(#look-modal)' : undefined
   // Tracked live (not just read once) so the image modal below stays
   // correctly sized if the window is resized while it's open.
   const [modalViewportSize, setModalViewportSize] = useState({ width: window.innerWidth, height: window.innerHeight })
@@ -10253,6 +10257,9 @@ return (
           className="modal-backdrop fixed inset-0 bg-nier-black/80 flex items-center justify-center z-[10000100] pointer-events-auto"
           onClick={() => setModalTrace(null)}
         >
+          {/* Its look (lib/traceLook), as on the canvas -- as it is now, not
+              as it was when opened. */}
+          {modalLook && <LookFilter id="look-modal" look={modalLook} />}
           <div
             className={
               (modalTrace.type === 'embed' || modalTrace.type === 'image' || modalTrace.type === 'document')
@@ -10328,12 +10335,12 @@ return (
                         const aspect = (modalTrace.width || 16) / (modalTrace.height || 9)
                         const height = Math.min(maxHeight, (modalViewportSize.width * 0.9) / aspect)
                         return (
-                          <div className="relative" style={{ width: height * aspect, height }}>
+                          <div className="relative" style={{ width: height * aspect, height, filter: modalFilter }}>
                             <DeckSlide url={modalTrace.mediaUrl!} page={page} onCount={count => countSlides(modalTrace.id, count)} />
                           </div>
                         )
                       })() : src ? (
-                        <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9 }} />
+                        <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9, filter: modalFilter }} />
                       ) : (
                         <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
                           {documentError[modalTrace.id] ?? t('atrium.controls.rendering')}
@@ -10385,7 +10392,7 @@ return (
                   <img
                     src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
                     alt=""
-                    style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) }}
+                    style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale), filter: modalFilter }}
                     className="object-contain"
                   />
                 )
@@ -10397,6 +10404,7 @@ return (
                   controls
                   autoPlay
                   className="w-full max-h-96"
+                  style={{ filter: modalFilter }}
                 />
               )}
 
@@ -10458,7 +10466,7 @@ return (
                     <img
                       src={imageProxySources[modalTrace.id] || modalTrace.mediaUrl}
                       alt=""
-                      style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) }}
+                      style={{ width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale), filter: modalFilter }}
                       className="object-contain"
                     />
                   )
@@ -10506,7 +10514,7 @@ return (
                     // ("zoomed in") view of the embedded content in exactly
                     // the browsers that add that border.
                     frameBorder={0}
-                    style={{ width: displayWidth, height: displayHeight, border: 'none', display: 'block' }}
+                    style={{ width: displayWidth, height: displayHeight, border: 'none', display: 'block', filter: modalFilter }}
                     allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
