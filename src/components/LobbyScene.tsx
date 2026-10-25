@@ -62,6 +62,7 @@ import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
+import Minimap, { type MinimapHandle } from './Minimap'
 import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction, QuickBarEditor } from './QuickBar'
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
@@ -601,6 +602,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const lassoSvgRef = useRef<SVGSVGElement>(null)
   const areaSelectRectRef = useRef<HTMLDivElement>(null)
   const cameraPositionRef = useRef({ x: 0, y: 0 }) // Independent camera position
+  // The atrium in miniature, told the view each frame (Minimap).
+  const minimapRef = useRef<MinimapHandle>(null)
   const zoomSensitivityRef = useRef(getStoredZoomSensitivity())
   // Per-atrium: how a multi-item drop/paste batch gets arranged (see the
   // Profile panel's "Batch Placement" setting and binPack.ts).
@@ -724,6 +727,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // a step of undo (lib/locations). Presentation mode is here, not in
   // LocationsPanel, so it keeps running after the panel is closed.
   const { locations } = useGamePick('locations')
+  const { showMinimap } = useGamePick('showMinimap')
   const [presentationMode, setPresentationMode] = useState(false)
   const [presentationIndex, setPresentationIndex] = useState(0)
   const presentationModeRef = useRef(false)
@@ -3824,6 +3828,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           renderDrawingCanvasRef.current()
         }
         
+        minimapRef.current?.frame(cameraPositionRef.current.x, cameraPositionRef.current.y, zoomRef.current, window.innerWidth, window.innerHeight)
+
         // Floating particles, which drift every frame.
         themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
 
@@ -5010,6 +5016,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           </div>
         </div>
       </div>
+      )}
+      {/* The atrium in miniature while the view moves, above the usage (a
+          preference); a press on it takes the view there. */}
+      {showMinimap && !uiHidden && !narrow && (
+        <Minimap ref={minimapRef} onMove={(x, y) => { cameraFlyToRef.current = null; cameraPositionRef.current = { x, y } }} />
       )}
       {/* A phone, or a narrow window, has the view bar in its menu: these, under the top row. */}
       {!uiHidden && narrow && (showPalette || showOverlay) && (

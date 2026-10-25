@@ -139,6 +139,11 @@
 .sheen:hover::after { translate: 110% 0; transition: translate 800ms cubic-bezier(.2, .8, .2, 1); }
 @media (prefers-reduced-motion: reduce) { .sheen::after { display: none; } }
 
+/* The atrium in miniature (Minimap): there while the view moves, gone a
+   moment after, and out of the way of the canvas while gone. */
+.minimap { opacity: 0; translate: 0 6px; pointer-events: none; transition: opacity 280ms ease, translate 280ms cubic-bezier(.2, .8, .2, 1); }
+.minimap.minimap-shown { opacity: 1; translate: 0 0; pointer-events: auto; }
+
 /* A menu that drops from its button (the atrium browser's ⋯). */
 .menu-pop { animation: menu-pop 200ms cubic-bezier(.2, .8, .2, 1) backwards; transform-origin: top right; }
 @keyframes menu-pop { from { opacity: 0; scale: 0.96; translate: 0 -4px; } }
