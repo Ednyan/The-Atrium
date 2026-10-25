@@ -1,0 +1,13 @@
+{
+  "name": "The Digital Atrium",
+  "short_name": "Atrium",
+  "description": "An interactive space where ideas take shape, are seen, shared and built on.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#000000",
+  "theme_color": "#191919",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

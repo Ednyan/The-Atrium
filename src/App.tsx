@@ -13,6 +13,7 @@ import PinterestDesktopLink from './components/PinterestDesktopLink'
 import DesktopLink, { afterSignIn } from './components/DesktopLink'
 import LandingPage from './components/LandingPage'
 import AboutPage from './components/AboutPage'
+import NotFoundPage from './components/NotFoundPage'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
@@ -792,8 +793,13 @@ function parseRoute(): { page: string; lobbyId?: string; section?: string } {
     // through to the default.
     case '/desktop':
       return { page: 'landing', section: 'desktop' }
-    default:
+    // Where Supabase's reset link lands: the landing page, with
+    // PasswordRecovery over it.
+    case '/reset-password':
       return { page: 'landing' }
+    // Anything else isn't a page (NotFoundPage).
+    default:
+      return { page: 'notfound' }
   }
 }
 
@@ -1671,6 +1677,8 @@ function AppInner() {
                 // and restoring their atrium over the code would lose it.
                 || urlRoute.page === 'link-pinterest'
                 || urlRoute.page === 'link-desktop'
+                // An address that isn't a page says so, rather than vanishing into one's atrium.
+                || urlRoute.page === 'notfound'
 
               // A lobby id in the URL still wins -- that IS a request to open
               // that atrium. Only the fallback to the *stored* lobby is
@@ -2132,6 +2140,9 @@ function AppInner() {
   // no account, arriving from a desktop app that has no account either.
   if (currentPage === 'link-pinterest') {
     return <PinterestDesktopLink />
+  }
+  if (currentPage === 'notfound') {
+    return <NotFoundPage onHome={() => navigate('/')} onAtriums={() => navigate('/browse')} />
   }
   if (currentPage === 'link-desktop') {
     return <DesktopLink onSignIn={() => navigate('/login')} />

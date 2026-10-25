@@ -2,8 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Icons: scripts/make-favicons.mjs. The .ico is what anything asks
+         /favicon.ico for unprompted; the manifest's are a home screen's. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="128x128" href="/favicon-128.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- What a search engine and a link preview get.
@@ -124,6 +129,13 @@
         much more.
       </p>
       <p>The Digital Atrium needs JavaScript enabled to run.</p>
+      <!-- The site's other pages, as plain links: what a crawler's first,
+           script-less pass finds them by, beside the sitemap. -->
+      <p>
+        <a href="/code-history/">How it was built: the code history</a> ·
+        <a href="/privacy">Privacy Policy</a> ·
+        <a href="/terms">Terms of Service</a>
+      </p>
     </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>

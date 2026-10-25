@@ -1967,6 +1967,10 @@ const fr: Catalogue = {
   'linkDesktop.expired': "Ce code a expiré ou a déjà servi. Demandez-en un nouveau dans l'application.",
   'linkDesktop.noCode': "Aucun code ici. Ouvrez cette page depuis l'application de bureau.",
   'linkDesktop.failed': "Impossible d'approuver pour l'instant. Réessayez dans un moment.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Page introuvable",
+  'notFound.body': "Il n'y a aucune page à cette adresse. Elle a peut-être été mal saisie, ou la page a été déplacée.",
+  'notFound.home': "Aller à l'accueil",
 }
 
 export default fr

@@ -2047,6 +2047,10 @@ const ja: Catalogue = {
   'linkDesktop.expired': "このコードは期限切れか、すでに使われています。アプリで新しいコードを出してください。",
   'linkDesktop.noCode': "コードがありません。デスクトップアプリからこのページを開いてください。",
   'linkDesktop.failed': "今は承認できませんでした。少し待ってからもう一度お試しください。",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "ページが見つかりません",
+  'notFound.body': "このアドレスにはページがありません。入力が間違っているか、ページが移動した可能性があります。",
+  'notFound.home': "ホームへ",
 }
 
 export default ja

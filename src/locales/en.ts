@@ -1995,6 +1995,10 @@ export const en = {
   'linkDesktop.expired': "That code has run out, or was used already. Ask the app for a new one.",
   'linkDesktop.noCode': "No code here. Open this page from the desktop app.",
   'linkDesktop.failed': "Couldn't approve it just now. Try again in a moment.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Page not found",
+  'notFound.body': "There's no page at this address. It may have been mistyped, or the page has moved.",
+  'notFound.home': "Go to the home page",
 } as const
 
 export type TranslationKey = keyof typeof en

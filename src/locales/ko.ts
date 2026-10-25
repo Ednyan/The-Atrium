@@ -2051,6 +2051,10 @@ const ko: Catalogue = {
   'linkDesktop.expired': "이 코드는 만료됐거나 이미 쓰였어요. 앱에서 새 코드를 받으세요.",
   'linkDesktop.noCode': "코드가 없어요. 데스크톱 앱에서 이 페이지를 여세요.",
   'linkDesktop.failed': "지금은 승인할 수 없어요. 잠시 후 다시 시도하세요.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "페이지를 찾을 수 없습니다",
+  'notFound.body': "이 주소에는 페이지가 없습니다. 주소를 잘못 입력했거나 페이지가 옮겨졌을 수 있습니다.",
+  'notFound.home': "홈으로 가기",
 }
 
 export default ko

@@ -1965,6 +1965,10 @@ const es: Catalogue = {
   'linkDesktop.expired': "Ese código ha caducado o ya se usó. Pide uno nuevo en la app.",
   'linkDesktop.noCode': "Aquí no hay ningún código. Abre esta página desde la app de escritorio.",
   'linkDesktop.failed': "No se pudo aprobar ahora. Inténtalo de nuevo en un momento.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Página no encontrada",
+  'notFound.body': "No hay ninguna página en esta dirección. Puede que esté mal escrita o que la página se haya movido.",
+  'notFound.home': "Ir a la página de inicio",
 }
 
 export default es

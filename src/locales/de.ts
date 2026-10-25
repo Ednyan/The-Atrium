@@ -1968,6 +1968,10 @@ const de: Catalogue = {
   'linkDesktop.expired': "Dieser Code ist abgelaufen oder wurde schon benutzt. Hol dir in der App einen neuen.",
   'linkDesktop.noCode': "Hier ist kein Code. Öffne diese Seite aus der Desktop-App.",
   'linkDesktop.failed': "Das ging gerade nicht. Versuch es gleich noch einmal.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Seite nicht gefunden",
+  'notFound.body': "Unter dieser Adresse gibt es keine Seite. Vielleicht wurde sie falsch eingegeben, oder die Seite ist umgezogen.",
+  'notFound.home': "Zur Startseite",
 }
 
 export default de

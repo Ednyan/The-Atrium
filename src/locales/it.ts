@@ -1969,6 +1969,10 @@ const it: Catalogue = {
   'linkDesktop.expired': "Quel codice è scaduto o è già stato usato. Chiedine uno nuovo nell'app.",
   'linkDesktop.noCode': "Nessun codice qui. Apri questa pagina dall'app desktop.",
   'linkDesktop.failed': "Non è stato possibile approvare ora. Riprova tra poco.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Pagina non trovata",
+  'notFound.body': "A questo indirizzo non c'è nessuna pagina. Forse è stato scritto male, o la pagina è stata spostata.",
+  'notFound.home': "Vai alla home",
 }
 
 export default it

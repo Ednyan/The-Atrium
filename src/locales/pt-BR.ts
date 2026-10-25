@@ -1969,6 +1969,10 @@ const ptBR: Catalogue = {
   'linkDesktop.expired': "Esse código expirou ou já foi usado. Peça um novo no app.",
   'linkDesktop.noCode': "Não há código aqui. Abra esta página pelo app para computador.",
   'linkDesktop.failed': "Não foi possível aprovar agora. Tente de novo daqui a pouco.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Página não encontrada",
+  'notFound.body': "Não há nenhuma página neste endereço. Talvez tenha sido digitado errado, ou a página mudou de lugar.",
+  'notFound.home': "Ir para a página inicial",
 }
 
 export default ptBR

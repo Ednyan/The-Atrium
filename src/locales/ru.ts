@@ -1971,6 +1971,10 @@ const ru: Catalogue = {
   'linkDesktop.expired': "Срок действия кода истёк, или он уже использован. Запросите новый в приложении.",
   'linkDesktop.noCode': "Кода нет. Откройте эту страницу из приложения для компьютера.",
   'linkDesktop.failed': "Не удалось подтвердить. Попробуйте чуть позже.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Страница не найдена",
+  'notFound.body': "По этому адресу нет страницы. Возможно, в адресе опечатка или страница переехала.",
+  'notFound.home': "На главную",
 }
 
 export default ru

@@ -1972,6 +1972,10 @@ const ptPT: Catalogue = {
   'linkDesktop.expired': "Esse código expirou ou já foi usado. Peça um novo na aplicação.",
   'linkDesktop.noCode': "Não há código aqui. Abra esta página a partir da aplicação para computador.",
   'linkDesktop.failed': "Não foi possível aprovar agora. Tente novamente daqui a pouco.",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "Página não encontrada",
+  'notFound.body': "Não existe nenhuma página neste endereço. Talvez tenha sido mal escrito, ou a página mudou de sítio.",
+  'notFound.home': "Ir para a página inicial",
 }
 
 export default ptPT

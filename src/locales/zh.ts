@@ -2050,6 +2050,10 @@ const zh: Catalogue = {
   'linkDesktop.expired': "该代码已过期或已被使用。请在应用中获取新的代码。",
   'linkDesktop.noCode': "这里没有代码。请从桌面应用打开此页面。",
   'linkDesktop.failed': "暂时无法批准。请稍后再试。",
+  // An address that isn't a page (NotFoundPage).
+  'notFound.title': "找不到页面",
+  'notFound.body': "此地址没有页面。可能是地址输入有误，或者页面已经移动。",
+  'notFound.home': "返回首页",
 }
 
 export default zh
