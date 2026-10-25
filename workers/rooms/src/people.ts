@@ -136,25 +136,37 @@ export async function meetExisting(env: Env, db: D1Database, who: Who, token: st
   if (rows?.[0]) await takeProfile(db, rows[0]).run()
 }
 
-export async function allowedNow(db: D1Database, key: string, most: number, windowMs = 60 * 60 * 1000): Promise<boolean> {
+/** Whether `key` may do it once more: at most `most` a window. Counted in
+ *  its throttle row -- `every` at a time, the rest held in this instance
+ *  meanwhile (fewer than `every`, so the limit is off by that little). */
+export async function allowedNow(db: D1Database, key: string, most: number, windowMs = 60 * 60 * 1000, every = 1): Promise<boolean> {
   const now = Date.now()
+  const held = (uncounted.get(key) ?? 0) + 1
   const row = await db.prepare('select count, since from throttle where key = ?').bind(key).first<{ count: number; since: number }>()
-  if (!row || now - row.since > windowMs) {
-    await db.batch([
-      db.prepare('delete from throttle where since < ?').bind(now - 48 * 60 * 60 * 1000),
-      db.prepare('insert into throttle (key, count, since) values (?, 1, ?) on conflict (key) do update set count = 1, since = excluded.since').bind(key, now),
-    ])
+  const fresh = !row || now - row.since > windowMs
+  if (!fresh && row.count + held > most) return false
+  if (!fresh && held < every) {
+    uncounted.set(key, held)
     return true
   }
-  if (row.count >= most) return false
-  await db.prepare('update throttle set count = count + 1 where key = ?').bind(key).run()
+  uncounted.delete(key)
+  if (fresh) {
+    await db.batch([
+      db.prepare('delete from throttle where since < ?').bind(now - 48 * 60 * 60 * 1000),
+      db.prepare('insert into throttle (key, count, since) values (?, ?, ?) on conflict (key) do update set count = excluded.count, since = excluded.since').bind(key, held, now),
+    ])
+  } else await db.prepare('update throttle set count = count + ? where key = ?').bind(held, key).run()
   return true
 }
+const uncounted = new Map<string, number>()
 
 // What one account may write in an hour (the hosted store, mirrors): far
 // past any honest use -- an atrium saved every few seconds all hour -- and
-// far short of the free plan's 100,000 rows a day.
-export const WRITES_AN_HOUR = 3000
+// far short of the free plan's 100,000 rows a day. Counted ten at a time: a
+// throttle row written for each was a fourth of every save's D1 writes
+// (docs/SCALING.md).
+const WRITES_AN_HOUR = 3000
+export const allowedWrite = (db: D1Database, account: string) => allowedNow(db, `writes:${account}`, WRITES_AN_HOUR, undefined, 10)
 
 // A setting kept (the settings table): its value, or null; and one set.
 export const setting = async (db: D1Database, key: string) =>

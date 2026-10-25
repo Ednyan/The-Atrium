@@ -9,7 +9,7 @@
 // anyone, as the atrium itself is: it's public, and what it holds is sealed.
 // Gone when it's no longer listed (dropMirror).
 
-import { tablesIn, allowedNow, WRITES_AN_HOUR } from './people'
+import { tablesIn, allowedWrite } from './people'
 import { FILE_NAME as NAME, MOST_FILE_BYTES, replies, sentFile, whoIs, type Env } from './who'
 
 // One mirrored atrium's bytes, at most.
@@ -55,7 +55,7 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
   const { head } = sent
   const who = await whoIs(String(head.token ?? ''), env)
   if (!who) return answer(401, { error: 'sign-in' })
-  if (!(await allowedNow(db, `writes:${who.id}`, WRITES_AN_HOUR))) return answer(429, { error: 'busy' })
+  if (!(await allowedWrite(db, who.id))) return answer(429, { error: 'busy' })
   const lobby = String(head.lobby ?? ''), id = String(head.id ?? ''), name = String(head.name ?? '')
   const parent = head.parent ? String(head.parent) : null
   const version = String(head.version ?? '')

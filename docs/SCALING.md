@@ -65,8 +65,9 @@ days: redo these tables from it once there's real traffic.
     With the room live, which is whenever someone's inside, it goes
     through the room at once, and into the store with the others every 30 s
     (`KEEP_MS`).
-  - Each stored save is one new file: one R2 write, and about 4 D1 rows
-    written (its listing row, two indexes, and the write throttle).
+  - Each stored save is one new file: one R2 write, and about 3 D1 rows
+    written (its listing row and two indexes). The write throttle adds its
+    own row once every ten writes.
   - Assumed: one person in ten edits an online atrium on a given day, for
     about 15 stored saves (about 150 before the 30 s batching).
   - Per daily active person, with uploads, sessions and throttles: about
@@ -170,6 +171,10 @@ Daily limits reset at 00:00 UTC.
   - About 10× fewer D1 rows and R2 writes.
   - Older apps ignore the live message and take the stored file, up to
     30 s later.
+- **The write throttle counted ten at a time** (2026-10-25, `allowedWrite`
+  in `workers/rooms/src/people.ts`). It used to write its D1 row on every
+  store write; now each instance holds up to nine and adds them together,
+  so the hourly limit (3,000 an account) is off by at most nine an instance.
 - **Relay cursors every 50 ms** (2026-10-23, `RELAY_CURSOR_MS` in
   `lib/peers`). Over a relayed link, the latest position goes at most
   every 50 ms, and the playback fills in between. Direct links still send
@@ -179,12 +184,8 @@ Daily limits reset at 00:00 UTC.
 
 ## Changes still to make
 
-None cost money.
-
-1. **A write throttle that doesn't write a D1 row on every write.** It's one
-   of the 4 rows each stored save writes; it could be counted in memory or
-   in the room instead. Small now that saves are batched: worth it past
-   Tier 2.
+None in the code for now: what's left is spending, below, as the meters
+call for it.
 
 ## Costs per tier
 
@@ -230,7 +231,7 @@ Everything here except Drive is in Developers → Health.
 | Meter | Do |
 |---|---|
 | Worker requests past ~70,000 a day | Workers Paid ($5) |
-| D1 rows written past ~70,000 a day | Workers Paid ($5); then the write throttle change |
+| D1 rows written past ~70,000 a day | Workers Paid ($5) |
 | Rooms (DO requests) past ~70,000 a day | The same plan covers it |
 | CPU p99 near 10 ms | Find the route in the worker's logs; Workers Paid allows 30 s |
 | Database size near 500 MB | Workers Paid (10 GB a database) |
