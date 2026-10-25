@@ -47,7 +47,7 @@ export interface ImageExportOptions {
   // preview: lib/atriumPreview), and in this format, at this quality -- PNG
   // unless asked.
   maxSide?: number
-  type?: 'image/png' | 'image/webp'
+  type?: 'image/png' | 'image/webp' | 'image/jpeg'
   quality?: number
   // Exactly this part of the world, the traces cut off at its edges, rather
   // than all of them and some room around -- and under them, stretched over

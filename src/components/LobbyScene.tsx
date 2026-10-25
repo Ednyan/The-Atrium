@@ -63,6 +63,8 @@ import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensi
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 import PinterestImportPanel from './PinterestImportPanel'
 import Minimap, { type MinimapHandle } from './Minimap'
+import { fileNameOf, saveFile } from '../lib/fileSave'
+import type { PresentationFormat } from '../lib/presentationExport'
 import QuickBar, { HistoryButtons, QUICK_ORDER, ToolHint, type PlaceTool, type QuickAction, QuickBarEditor } from './QuickBar'
 import { isBoxShape, type BoxShape } from '../lib/shapeStyle'
 import { roundedPolygonPath, shapePolygon } from '../lib/traceGeometry'
@@ -2894,6 +2896,27 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     })
   }
 
+  // The locations as a presentation, saved as a file (lib/presentationExport).
+  const [presentationBusy, setPresentationBusy] = useState<string | null>(null)
+  const exportPresentation = async (format: PresentationFormat) => {
+    const { locations: list, traces: all, links, layers } = useGameStore.getState()
+    if (!list.length || presentationBusy) return
+    const background = viewTheme?.backgroundColor || '#0a0a0f'
+    const title = currentLobby?.name ?? 'atrium'
+    const making = (done: number, total: number) => setPresentationBusy(t('atrium.locations.exporting', { done, total }))
+    try {
+      making(0, list.length)
+      const made = await import('../lib/presentationExport')
+      const slides = await made.slidesOf(list, all, links, layers, background, making)
+      const blob = format === 'pptx' ? await made.pptxOf(slides, title) : format === 'pdf' ? made.pdfOf(slides) : made.htmlOf(slides, title, background)
+      if (await saveFile(blob, `${fileNameOf(title)}.${format}`, made.PRESENTATION_FILTERS[format])) showToast(t('atrium.locations.exported'))
+    } catch (error) {
+      showToast(t('atrium.locations.exportFailed', { message: error instanceof Error ? error.message : '' }))
+    } finally {
+      setPresentationBusy(null)
+    }
+  }
+
   // --- Presentation mode (arrow-key navigation through working locations) --
   const goToPresentationIndex = useCallback((index: number) => {
     const list = useGameStore.getState().locations
@@ -2915,6 +2938,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       goToPresentationIndex(presentationIndexRef.current)
     }
   }, [goToPresentationIndex])
+
+  // Opened by a presentation link (LocationsPanel): presenting at once, the
+  // interface out of the way -- once, as soon as the atrium's locations are in.
+  const presentAsked = useRef(!isDesktop && new URLSearchParams(window.location.search).has('present'))
+  useEffect(() => {
+    if (!presentAsked.current || locations.length === 0) return
+    presentAsked.current = false
+    setUiHidden(true)
+    if (!presentationModeRef.current) togglePresentationMode()
+  }, [locations, togglePresentationMode])
 
   // Arrow keys step through locations while presentation mode is on. Stable
   // listener (reads refs), so it keeps working even with the panel closed.
@@ -5972,6 +6005,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           presentationMode={presentationMode}
           onTogglePresentation={togglePresentationMode}
           presentationIndex={presentationIndex}
+          onExport={exportPresentation}
+          exporting={presentationBusy}
+          onCopyPresentLink={isDesktop ? undefined : () => {
+            void navigator.clipboard.writeText(`${window.location.origin}/atrium/${lobbyId}?present`)
+              .then(() => showToast(t('atrium.locations.presentLinkCopied')), () => {})
+          }}
         />
       )}
 

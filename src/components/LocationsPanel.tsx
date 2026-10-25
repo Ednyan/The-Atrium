@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import type { LobbyLocation } from '../types/database'
+import type { PresentationFormat } from '../lib/presentationExport'
 
 // Custom drag MIME so LobbyScene's canvas-wide file/URL drop handlers can
 // recognize and ignore an in-panel location-reorder drag (same reasoning as
@@ -28,6 +29,11 @@ interface LocationsPanelProps {
   presentationMode: boolean
   onTogglePresentation: () => void
   presentationIndex: number
+  // The locations as a presentation (lib/presentationExport), and what it's
+  // doing meanwhile; and, on the web, a link that opens the atrium presenting.
+  onExport: (format: PresentationFormat) => void
+  exporting: string | null
+  onCopyPresentLink?: () => void
 }
 
 // The four things you can do to a location, drawn rather than typed.
@@ -108,6 +114,9 @@ export default function LocationsPanel({
   presentationMode,
   onTogglePresentation,
   presentationIndex,
+  onExport,
+  exporting,
+  onCopyPresentLink,
 }: LocationsPanelProps) {
   const { t } = useTranslation()
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -188,6 +197,41 @@ export default function LocationsPanel({
         >
           {presentationMode ? t('common.on') : t('common.off')}
         </button>
+      </div>
+
+      {/* The locations as a presentation: a slide each, in order -- to keep
+          (PowerPoint, PDF), to open anywhere offline or put up on a site
+          (one web page), or the atrium itself, presenting (a link). */}
+      <div className="bg-nier-black/60 border-b border-nier-border/30 px-3 py-2 flex flex-col gap-2">
+        <div className="flex flex-col">
+          <span className="text-nier-bg/80 text-xs tracking-wider uppercase">{t('atrium.locations.export')}</span>
+          <span className="text-nier-bg/80 text-[11px] tracking-wide">{t('atrium.locations.exportHint')}</span>
+        </div>
+        <div className="flex gap-1.5">
+          {(['pptx', 'pdf', 'html'] as const).map(format => (
+            <button
+              key={format}
+              type="button"
+              data-export={format}
+              onClick={() => onExport(format)}
+              disabled={locations.length === 0 || !!exporting}
+              className="flex-1 px-2 py-1 text-[11px] tracking-wider uppercase border border-nier-border/40 bg-nier-black text-nier-bg/80 hover:border-nier-bg hover:text-nier-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {format === 'html' ? t('atrium.locations.exportWeb') : format.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        {exporting && <p role="status" className="text-nier-strong text-[11px] tracking-wide">◇ {exporting}</p>}
+        {onCopyPresentLink && (
+          <button
+            type="button"
+            onClick={onCopyPresentLink}
+            disabled={locations.length === 0}
+            className="self-start text-nier-bg/80 hover:text-nier-strong text-[11px] tracking-wider uppercase underline underline-offset-4 decoration-nier-border/50 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {t('atrium.locations.presentLink')}
+          </button>
+        )}
       </div>
 
       {/* Location list */}
