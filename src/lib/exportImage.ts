@@ -35,6 +35,7 @@ import { cropOf } from './traceCrop'
 import { chartSvg, sheetFile, sheetRows, sheetSvg, atriumChartLook } from './sheetDraw'
 import { deckFile, deckSvg, isDeckFile, slidePictures } from './deckDraw'
 import { currentLanguage } from './i18n'
+import { gradePixels, isNeutral, takesLook, type TraceLook } from './traceLook'
 import { isDesktop } from './supabase'
 
 export type ExportScale = 1 | 2 | 3
@@ -446,6 +447,25 @@ const canvasPicture = (canvas: HTMLCanvasElement): Picture => ({
   source: canvas, width: canvas.width, height: canvas.height, href: async () => canvas.toDataURL('image/png'),
 })
 
+// A picture with a trace's look on its pixels; as it was, where they can't be
+// read (a picture from elsewhere that didn't come through the proxy).
+function gradedPicture(picture: Picture, look: TraceLook): Picture {
+  const canvas = document.createElement('canvas')
+  canvas.width = picture.width
+  canvas.height = picture.height
+  const context = canvas.getContext('2d')
+  if (!context) return picture
+  context.drawImage(picture.source, 0, 0, picture.width, picture.height)
+  try {
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height)
+    gradePixels(pixels.data, look)
+    context.putImageData(pixels, 0, 0)
+  } catch {
+    return picture
+  }
+  return canvasPicture(canvas)
+}
+
 // ---- The scene ------------------------------------------------------------------------
 
 const rotation = (cx: number, cy: number, degrees: number): Matrix => {
@@ -723,6 +743,8 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       // A preview it keeps, where it has one; else one found for it.
       picture = (trace.imageUrl ? await loadPicture(trace.imageUrl) : null) ?? await mediaPicture(trace)
     }
+    // Its look (lib/traceLook), on its pixels: what the atrium shows through a filter.
+    if (picture && takesLook(trace) && !isNeutral(trace.look)) picture = gradedPicture(picture, trace.look!)
     const natural = picture && !(trace.width && trace.height) ? { width: picture.width, height: picture.height } : undefined
     prepared.set(trace.id, { trace, size: baseSizeOf(trace, natural), picture })
   }))

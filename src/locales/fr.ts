@@ -1473,6 +1473,7 @@ const fr: Catalogue = {
   'atrium.customize.sectionContent': 'Contenu',
   'atrium.customize.sectionEffects': 'Effets',
   'atrium.customize.sectionExr': "EXR",
+  'atrium.customize.sectionLook': "Couleur",
   'atrium.exr.view': "Transformation d’affichage",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

@@ -1475,6 +1475,7 @@ const it: Catalogue = {
   'atrium.customize.sectionContent': 'Contenuto',
   'atrium.customize.sectionEffects': 'Effetti',
   'atrium.customize.sectionExr': "EXR",
+  'atrium.customize.sectionLook': "Colore",
   'atrium.exr.view': "Trasformazione di visualizzazione",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

@@ -76,6 +76,8 @@ import { overPanel, panelDrop } from '../lib/panelDrop'
 import { firstFreeName, nextTextName } from '../lib/traceNames'
 import SheetTrace from './SheetTrace'
 import ExrGradePanel from './ExrGradePanel'
+import LookFilter, { LookControls } from './LookFilter'
+import { isNeutral, NEUTRAL_LOOK, takesLook } from '../lib/traceLook'
 import { CUSTOM_FONTS } from '../lib/customFonts'
 import { vaultWriteProgress, watchVaultWrites } from '../lib/vaultWrites'
 
@@ -316,7 +318,8 @@ const FRAME_PADDING = 40
 // How far either side of its border a press takes a frame, in screen pixels.
 // Its inside is left to what it holds, and to the canvas under it.
 const FRAME_GRIP_PX = 6
-// How long a trace glides to its place in an arranged frame.
+
+// How long a trace glides to its place in an arranged frame.
 const ARRANGE_GLIDE_MS = 360
 
 // Wraps any angle into [0, 360) -- plain `% 360` keeps negative values.
@@ -6349,6 +6352,10 @@ const fontFamily = trace.fontFamily ?? 'sans'
 const isCropping = isSelected && isCropMode && canEdit
 const { x: cropX, y: cropY, w: cropWidth, h: cropHeight } = isCropping ? WHOLE : cropOf(trace)
 const shownCrop = isCropping ? { ...trace, cropX, cropY, cropWidth, cropHeight } : trace
+// Its look (lib/traceLook), as a filter on the picture alone -- its frame and
+// background as they are.
+const lookId = `look-${trace.id}`
+const lookFilter = takesLook(trace) && !isNeutral(trace.look) ? `url(#${lookId})` : undefined
 
 // A picture -- an image trace's, or an embed's that turned out to be one --
 // through the server's proxy if it won't load as itself, three tries, then
@@ -6359,7 +6366,7 @@ const picture = (rawUrl: string, resolvedSrc: string | undefined) => (
     src={resolvedSrc || rawUrl}
     alt=""
     className="w-full h-full object-contain pointer-events-none select-none"
-    style={{ clipPath: cropClip(shownCrop) }}
+    style={{ clipPath: cropClip(shownCrop), filter: lookFilter }}
     onLoad={(e) => {
       const img = e.currentTarget
       if (img.naturalWidth && img.naturalHeight) {
@@ -6999,6 +7006,8 @@ return (
         </svg>
       )}
 
+      {lookFilter && <LookFilter id={lookId} look={trace.look!} />}
+
       {/* Image Content */}
       {!paintStroke && trace.type === 'image' && (trace.mediaUrl || trace.imageUrl) && !failedImages.has(trace.id) && (
         (() => {
@@ -7058,6 +7067,7 @@ return (
           className="w-full h-full pointer-events-none select-none"
           style={{ 
             clipPath: cropClip(shownCrop),
+            filter: lookFilter,
           }}
           onLoadedMetadata={(e) => {
             const video = e.currentTarget
@@ -7152,7 +7162,7 @@ return (
           per trace+page (see documentPages), so only the page being
           looked at is ever rasterized. */}
       {trace.type === 'document' && (
-        <div className="w-full h-full relative bg-white overflow-hidden">
+        <div className="w-full h-full relative bg-white overflow-hidden" style={{ filter: lookFilter }}>
           {isDeckFile(trace.mediaUrl) ? (
             <DeckSlide url={trace.mediaUrl!} page={documentPage[trace.id] ?? 1} onCount={count => on.countSlides(trace.id, count)} />
           ) : documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
@@ -7246,6 +7256,7 @@ return (
               overflow: 'hidden',
               border: 'none',
               clipPath: cropClip(shownCrop),
+              filter: lookFilter,
             }}
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -9384,6 +9395,18 @@ return (
             
             </Section>
 
+            {/* Any other picture's colour (lib/traceLook): drawn over it, live. */}
+            {takesLook(editingTrace) && (
+              <Section id="look" title={t('atrium.customize.sectionLook')}>
+                <LookControls
+                  look={editingTrace.look ?? NEUTRAL_LOOK}
+                  onChange={look => {
+                    setEditingTrace({ ...editingTrace, look })
+                    updateTraceCustomization(editingTrace.id, { look })
+                  }}
+                />
+              </Section>
+            )}
             {/* An EXR's colour, graded from its original (lib/exr). */}
             {editingTrace.type === 'image' && editingTrace.exr && (
               <Section id="exr" title={t('atrium.customize.sectionExr')}>

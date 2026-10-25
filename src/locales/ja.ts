@@ -1471,6 +1471,7 @@ const ja: Catalogue = {
   'atrium.customize.sectionContent': '内容',
   'atrium.customize.sectionEffects': '効果',
   'atrium.customize.sectionExr': "EXR",
+  'atrium.customize.sectionLook': "色",
   'atrium.exr.view': "ビュー変換",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

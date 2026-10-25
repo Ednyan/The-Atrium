@@ -1,6 +1,7 @@
 import type { StrokeStyle } from '../lib/strokeStyle'
 import type { StrokeData } from '../lib/brushes'
 import type { ExrGrade } from '../lib/exr'
+import type { TraceLook } from '../lib/traceLook'
 export interface Database {
   public: {
     Tables: {
@@ -95,6 +96,9 @@ export interface Trace {
   strokeData?: StrokeData | null
   // A picture made from an EXR: its original, and how it's shown (lib/exr).
   exr?: ExrGrade
+  // Any other picture's colour -- exposure, brightness, contrast -- drawn
+  // over it, not into its file (lib/traceLook).
+  look?: TraceLook
   shapePoints?: Array<{
     x: number
     y: number

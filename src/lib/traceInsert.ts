@@ -88,6 +88,8 @@ export function buildTraceInsertRow(
   // A picture made from an EXR (lib/exr). Only when it is one, so a database
   // without the column still takes every other trace.
   if (trace.exr) newTrace.exr = trace.exr
+  // Another picture's look (lib/traceLook): the same, once it's been set.
+  if (trace.look) newTrace.look = trace.look
 
   if (trace.type === 'shape') {
     if (trace.shapeType) newTrace.shape_type = trace.shapeType
@@ -198,6 +200,8 @@ export function traceColumns(trace: Trace): Record<string, any> {
   if (trace.height !== undefined) columns.height = trace.height
   // Graded again, an EXR's picture is a new file and this its new look.
   if (trace.exr) columns.exr = trace.exr
+  // Reset is a neutral look, not none: written only once set, as above.
+  if (trace.look) columns.look = trace.look
 
   // Shape properties
   if (trace.type === 'shape') {

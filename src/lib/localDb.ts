@@ -1524,6 +1524,12 @@ export async function initLocalDb(): Promise<void> {
   } catch {
     // Column already exists — ignore
   }
+  try {
+    // Any other picture's look, as JSON (lib/traceLook; the web's add_trace_look.sql).
+    await db.execute('ALTER TABLE traces ADD COLUMN look TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Deleted traces' files, kept while undo could bring them back (holdTraceMedia).
   await db.execute('CREATE TABLE IF NOT EXISTS held_trace_media (trace_id TEXT PRIMARY KEY, lobby_id TEXT, type TEXT, media_url TEXT, image_url TEXT)')
@@ -2080,6 +2086,9 @@ function convertRowFromSql(table: string, row: any): any {
   if (table === 'traces' && out.exr) {
     out.exr = parseJsonField(out.exr)
   }
+  if (table === 'traces' && out.look) {
+    out.look = parseJsonField(out.look)
+  }
   if (table === 'lobbies' && out.theme_settings) {
     out.theme_settings = parseJsonField(out.theme_settings)
   }
@@ -2120,6 +2129,9 @@ function convertRowToSql(table: string, row: any): any {
   }
   if (table === 'traces' && out.exr && typeof out.exr !== 'string') {
     out.exr = JSON.stringify(out.exr)
+  }
+  if (table === 'traces' && out.look && typeof out.look !== 'string') {
+    out.look = JSON.stringify(out.look)
   }
   if (table === 'lobbies' && out.theme_settings && typeof out.theme_settings !== 'string') {
     out.theme_settings = JSON.stringify(out.theme_settings)

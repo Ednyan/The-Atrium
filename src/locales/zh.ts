@@ -1474,6 +1474,7 @@ const zh: Catalogue = {
   'atrium.customize.sectionContent': '内容',
   'atrium.customize.sectionEffects': '效果',
   'atrium.customize.sectionExr': "EXR",
+  'atrium.customize.sectionLook': "颜色",
   'atrium.exr.view': "视图变换",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",
