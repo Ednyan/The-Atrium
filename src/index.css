@@ -46,6 +46,21 @@
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
 }
+/* The atrium browser's grid to list and back (LobbyBrowser, morph): each
+   card, its picture, its name and each section's heading glide to their new
+   places; what's left of the page -- the same in both views -- just crosses
+   over, not the code history's slide. A card's frame is stretched to its
+   moving box, its old face going in the first half and its new one coming in
+   the second, so neither shows long out of shape. */
+:root[data-morph]::view-transition-group(*) { animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+:root[data-morph]::view-transition-old(root) { animation: 200ms ease both morph-out; }
+:root[data-morph]::view-transition-new(root) { animation: 200ms ease both morph-in; }
+:root[data-morph]::view-transition-old(*.atrium-card),
+:root[data-morph]::view-transition-new(*.atrium-card) { width: 100%; height: 100%; object-fit: fill; }
+:root[data-morph]::view-transition-old(*.atrium-card) { animation: 210ms ease-out both morph-out; }
+:root[data-morph]::view-transition-new(*.atrium-card) { animation: 210ms ease-in 210ms both morph-in; }
+@keyframes morph-out { to { opacity: 0; } }
+@keyframes morph-in { from { opacity: 0; } }
 /* The creator's panel (CreatorPanel): from the side, over a dimmed page. */
 .creator-backdrop { background: rgb(var(--c-ground) / 0.55); backdrop-filter: blur(3px); animation: creator-fade 0.3s ease; }
 .creator-panel { background: rgb(var(--c-ground) / 0.97); box-shadow: -30px 0 60px rgb(0 0 0 / 0.35); animation: creator-in 0.5s cubic-bezier(0.22, 1, 0.36, 1); }

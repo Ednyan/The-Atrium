@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useRef, lazy, Suspense, type ReactNode } from 'react'
+import { useEffect, useId, useState, useMemo, useRef, lazy, Suspense, type CSSProperties, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { supabase, isDesktop } from '../lib/supabase'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import DesktopAccount from './DesktopAccount'
@@ -62,7 +63,7 @@ const VIEW_KEY = 'atrium.browserView'
 function BrowserSection({ index, title, count, action, children }: { index: number; title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5" style={{ viewTransitionName: useMorphName() }}>
         <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">{String(index).padStart(2, '0')}</span>
         <h2 className="text-nier-strong text-xs tracking-[0.25em] uppercase">{title}</h2>
         <div className="flex-1 min-w-[2rem] h-[1px] bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -77,10 +78,29 @@ const unique = <T extends { id: string }>(list: T[]) => [...new Map(list.map(ite
 const ROW_BUTTON = 'px-3 py-2 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.1em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em] uppercase hover:bg-nier-strong transition-colors'
 
+// Grid to list and back (index.css, data-morph): each card, its picture, its
+// name and each section's heading glide to their new places as the browser's
+// own view transition -- at once where there's none, or motion isn't wanted.
+// The names are the cards' own (useId), so the same card is the same name
+// in both views, and never two alike.
+function morph(update: () => void) {
+  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { update(); return }
+  const root = document.documentElement
+  root.dataset.morph = ''
+  document.startViewTransition(update).finished.finally(() => { delete root.dataset.morph })
+}
+const useMorphName = () => 'morph' + useId().replace(/[^\w-]/g, '')
+
+// The two views' marks, drawn alike: four squares, three rows.
+const VIEW_ICONS: Record<BrowserView, ReactNode> = {
+  grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" /><rect x="9" y="2.5" width="4.5" height="4.5" /><rect x="2.5" y="9" width="4.5" height="4.5" /><rect x="9" y="9" width="4.5" height="4.5" /></>,
+  list: <><rect x="2.5" y="2.5" width="2.5" height="2.5" /><rect x="2.5" y="6.75" width="2.5" height="2.5" /><rect x="2.5" y="11" width="2.5" height="2.5" /><path d="M7 3.75h6.5M7 8h6.5M7 12.25h6.5" /></>,
+}
+
 // An atrium's picture on its card (lib/atriumPreview) -- read from the vault
 // first, on desktop -- and the atrium's mark on its grid where there isn't
 // one yet. Edge to edge across the top of the card.
-function AtriumPreview({ url, small = false }: { url?: string | null; small?: boolean }) {
+function AtriumPreview({ url, small = false, name }: { url?: string | null; small?: boolean; name?: string }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     if (!url) { setSrc(null); return }
@@ -90,7 +110,7 @@ function AtriumPreview({ url, small = false }: { url?: string | null; small?: bo
     return () => { live = false }
   }, [url])
   return (
-    <div className={`relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`}>
+    <div className={`relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`} style={{ viewTransitionName: name }}>
       {src ? (
         <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(null)} />
       ) : (
@@ -133,12 +153,13 @@ function AtriumCard({ view, name, renaming, preview, tags, busy, onEnter, enterL
   moreLabel: string
 }) {
   const list = view === 'list'
+  const morphName = useMorphName()
   return (
-    <div className={`${ROW} group ${list ? 'flex items-center gap-4 py-3' : ''}`} style={ROW_FILL}>
-      <AtriumPreview url={preview} small={list} />
+    <div className={`${ROW} group ${list ? 'flex items-center gap-4 py-3' : ''}`} style={{ ...ROW_FILL, viewTransitionName: morphName, viewTransitionClass: 'atrium-card' } as CSSProperties}>
+      <AtriumPreview url={preview} small={list} name={`${morphName}-picture`} />
       <div className={list ? 'flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-3' : 'flex flex-col gap-3'}>
         <div className="min-w-0 flex-1">
-          {renaming ?? <h4 className="text-nier-bg text-sm tracking-wide break-words">{name}</h4>}
+          {renaming ?? <h4 className="text-nier-bg text-sm tracking-wide break-words w-fit" style={{ viewTransitionName: `${morphName}-name` }}>{name}</h4>}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {tags.map((tag, i) => (
               <span key={i} className={`${TAG} ${tag.where ? 'border-nier-border/40 text-nier-bg/85' : tag.strong ? 'border-nier-bg/60 text-nier-strong' : 'border-nier-border/25 text-nier-bg/65'}`}>
@@ -333,8 +354,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   const landingTheme = useLandingTheme()
   const [view, setView] = useState<BrowserView>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid' } catch { return 'grid' } })
   const chooseView = (next: BrowserView) => {
-    setView(next)
+    if (next === view) return
     try { localStorage.setItem(VIEW_KEY, next) } catch { /* this visit only */ }
+    morph(() => flushSync(() => setView(next)))
   }
   const [vaultPath, setVaultPath] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
@@ -1522,8 +1544,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
-          {/* The lists as cards or as rows: the one in use lit. */}
-          <div role="group" aria-label={t('browser.view.label')} className="flex">
+          {/* The lists as cards or as rows: the one in use lit, the light sliding to it. */}
+          <div role="group" aria-label={t('browser.view.label')} className="relative flex border border-nier-border/30">
+            <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1/2 bg-nier-bg/10 border border-nier-border/60 transition-transform duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none" style={{ transform: view === 'list' ? 'translateX(100%)' : undefined }} />
             {(['grid', 'list'] as const).map(kind => (
               <button
                 key={kind}
@@ -1531,9 +1554,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
                 aria-pressed={view === kind}
                 title={t(kind === 'grid' ? 'browser.view.grid' : 'browser.view.list')}
                 aria-label={t(kind === 'grid' ? 'browser.view.grid' : 'browser.view.list')}
-                className={`${ICON_BUTTON} ${kind === 'list' ? '-ml-px' : ''} ${view === kind ? 'text-nier-strong border-nier-border/70 bg-nier-bg/10' : ''}`}
+                className={`relative w-9 h-[30px] flex items-center justify-center transition-colors ${view === kind ? 'text-nier-strong' : 'text-nier-bg/60 hover:text-nier-bg'}`}
               >
-                {kind === 'grid' ? '⊞' : '≡'}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">{VIEW_ICONS[kind]}</svg>
               </button>
             ))}
           </div>
