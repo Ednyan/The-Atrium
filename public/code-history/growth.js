@@ -124,6 +124,7 @@ function setLang(next, tell) {
   document.getElementById('langName').textContent = ENDONYMS[next]
   drawSide()
   playLabel()
+  drawThen()
   if (!tell) return
   try { localStorage.setItem(LANG_KEY, next) } catch {}
   if (window.parent !== window) parent.postMessage('code-history:lang:' + next, location.origin)
@@ -504,7 +505,80 @@ function draw() {
   dateEl.textContent = new Date(stage.t * 1000).toISOString().slice(0, 16).replace('T', '  ')
   statsEl.textContent = tr.stats(...counts[shown])
   noteEl.textContent = stage.note
+  showThen(stage.t)
 }
+
+// ---- The app then ----------------------------------------------------------------
+// Pictures of the app on each day it changed (scripts/code-shots/capture.mjs):
+// for the stage shown, the last day at or before it that has the screen
+// chosen. Words in each language, the app's own where it has them.
+const THEN_WORDS = {
+  en: ['The app then', 'Front page', 'Welcome', 'Atrium Browser', 'Inside an atrium', 'Contributors', 'Not built yet'],
+  es: ['La app entonces', 'Portada', 'Bienvenida', 'Explorador de atriums', 'Dentro de un atrium', 'Colaboradores', 'Aún no existía'],
+  'pt-BR': ['O app na época', 'Página inicial', 'Boas-vindas', 'Navegador de atriums', 'Dentro de um atrium', 'Colaboradores', 'Ainda não existia'],
+  'pt-PT': ['A app na altura', 'Página inicial', 'Boas-vindas', 'Navegador de atriums', 'Dentro de um atrium', 'Colaboradores', 'Ainda não existia'],
+  fr: ["L'app à cette date", 'Accueil', 'Bienvenue', 'Explorateur d’atriums', 'Dans un atrium', 'Contributeurs', 'Pas encore construit'],
+  de: ['Die App damals', 'Startseite', 'Willkommen', 'Atrium-Übersicht', 'In einem Atrium', 'Unterstützer', 'Noch nicht gebaut'],
+  it: ["L'app allora", 'Pagina iniziale', 'Benvenuto', 'Esplora atrium', 'Dentro un atrium', 'Sostenitori', 'Non ancora costruita'],
+  ru: ['Приложение тогда', 'Главная', 'Приветствие', 'Обзор атриумов', 'Внутри атриума', 'Участники', 'Ещё не было'],
+  zh: ['当时的应用', '首页', '欢迎', 'Atrium 浏览器', 'Atrium 内部', '支持者', '尚未建成'],
+  ja: ['当時のアプリ', 'トップページ', 'ようこそ', 'Atrium ブラウザー', 'Atrium の中', '支援者', 'まだありません'],
+  ko: ['그때의 앱', '첫 페이지', '환영', 'Atrium 브라우저', 'Atrium 안', '후원자', '아직 없음'],
+  hi: ['तब का ऐप', 'मुख्य पृष्ठ', 'स्वागत', 'एट्रियम ब्राउज़र', 'एट्रियम के अंदर', 'योगदानकर्ता', 'अभी बना नहीं था'],
+}
+const SCREENS = ['landing', 'welcome', 'browse', 'atrium', 'contributors']
+const THEN_KEY = 'atrium.codeHistory.then'
+let shots = [], screen = 'atrium', thenAt = null, thenShown = ''
+const thenEl = document.getElementById('then'), thenImgs = [...document.querySelectorAll('#thenPicture img')]
+const thenLarge = document.getElementById('thenLarge')
+try { const kept = JSON.parse(localStorage.getItem(THEN_KEY) || '{}'); if (SCREENS.includes(kept.screen)) screen = kept.screen; if (kept.folded) thenEl.classList.add('folded') } catch {}
+const keepThen = () => { try { localStorage.setItem(THEN_KEY, JSON.stringify({ screen, folded: thenEl.classList.contains('folded') })) } catch {} }
+function drawThen() {
+  const w = THEN_WORDS[lang] ?? THEN_WORDS.en
+  document.getElementById('thenTitle').textContent = w[0]
+  document.getElementById('thenScreen').textContent = w[1 + SCREENS.indexOf(screen)]
+  document.getElementById('thenNone').textContent = w[6]
+  document.getElementById('thenFold').textContent = thenEl.classList.contains('folded') ? '+' : '–'
+  if (thenAt != null) { const t = thenAt; thenAt = null; showThen(t) }
+}
+function showThen(t) {
+  if (!shots.length || t === thenAt) return
+  thenAt = t
+  let day = null
+  for (const entry of shots) { if (entry.t > t) break; if (entry.screens[screen]) day = entry }
+  document.getElementById('thenDay').textContent = day ? day.day : ''
+  const file = day ? 'shots/' + day.screens[screen] : ''
+  document.getElementById('thenNone').style.display = file ? 'none' : ''
+  if (file === thenShown) return
+  thenShown = file
+  // The new one over the old, once it has loaded.
+  const [front, back] = thenImgs[0].style.opacity === '0' ? [thenImgs[1], thenImgs[0]] : [thenImgs[0], thenImgs[1]]
+  if (!file) { front.style.opacity = back.style.opacity = '0'; return }
+  back.onload = () => { if (thenShown === file) { back.style.opacity = '1'; front.style.opacity = '0' } }
+  back.src = file
+  // The next day's, ready before it's needed.
+  const next = shots.find(entry => entry.t > t && entry.screens[screen])
+  if (next) new Image().src = 'shots/' + next.screens[screen]
+}
+const stepScreen = by => { screen = SCREENS[(SCREENS.indexOf(screen) + by + SCREENS.length) % SCREENS.length]; keepThen(); drawThen(); thenAt = null; showThen(D.stages[Math.round(pos)].t) }
+document.getElementById('thenPrev').onclick = () => stepScreen(-1)
+document.getElementById('thenNext').onclick = () => stepScreen(1)
+document.getElementById('thenFold').onclick = () => { thenEl.classList.toggle('folded'); keepThen(); drawThen() }
+document.getElementById('thenPicture').onclick = () => {
+  if (!thenShown) return
+  thenLarge.querySelector('img').src = thenShown
+  thenLarge.classList.add('open')
+}
+thenLarge.onclick = () => thenLarge.classList.remove('open')
+addEventListener('keydown', e => { if (e.key === 'Escape') thenLarge.classList.remove('open') })
+thenImgs[1].style.opacity = '0'
+fetch('shots/shots.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).then(list => {
+  shots = list.filter(entry => entry && Object.keys(entry.screens || {}).length).sort((a, b) => a.t - b.t)
+  if (!shots.length) return
+  document.body.classList.add('has-then')
+  drawThen()
+  showThen(D.stages[Math.round(pos)].t)
+}).catch(() => {})
 
 // ---- Controls ------------------------------------------------------------------
 function playLabel() { playBtn.textContent = playing ? tr.pause : introDone && pos >= last ? tr.replay : tr.play }

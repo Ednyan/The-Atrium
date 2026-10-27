@@ -173,6 +173,30 @@
   #intro .digital { color: var(--strong); text-shadow: 0 0 60px rgb(255 255 255 / .14); }
   #intro .atrium { background-image: var(--metal); -webkit-background-clip: text;
                    background-clip: text; color: transparent; filter: drop-shadow(0 0 34px rgb(255 255 255 / .22)); }
+  /* The app as it was on the day the timeline is at (scripts/code-shots):
+     one screen of it at a time, stepped through, enlarged when pressed. */
+  #then { position: fixed; z-index: 2; right: 18px; bottom: 128px; width: clamp(240px, 26vw, 400px); padding: 10px 12px 10px; display: none; }
+  body.has-then #then { display: block; }
+  body.intro #then, body:has(#guide[open]) #then { opacity: 0; pointer-events: none; }
+  #then { transition: opacity 1.2s ease; }
+  #then header { display: flex; align-items: center; gap: 10px; font-size: 10.5px; letter-spacing: .28em; text-transform: uppercase; color: var(--dim); }
+  #then header span { flex: 1; }
+  #thenDay { letter-spacing: .08em; color: var(--lead); text-transform: none; }
+  #thenFold { background: none; border: 0; color: var(--dim); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px; }
+  #thenFold:hover { color: var(--strong); }
+  #thenBody { margin-top: 9px; }
+  #then.folded #thenBody { display: none; }
+  #thenPicture { position: relative; aspect-ratio: 16 / 10; border: 1px solid var(--line); background: var(--bg); overflow: hidden; cursor: zoom-in; display: block; width: 100%; padding: 0; }
+  #thenPicture img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .35s ease; }
+  #thenNone { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; }
+  #thenSteps { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #thenSteps button { background: none; border: 1px solid var(--line); color: var(--fg); width: 26px; height: 22px; cursor: pointer; font: inherit; }
+  #thenSteps button:hover { border-color: var(--accent); color: var(--strong); }
+  #thenScreen { flex: 1; text-align: center; color: var(--lead); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #thenLarge { position: fixed; z-index: 5; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--bg) 82%, transparent); cursor: zoom-out; }
+  #thenLarge.open { display: grid; }
+  #thenLarge img { max-width: 92vw; max-height: 86vh; border: 1px solid var(--line); box-shadow: 0 20px 60px rgb(0 0 0 / .5); }
+  @media (max-width: 760px) { #then { display: none !important; } }
 </style>
 </head>
 <body class="intro">
@@ -190,6 +214,14 @@
 <div id="intro"><div id="introName"><small data-t="lead">You're about to see the code history of</small><h1><span class="the">THE</span> <span class="digital">DIGITAL</span> <span class="atrium">ATRIUM</span></h1></div></div>
 <button id="skip" class="chrome" type="button" data-t="skip">Skip intro</button>
 <div id="hud"><div id="date"></div><div id="stats"></div><div id="note"></div></div>
+<section id="then" class="panel" aria-live="polite">
+  <header><span id="thenTitle"></span><b id="thenDay"></b><button id="thenFold" type="button"></button></header>
+  <div id="thenBody">
+    <button id="thenPicture" type="button"><img alt=""><img alt=""><span id="thenNone"></span></button>
+    <div id="thenSteps"><button id="thenPrev" type="button" aria-label="Previous">‹</button><span id="thenScreen"></span><button id="thenNext" type="button" aria-label="Next">›</button></div>
+  </div>
+</section>
+<div id="thenLarge"><img alt=""></div>
 <details id="guide">
   <summary class="chrome" data-t="legendTitle">Legend</summary>
   <div class="panel">
@@ -206,6 +238,6 @@
   <div id="track"><div id="era"></div><div id="eraLabel" data-t="era">before git</div><div id="marks"></div><input id="slider" type="range" min="0" step="0.01" value="0" aria-label="Timeline"></div>
   <select id="speed" class="chrome" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
 </div>
-<script src="growth.js?v=8d09d1f3f5ec"></script>
+<script src="growth.js?v=d2b9661877e5"></script>
 </body>
 </html>
