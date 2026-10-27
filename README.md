@@ -7,7 +7,7 @@ live, with their cursors beside yours.
 
 - **Web:** <https://digitalatrium.org>
 - **Desktop:** Windows, macOS and Linux, from
-  [Releases](https://github.com/Ednyan/The-Atrium/releases/latest). The app
+  [Releases](https://github.com/Ednyan/digital-atrium/releases/latest). The app
   updates itself.
 - **How the code grew:** <https://digitalatrium.org/code-history/>, every
   stage of the codebase as a graph, from the first commit to today.

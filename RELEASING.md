@@ -134,7 +134,7 @@ You need **two** files from there:
 
 ### 4. Create the GitHub release
 
-On <https://github.com/Ednyan/The-Atrium/releases> → **Draft a new release**.
+On <https://github.com/Ednyan/digital-atrium/releases> → **Draft a new release**.
 
 - **Tag:** `v1.0.1` (matching the version, with a leading `v` by convention)
 - **Title:** anything you like
@@ -171,7 +171,7 @@ The app fetches `releases/latest/download/latest.json`, which always resolves
 to your newest release. Check it's reachable:
 
 ```bash
-curl -sL https://github.com/Ednyan/The-Atrium/releases/latest/download/latest.json
+curl -sL https://github.com/Ednyan/digital-atrium/releases/latest/download/latest.json
 ```
 
 If that prints your JSON, an installed older copy will offer the update within

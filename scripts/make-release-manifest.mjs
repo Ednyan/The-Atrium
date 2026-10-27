@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const REPO = 'Ednyan/The-Atrium'
+const REPO = 'Ednyan/digital-atrium'
 const NSIS_DIR = 'src-tauri/target/release/bundle/nsis'
 
 const conf = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))

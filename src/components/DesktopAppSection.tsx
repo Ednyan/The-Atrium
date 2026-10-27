@@ -3,7 +3,7 @@ import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import RichText from './RichText'
 
-const REPO = 'Ednyan/The-Atrium'
+const REPO = 'Ednyan/digital-atrium'
 export const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
 
 interface Build {

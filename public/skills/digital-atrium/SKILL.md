@@ -32,7 +32,7 @@ canvas for collecting and arranging ideas. It is free.
 ## The desktop app
 
 For Windows, macOS and Linux, from
-https://github.com/Ednyan/The-Atrium/releases. It needs no account and keeps
+https://github.com/Ednyan/digital-atrium/releases. It needs no account and keeps
 every atrium in a local folder (the vault), so it works offline; an atrium
 can be uploaded to the web from it. It updates itself.
 

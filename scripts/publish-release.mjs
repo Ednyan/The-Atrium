@@ -13,7 +13,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 
 const OWNER = 'Ednyan'
-const REPO = 'The-Atrium'
+const REPO = 'digital-atrium'
 const NSIS_DIR = 'src-tauri/target/release/bundle/nsis'
 
 const token = process.env.GITHUB_TOKEN

@@ -42,5 +42,5 @@ export function releaseNotesUrl(version: string): string {
   // reports a bare version, so one is added -- unless it is somehow already
   // there, which would otherwise produce vv1.9.0.
   const tag = version.startsWith('v') ? version : `v${version}`
-  return `https://github.com/Ednyan/The-Atrium/releases/tag/${encodeURIComponent(tag)}`
+  return `https://github.com/Ednyan/digital-atrium/releases/tag/${encodeURIComponent(tag)}`
 }

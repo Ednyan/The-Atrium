@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 
-const OWNER = 'Ednyan', REPO = 'The-Atrium'
+const OWNER = 'Ednyan', REPO = 'digital-atrium'
 const [version, sha, blurbFile, bodyFile] = process.argv.slice(2)
 const publish = process.argv.includes('--publish')
 const token = process.env.GH_TOKEN
