@@ -7,11 +7,14 @@
 // moves: a style write from the scene's own frame loop (LobbyScene calls
 // `frame`), never a render. It shows while the view moves and goes a moment
 // after it stops; pointed at, it stays. A press or a drag on it takes the
-// view there.
+// view there -- one that started on it: a trace carried across it, or a
+// selection drawn over it, passes by.
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { boundsOf, traceBox } from '../lib/traceGeometry'
+import { isPathTrace } from '../lib/pathBounds'
+import { pathOutline, type PathPoint } from '../lib/pathGeometry'
 import { useTranslation } from '../lib/i18n'
 
 export interface MinimapHandle {
@@ -69,12 +72,23 @@ const Minimap = forwardRef<MinimapHandle, { onMove: (x: number, y: number) => vo
       const scale = Math.min((WIDTH - PAD * 2) / Math.max(1, maxX - minX), (HEIGHT - PAD * 2) / Math.max(1, maxY - minY))
       map.current = { scale, x: (WIDTH - (maxX - minX) * scale) / 2 - minX * scale, y: (HEIGHT - (maxY - minY) * scale) / 2 - minY * scale }
       const ink = getComputedStyle(document.documentElement).getPropertyValue('--c-fg').trim() || '203 203 203'
+      const { scale: k, x, y } = map.current
       for (const { trace, box } of boxes) {
         // A shape in its own colour; pictures and media a little brighter
         // than words, so the atrium's look reads even this small.
         context.globalAlpha = trace.type === 'shape' && trace.shapeColor ? 0.85 : 1
-        context.fillStyle = trace.type === 'shape' && trace.shapeColor ? trace.shapeColor : `rgb(${ink} / ${trace.type === 'image' || trace.type === 'video' ? 0.55 : 0.32})`
-        const { scale: k, x, y } = map.current
+        const colour = trace.type === 'shape' && trace.shapeColor ? trace.shapeColor : `rgb(${ink} / ${trace.type === 'image' || trace.type === 'video' ? 0.55 : 0.32})`
+        if (isPathTrace(trace) && (trace.shapePoints?.length ?? 0) > 1) {
+          // A path as its line, not the box around it.
+          context.setTransform(ratio * k, 0, 0, ratio * k, ratio * x, ratio * y)
+          context.strokeStyle = colour
+          context.lineWidth = Math.max(1 / k, trace.shapeOutlineWidth ?? 2)
+          context.lineCap = context.lineJoin = 'round'
+          context.stroke(new Path2D(pathOutline(trace.shapePoints as PathPoint[], trace.pathCurveType)))
+          context.setTransform(ratio, 0, 0, ratio, 0, 0)
+          continue
+        }
+        context.fillStyle = colour
         context.fillRect(box.minX * k + x, box.minY * k + y, Math.max(1, (box.maxX - box.minX) * k), Math.max(1, (box.maxY - box.minY) * k))
       }
       placeFrame()
@@ -115,10 +129,10 @@ const Minimap = forwardRef<MinimapHandle, { onMove: (x: number, y: number) => vo
       aria-label={t('atrium.minimap')}
       className="minimap fixed bottom-16 right-4 z-[9999] border border-nier-border/40 overflow-hidden cursor-crosshair touch-none"
       style={{ width: WIDTH, height: HEIGHT, backgroundColor: 'rgb(var(--c-ground) / 0.82)' }}
-      onPointerEnter={() => { pointedAt.current = true; boxRef.current?.classList.add('minimap-shown') }}
+      onPointerEnter={event => { if (event.buttons) return; pointedAt.current = true; boxRef.current?.classList.add('minimap-shown') }}
       onPointerLeave={() => { pointedAt.current = false; hideTimer.current = window.setTimeout(() => boxRef.current?.classList.remove('minimap-shown'), STAYS_MS) }}
       onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); goTo(event) }}
-      onPointerMove={event => { if (event.buttons & 1) goTo(event) }}
+      onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) goTo(event) }}
     >
       <canvas ref={canvasRef} style={{ width: WIDTH, height: HEIGHT, display: 'block' }} />
       <div ref={viewRef} className="absolute top-0 left-0 border border-nier-strong/80 pointer-events-none" style={{ backgroundColor: 'rgb(var(--c-strong) / 0.08)' }} />

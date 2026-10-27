@@ -202,6 +202,35 @@ export function Switch({ label, hint, on, onChange, testId }: {
   )
 }
 
+// A text's alignment, its four buttons -- for one trace, or several (Batch
+// Edit), where `value` is null while they disagree and none is lit.
+export type TextAlign = 'left' | 'center' | 'right' | 'justify'
+const ALIGN_MARK: Record<TextAlign, string> = { left: '◀', center: '◆', right: '▶', justify: '▣' }
+export function TextAlignField({ value, onChange }: { value: TextAlign | null; onChange: (align: TextAlign) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div>
+      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textAlignment')}</label>
+      <div className="flex gap-2">
+        {(Object.keys(ALIGN_MARK) as TextAlign[]).map(align => (
+          <button
+            key={align}
+            type="button"
+            onClick={() => onChange(align)}
+            className={`flex-1 px-2 py-2 text-xs border transition-colors ${
+              value === align
+                ? 'bg-nier-bg text-nier-black border-nier-bg'
+                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+            }`}
+          >
+            {ALIGN_MARK[align]}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // The switch itself: a track, its knob at the far end when on -- and in the
 // middle when it's on for some of what's selected and off for the rest. The
 // one look every on/off in the app has (Switch here, Check in the panels).

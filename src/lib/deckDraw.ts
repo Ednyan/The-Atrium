@@ -211,17 +211,25 @@ export function deckFile(url: string): Promise<DeckData | null> {
 export const keepDeckFile = (url: string, data: DeckData) => { files.set(url, Promise.resolve(asDeckFile(data))) }
 
 // A picture of a deck's, as something an <image> can show: the address as it
-// is when the web has it, else its file read once a visit.
+// is when the web has it, else its file read once a visit -- loaded and
+// decoded before it's handed over, so a slide turned to draws it at once.
 // ponytail: never let go of for the visit; a deck's pictures are what's on it.
 const pictures = new Map<string, Promise<string | undefined>>()
 export function pictureSrc(url: string): Promise<string | undefined> {
-  if (/^(https:|data:)/.test(url)) return Promise.resolve(url)
   let found = pictures.get(url)
   if (!found) {
     found = (async () => {
-      const { fetchMedia } = await import('./exportImage')
-      const blob = await fetchMedia(url)
-      return blob ? URL.createObjectURL(blob) : undefined
+      let src = url
+      if (!/^(https:|data:)/.test(url)) {
+        const { fetchMedia } = await import('./exportImage')
+        const blob = await fetchMedia(url)
+        if (!blob) return undefined
+        src = URL.createObjectURL(blob)
+      }
+      const picture = new Image()
+      picture.src = src
+      await picture.decode().catch(() => {})
+      return src
     })().catch(() => undefined)
     pictures.set(url, found)
     void found.then(u => { if (!u) pictures.delete(url) })

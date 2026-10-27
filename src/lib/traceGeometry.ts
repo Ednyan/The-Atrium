@@ -91,6 +91,40 @@ export function traceBox(
   return { cx: transform.x, cy: transform.y, halfW: w / 2 + frame, halfH: h / 2 + frame, turn: ((transform.rotation ?? 0) * Math.PI) / 180 }
 }
 
+// A resize handle ('tl', 'r', ...) dragged `dx`, `dy` (world units) on a box
+// `w` x `h` at scales `sx`, `sy`, turned `turn` radians: its new scales. The
+// drag is read in the box's own axes, as a drawing program reads it, so a
+// turned box is pulled along its own sides, not the screen's. A side follows
+// the pointer; a corner keeps the box's shape and follows the pointer along
+// its diagonal, out from the corner opposite. (Which side stays put is the
+// caller's: it moves the middle by half the change.)
+export function resizedScales(handle: string, dx: number, dy: number, w: number, h: number, sx: number, sy: number, turn: number): { scaleX: number; scaleY: number } {
+  const lx = dx * Math.cos(turn) + dy * Math.sin(turn)
+  const ly = -dx * Math.sin(turn) + dy * Math.cos(turn)
+  const ix = handle.includes('r') ? 1 : handle.includes('l') ? -1 : 0
+  const iy = handle.includes('b') ? 1 : handle.includes('t') ? -1 : 0
+  if (ix && iy) {
+    const cx = ix * w * sx, cy = iy * h * sy
+    const factor = 1 + (lx * cx + ly * cy) / (cx * cx + cy * cy || 1)
+    return { scaleX: Math.max(0.01, sx * factor), scaleY: Math.max(0.01, sy * factor) }
+  }
+  return {
+    scaleX: ix ? Math.max(0.01, sx + (ix * lx) / w) : sx,
+    scaleY: iy ? Math.max(0.01, sy + (iy * ly) / h) : sy,
+  }
+}
+
+// The cursor over a resize handle ('tl', 'r', ...) of a box turned `degrees`:
+// the double arrow, of the four, nearest the way the handle points out of
+// the box -- a side straight out, a corner along the diagonal of a square --
+// so it turns with the box, as a drawing program's does.
+export function resizeCursor(handle: string, degrees: number): string {
+  const ix = handle.includes('r') ? 1 : handle.includes('l') ? -1 : 0
+  const iy = handle.includes('b') ? 1 : handle.includes('t') ? -1 : 0
+  const angle = ((Math.atan2(iy, ix) * 180) / Math.PI + degrees + 360 + 22.5) % 180
+  return ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.floor(angle / 45)]
+}
+
 // The upright box a turned one covers.
 export function boundsOf(box: { cx: number; cy: number; halfW: number; halfH: number; turn: number }) {
   const cos = Math.abs(Math.cos(box.turn)), sin = Math.abs(Math.sin(box.turn))

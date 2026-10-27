@@ -2,7 +2,7 @@
 // each kind of line, and a dragged point snapping onto another trace's
 // border. Kept free of the app, so it can be tested on its own.
 
-import { elbowThrough, lineMiddle, type Pt } from './elbow.ts'
+import { ELBOW_RADIUS, elbowThrough, lineMiddle, roundedPath, type Pt } from './elbow.ts'
 
 export type PathCurve = 'straight' | 'bezier' | 'elbow'
 
@@ -43,6 +43,18 @@ export function curvePath(points: PathPoint[]): string {
     d += ` C ${a.x} ${a.y}, ${b.x} ${b.y}, ${q.x} ${q.y}`
   }
   return d
+}
+
+// A path's line as an SVG path, whichever way it runs: straight from point to
+// point, curved on its handles, or as an elbow -- straight runs and
+// right-angle turns, rounded by `radius` (lib/elbow). One for the canvas
+// (TraceOverlay), the minimap and an exported picture (lib/exportImage).
+export function pathOutline(points: PathPoint[], curve: PathCurve | undefined, radius = ELBOW_RADIUS): string {
+  return curve === 'bezier'
+    ? curvePath(points)
+    : curve === 'elbow'
+      ? roundedPath(elbowThrough(points), radius)
+      : points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 }
 
 // One handle moved, the other turned to stay in line with it, through the

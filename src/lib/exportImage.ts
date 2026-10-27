@@ -21,7 +21,7 @@
 import type { Layer, Trace } from '../types/database'
 import { arrowhead, curveMiddle, restOf, visiblePart, type TraceLink } from './traceLinks'
 import { ELBOW_RADIUS, elbowRoute, elbowThrough, roundedPath, trimEnds } from './elbow'
-import { curvePath, handlesAt, type PathPoint } from './pathGeometry'
+import { handlesAt, pathOutline, type PathPoint } from './pathGeometry'
 import { drawRanks } from './order'
 import { baseSizeOf, borderColourOf, boundsOf, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from './traceGeometry'
 import { ARROW_SCALE, shapePaint, shapeStyleOf } from './shapeStyle'
@@ -512,11 +512,7 @@ function drawPath(p: Painter, trace: Trace) {
   const points = (trace.shapePoints ?? []) as PathPoint[]
   if (points.length < 2) return
   const curve = trace.pathCurveType || 'straight'
-  const d = curve === 'bezier'
-    ? curvePath(points)
-    : curve === 'elbow'
-      ? roundedPath(elbowThrough(points), ELBOW_RADIUS)
-      : points.map((pt, i) => `${i ? 'L' : 'M'} ${pt.x} ${pt.y}`).join(' ')
+  const d = pathOutline(points, curve)
   const width = Math.max(trace.shapeOutlineWidth ?? 2, 0.5)
   const colour = trace.shapeColor || '#3b82f6'
   const opacity = trace.shapeOpacity ?? 1
@@ -685,7 +681,7 @@ function drawLink(p: Painter, link: TraceLink, a: End, b: End, measure: CanvasRe
   const fill: Paint = { fill: colour, fillOpacity: link.opacity }
   let middle: { x: number; y: number }
   if (link.elbow) {
-    const route = elbowRoute({ x: a.x, y: a.y, hw: a.hw, hh: a.hh }, { x: b.x, y: b.y, hw: b.hw, hh: b.hh }, link.elbowAt)
+    const route = elbowRoute(a, b, link.elbowAt)
     p.path(roundedPath(trimEnds(route, headsFrom ? size * 0.8 : 0, headsTo ? size * 0.8 : 0), ELBOW_RADIUS), line)
     const n = route.length
     if (headsTo) p.poly(arrowhead(route[n - 1].x, route[n - 1].y, route[n - 2].x, route[n - 2].y, size), fill)

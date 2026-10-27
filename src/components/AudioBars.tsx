@@ -4,7 +4,10 @@
 // file that doesn't allow it; lib/spatialSound), the bars pulse instead.
 //
 // Driven straight on the bars each frame, never through React, and only
-// while something plays.
+// while something plays. Paused, they stay as they were -- frozen, not back
+// at rest -- and played again, they go on from there: for its first few
+// frames (SETTLE), while what's heard catches up from the silence of the
+// pause, a bar only rises; after, it falls no faster than FALL.
 //
 // As many bands as its width has room for, each bar keeping its shape: a
 // trace stretched wider hears in finer bands, rather than in the same few
@@ -17,6 +20,9 @@ import { analyserOf } from '../lib/spatialSound'
 const PITCH = 9, FEWEST = 12, MOST = 96
 // The bands, spaced as hearing is: 50 Hz to 14 kHz.
 const LOW = 50, HIGH = 14000
+// How far a bar may fall in a frame, of its whole height; and for how many
+// frames from playing it may not.
+const FALL = 0.04, SETTLE = 8
 
 export default function AudioBars({ traceId, playing, color }: { traceId: string; playing: boolean; color?: string }) {
   const box = useRef<HTMLDivElement>(null)
@@ -37,36 +43,43 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
   }), [traceId, count])
   const bars = useRef<(HTMLDivElement | null)[]>([])
   const peaks = useRef<(HTMLDivElement | null)[]>([])
-  const [heard, setHeard] = useState(false)
+  // At rest until it first plays; then heard (the frame draws it) or pulsing,
+  // and kept so when it pauses. Its bars' heights and peaks, kept with it.
+  const [mode, setMode] = useState<'rest' | 'heard' | 'pulse'>('rest')
+  const shown = useRef({ level: new Float32Array(0), peak: new Float32Array(0) })
 
   useEffect(() => {
+    if (!playing) return
     const el = document.getElementById(`audio-${traceId}`) as HTMLAudioElement | null
-    const analyser = playing && el ? analyserOf(el) : null
-    setHeard(!!analyser)
+    const analyser = el ? analyserOf(el) : null
+    setMode(analyser ? 'heard' : 'pulse')
     if (!analyser) return
     const data = new Uint8Array(analyser.frequencyBinCount)
     const hz = analyser.context.sampleRate / analyser.fftSize
     const edges = Array.from({ length: count + 1 }, (_, k) => Math.max(1, Math.round((LOW * (HIGH / LOW) ** (k / count)) / hz)))
-    const peak = new Float32Array(count)
+    if (shown.current.level.length !== count) shown.current = { level: new Float32Array(count), peak: new Float32Array(count) }
+    const { level: was, peak } = shown.current
+    let frames = 0
     let frame = requestAnimationFrame(function tick() {
       frame = requestAnimationFrame(tick)
       analyser.getByteFrequencyData(data)
+      const fall = ++frames > SETTLE ? FALL : 0
       for (let k = 0; k < count; k++) {
         const from = edges[k], to = Math.max(from + 1, edges[k + 1])
         let sum = 0
         for (let b = from; b < to; b++) sum += data[b]
-        const level = 0.05 + 0.95 * Math.min(1, (sum / (to - from) / 255) * 1.15)
-        peak[k] = Math.max(level, peak[k] - 0.012)
+        was[k] = Math.max(0.05 + 0.95 * Math.min(1, (sum / (to - from) / 255) * 1.15), was[k] - fall)
+        peak[k] = Math.max(was[k], peak[k] - 0.012)
         const bar = bars.current[k], cap = peaks.current[k]
-        if (bar) bar.style.transform = `scaleY(${level})`
+        if (bar) bar.style.transform = `scaleY(${was[k]})`
         if (cap) cap.style.transform = `translateY(${(1 - peak[k]) * 100}%)`
       }
     })
     return () => cancelAnimationFrame(frame)
   }, [playing, traceId, count])
 
-  const live = playing && heard
-  const fill = playing
+  const live = mode === 'heard'
+  const fill = mode !== 'rest'
     ? `linear-gradient(to top, ${color || '#8f8f8f'}, ${color ? color + '88' : '#cbcbcb'})`
     : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))'
   return (
@@ -77,13 +90,14 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
             ref={el => { bars.current[i] = el }}
             className={`absolute inset-x-0 bottom-0 h-full origin-bottom ${live ? 'rounded-[1px]' : 'rounded-full'}`}
             style={{
-              // At rest, and pulsing, its own height; live, the frame sets its scale.
+              // At rest, and pulsing, its own height; heard, the frame sets its
+              // scale -- here too, for a bar drawn anew while it's paused.
               height: live ? '100%' : `${h * 100}%`,
               minHeight: '3px',
-              transform: live ? undefined : 'none',
+              transform: live ? `scaleY(${shown.current.level[i] ?? 0.05})` : 'none',
               background: fill,
               transition: 'background 0.3s ease',
-              animation: playing && !live ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate` : undefined,
+              animation: mode === 'pulse' ? `audioBarPulse 1.2s ease-in-out ${i * 0.05}s infinite alternate ${playing ? 'running' : 'paused'}` : undefined,
             }}
           />
           {live && (

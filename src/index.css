@@ -52,6 +52,8 @@
    over, not the code history's slide. A card's frame is stretched to its
    moving box, its old face going in the first half and its new one coming in
    the second, so neither shows long out of shape. */
+:root[data-morph] .morph { view-transition-name: var(--morph); }
+:root[data-morph] .morph-card { view-transition-class: atrium-card; }
 :root[data-morph]::view-transition-group(*) { animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
 :root[data-morph]::view-transition-old(root) { animation: 200ms ease both morph-out; }
 :root[data-morph]::view-transition-new(root) { animation: 200ms ease both morph-in; }

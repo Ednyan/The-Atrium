@@ -64,7 +64,7 @@ const VIEW_KEY = 'atrium.browserView'
 function BrowserSection({ index, title, count, action, children }: { index: number; title: string; count?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
     <section>
-      <div className="flex flex-wrap items-center gap-3 mb-5" style={{ viewTransitionName: useMorphName() }}>
+      <div className="morph flex flex-wrap items-center gap-3 mb-5" style={morphed(useMorphName())}>
         <span className="text-nier-bg/40 text-xs tracking-[0.1em] tabular-nums">{String(index).padStart(2, '0')}</span>
         <h2 className="text-nier-strong text-xs tracking-[0.25em] uppercase">{title}</h2>
         <div className="flex-1 min-w-[2rem] h-[1px] bg-gradient-to-r from-nier-border/40 to-transparent" />
@@ -83,7 +83,9 @@ const ROW_ENTER = 'px-4 py-2 bg-nier-bg text-nier-black text-xs tracking-[0.1em]
 // name and each section's heading glide to their new places as the browser's
 // own view transition -- at once where there's none, or motion isn't wanted.
 // The names are the cards' own (useId), so the same card is the same name
-// in both views, and never two alike.
+// in both views, and never two alike -- and they're worn only while morphing
+// (.morph, index.css): a named element is a layer of its own, and a card's
+// menu would open under the next card.
 function morph(update: () => void) {
   if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { update(); return }
   const root = document.documentElement
@@ -91,6 +93,7 @@ function morph(update: () => void) {
   document.startViewTransition(update).finished.finally(() => { delete root.dataset.morph })
 }
 const useMorphName = () => 'morph' + useId().replace(/[^\w-]/g, '')
+const morphed = (name: string) => ({ '--morph': name }) as CSSProperties
 
 // The two views' marks, drawn alike: four squares, three rows.
 const VIEW_ICONS: Record<BrowserView, ReactNode> = {
@@ -101,7 +104,7 @@ const VIEW_ICONS: Record<BrowserView, ReactNode> = {
 // An atrium's picture on its card (lib/atriumPreview) -- read from the vault
 // first, on desktop -- and the atrium's mark on its grid where there isn't
 // one yet. Edge to edge across the top of the card.
-function AtriumPreview({ url, small = false, name }: { url?: string | null; small?: boolean; name?: string }) {
+function AtriumPreview({ url, small = false, name }: { url?: string | null; small?: boolean; name: string }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     if (!url) { setSrc(null); return }
@@ -111,7 +114,7 @@ function AtriumPreview({ url, small = false, name }: { url?: string | null; smal
     return () => { live = false }
   }, [url])
   return (
-    <div className={`relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`} style={{ viewTransitionName: name }}>
+    <div className={`morph relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`} style={morphed(name)}>
       {src ? (
         <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(null)} />
       ) : (
@@ -156,11 +159,11 @@ function AtriumCard({ view, name, renaming, preview, tags, busy, onEnter, enterL
   const list = view === 'list'
   const morphName = useMorphName()
   return (
-    <div className={`${ROW} group ${list ? 'flex items-center gap-4 py-3' : ''}`} style={{ ...ROW_FILL, viewTransitionName: morphName, viewTransitionClass: 'atrium-card' } as CSSProperties}>
+    <div className={`${ROW} morph morph-card group ${list ? 'flex items-center gap-4 py-3' : ''}`} style={{ ...ROW_FILL, ...morphed(morphName) }}>
       <AtriumPreview url={preview} small={list} name={`${morphName}-picture`} />
       <div className={list ? 'flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-3' : 'flex flex-col gap-3'}>
         <div className="min-w-0 flex-1">
-          {renaming ?? <h4 className="text-nier-bg text-sm tracking-wide break-words w-fit" style={{ viewTransitionName: `${morphName}-name` }}>{name}</h4>}
+          {renaming ?? <h4 className="morph text-nier-bg text-sm tracking-wide break-words w-fit" style={morphed(`${morphName}-name`)}>{name}</h4>}
           <div className="flex flex-wrap gap-1.5 mt-2">
             {tags.map((tag, i) => (
               <span key={i} className={`${TAG} ${tag.where ? 'border-nier-border/40 text-nier-bg/85' : tag.strong ? 'border-nier-bg/60 text-nier-strong' : 'border-nier-border/25 text-nier-bg/65'}`}>

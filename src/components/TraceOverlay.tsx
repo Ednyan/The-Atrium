@@ -26,7 +26,7 @@ import { saveAllChanges, TRACE_DISCARD_COMPLETED_EVENT, TRACE_SAVE_COMPLETED_EVE
 import { TRACES_RECEIVED_EVENT } from '../lib/liveChanges'
 import { convertEmbedToInternalImage } from '../lib/traceConvert'
 import { computeAutoFitTextSize, fittedTextBox, fontPxOf, resolveFontFamilyCss, fitFontSize, watchFonts, fontsLoadedVersion } from '../lib/textFit'
-import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
+import { baseSizeOf, borderColourOf, boundsOf, FRAME_DEFAULT, resizeCursor, resizedScales, roundedPolygonPath, shapePolygon, storedTransformOf, traceBox } from '../lib/traceGeometry'
 import { TRACE_PRESETS, currentTracePreset, rememberTracePreset } from '../lib/tracePresets'
 import type { TranslationKey } from '../locales/en'
 import { readUndoDepth } from '../lib/atriumPreferences'
@@ -38,18 +38,19 @@ import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { APPLY_COLOUR_EVENT, type ApplyColour } from '../lib/palette'
-import { ELBOW_RADIUS, elbowRoute, elbowThrough, lineCrosses, roundedPath } from '../lib/elbow'
-import { alignedHandle, boxHolds, borderMarks, curvePath, handlesAt, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
+import { ELBOW_RADIUS, elbowRoute, lineCrosses } from '../lib/elbow'
+import { alignedHandle, boxHolds, borderMarks, handlesAt, pathOutline, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls, { Check, ScaleControls, StrokeStylePicker } from './ShapeStyleControls'
 import BatchEditPanel from './BatchEditPanel'
+import HeldImage from './HeldImage'
 import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
-import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, Switch, traceKindLabel } from './Customization'
+import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, Switch, TextAlignField, traceKindLabel } from './Customization'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import DeckSlide from './DeckSlide'
 import { isDeckFile } from '../lib/deckDraw'
@@ -2786,7 +2787,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const area = areaSelectRequest
     const { traces: all, links: threads } = useGameStore.getState()
     const boxes = new Map(all.map(t => [t.id, traceBoxFor(t)]))
+    // A locked trace is passed over: it's taken by a click on it alone.
     const picked = all.filter(t => {
+      if (isLockedTrace(t)) return false
       const b = boxes.get(t.id)!
       // A frame only when all of it is in the area: one drawn inside a frame,
       // to take some of what's in it, shouldn't take the frame too.
@@ -2826,6 +2829,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const { traces: all, links: threads } = useGameStore.getState()
     const boxes = new Map(all.map(t => [t.id, traceBoxFor(t)]))
     const picked = all.filter(t => {
+      if (isLockedTrace(t)) return false
       const b = boxes.get(t.id)!
       const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
       return boxInLasso(b.cx, b.cy, b.halfW, b.halfH, turn, lasso, isFrame(t))
@@ -3227,9 +3231,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       for (const trace of targets) {
         const patch = stylePatchFor(trace, style)
         if (Object.keys(patch).length === 0) continue
-        // A text filling its box keeps the box; its text refits to it.
-        const refit = trace.type === 'text' && !(patch.textFit ?? trace.textFit) && ('fontFamily' in patch || 'fontSize' in patch)
-        updateTraceCustomization(trace.id, refit ? { ...patch, ...fittedTextBox({ ...trace, ...patch }) } : patch)
+        // Its box grown if its text no longer fits (lib/textFit).
+        const box = trace.type === 'text' && ('fontFamily' in patch || 'fontSize' in patch) ? fittedTextBox({ ...trace, ...patch }) : null
+        updateTraceCustomization(trace.id, box ? { ...patch, ...box } : patch)
         changed.add(trace.id)
       }
     })
@@ -3502,7 +3506,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // fits its text from the usual size.
     const start = textEditStartRef.current
     // A text filling its box keeps the box: its font fits the text instead.
-    if (trace.textFit) {
+    // One set to a fixed size keeps it too, until it's resized by hand.
+    if (trace.textFit || trace.textScaleWithBox === false) {
       updateTraceCustomization(trace.id, { content }, { skipUndo: true })
       return
     }
@@ -3709,7 +3714,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     }
     
     // What moves: the selection, or the trace alone -- and what any frame
-    // among them holds (lib/frames), selected or not.
+    // among them holds (lib/frames), selected or not. A locked one among
+    // them stays where it is.
     const taken = selection.size > 0 ? [...selection] : [trace.id]
     const takenFrames = new Set(taken.filter(id => traces.some(t => t.id === id && isFrame(t))))
     const carriedByFrames = mode === 'move' ? heldBy(takenFrames, traces).map(t => t.id) : []
@@ -3721,7 +3727,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       const startPathPoints: Record<string, any[]> = {}
       dragIds.forEach(id => {
         const t = traces.find(tr => tr.id === id)
-        if (t) {
+        if (t && !isLockedTrace(t)) {
           const tTransform = getTraceTransform(t)
           startTransforms[id] = { x: tTransform.x, y: tTransform.y }
           // For path shapes, also store starting shapePoints
@@ -4226,29 +4232,12 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       const spanW = baseWidth * (currentTrace.type === 'shape' ? 1 : (currentTrace.cropWidth ?? 1))
       const spanH = baseHeight * (currentTrace.type === 'shape' ? 1 : (currentTrace.cropHeight ?? 1))
 
-      let newScaleX = startScaleX
-      let newScaleY = startScaleY
+      // In the trace's own turned axes: a turned trace is pulled along its
+      // sides, its corner under the pointer (lib/traceGeometry).
+      const angle = (startTransformRef.current.rotation * Math.PI) / 180
+      let { scaleX: newScaleX, scaleY: newScaleY } = resizedScales(corner, worldDeltaX, worldDeltaY, spanW, spanH, startScaleX, startScaleY, angle)
       let localDx = 0
       let localDy = 0
-
-      if (isCorner) {
-        // Uniform scaling (preserves aspect ratio), driven by distance from
-        // center -- same metric as before, just anchored at the opposite
-        // corner instead of the center.
-        const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
-        const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
-        const scaleFactor = startDist > 0 ? currentDist / startDist : 1
-        newScaleX = Math.max(0.01, startScaleX * scaleFactor)
-        newScaleY = Math.max(0.01, startScaleY * scaleFactor)
-      } else if (corner === 'l' || corner === 'r') {
-        // Horizontal edge - scale X only
-        const sign = corner === 'r' ? 1 : -1
-        newScaleX = Math.max(0.01, startScaleX + (sign * worldDeltaX) / spanW)
-      } else if (corner === 't' || corner === 'b') {
-        // Vertical edge - scale Y only
-        const sign = corner === 'b' ? 1 : -1
-        newScaleY = Math.max(0.01, startScaleY + (sign * worldDeltaY) / spanH)
-      }
 
       // Shift lands the edge being dragged on a neighbour's edge.
       //
@@ -4424,9 +4413,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         localDy = corner === 'b' ? heightDelta : -heightDelta
       }
 
-      const rotationRad = (startTransformRef.current.rotation * Math.PI) / 180
-      const cos = Math.cos(rotationRad)
-      const sin = Math.sin(rotationRad)
+      const cos = Math.cos(angle)
+      const sin = Math.sin(angle)
       const worldDx = localDx * cos - localDy * sin
       const worldDy = localDx * sin + localDy * cos
 
@@ -6041,14 +6029,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       return result
     })
 
-    // The line's outline, whichever way it runs: straight from point to
-    // point, curved on its handles (lib/pathGeometry), or as an elbow --
-    // straight runs and right-angle turns (lib/elbow).
-    const pathData = curveType === 'bezier'
-      ? curvePath(screenPoints)
-      : curveType === 'elbow'
-        ? roundedPath(elbowThrough(screenPoints), ELBOW_RADIUS * zoom)
-        : screenPoints.map((p: { x: number; y: number }, i: number) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
+    // The line's outline, whichever way it runs (lib/pathGeometry).
+    const pathData = pathOutline(screenPoints, curveType, ELBOW_RADIUS * zoom)
 
     // Show the selection glow whether this path is the single selected
     // trace or part of a multi-selection (previously only multi-select
@@ -7169,20 +7151,21 @@ return (
         <div className="w-full h-full relative bg-white overflow-hidden" style={{ filter: lookFilter }}>
           {isDeckFile(trace.mediaUrl) ? (
             <DeckSlide url={trace.mediaUrl!} page={documentPage[trace.id] ?? 1} onCount={count => on.countSlides(trace.id, count)} />
-          ) : documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
-            <img
-              src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
-              alt=""
-              className="w-full h-full object-contain pointer-events-none select-none"
-            />
+          ) : documentError[trace.id] && !documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`] ? (
+            <TraceGlitch reason={documentError[trace.id]} />
           ) : (
-            documentError[trace.id] ? <TraceGlitch reason={documentError[trace.id]} /> : (
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="text-black/40 text-[10px] tracking-wider uppercase">
-                {t('atrium.controls.rendering')}
-              </span>
-            </div>
-            )
+            // The page before stays until this one is ready (HeldImage).
+            <HeldImage
+              src={documentPages[`${trace.id}:${documentPage[trace.id] ?? 1}`]}
+              className="w-full h-full object-contain pointer-events-none select-none"
+              fallback={(
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-black/40 text-[10px] tracking-wider uppercase">
+                    {t('atrium.controls.rendering')}
+                  </span>
+                </div>
+              )}
+            />
           )}
 
         </div>
@@ -8112,11 +8095,12 @@ return (
                   <div
                     key={corner}
                     data-trace-element="true"
-                    data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000000]"
+                    data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner pointer-events-auto z-[1000000]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
                       transform: 'translate(-50%, -50%)',
+                      cursor: resizeCursor(corner, transform.rotation),
                     }}
                     onMouseDown={(e) => handleMouseDown(e, trace, 'scale', corner)}
                     onTouchStart={(e) => handleTouchDown(e, trace, 'scale', corner)}
@@ -8141,17 +8125,16 @@ return (
                 const rotatedX = offsetX * cos - offsetY * sin
                 const rotatedY = offsetX * sin + offsetY * cos
                 
-                const cursorClass = (edge === 't' || edge === 'b') ? 'cursor-ns-resize' : 'cursor-ew-resize'
-                
                 return (
                   <div
                     key={edge}
                     data-trace-element="true"
-                    data-keeps-size="" className={`absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000000] ${cursorClass}`}
+                    data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000000]"
                     style={{
                       left: `${screenX + rotatedX}px`,
                       top: `${screenY + rotatedY}px`,
                       transform: 'translate(-50%, -50%)',
+                      cursor: resizeCursor(edge, transform.rotation),
                     }}
                     onMouseDown={(e) => handleMouseDown(e, trace, 'scale', edge)}
                     onTouchStart={(e) => handleTouchDown(e, trace, 'scale', edge)}
@@ -8289,11 +8272,12 @@ return (
                 <div
                   key={`group-${corner}`}
                   data-trace-element="true"
-                  data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner cursor-nwse-resize pointer-events-auto z-[1000001]"
+                  data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-corner pointer-events-auto z-[1000001]"
                   style={{
                     left: `${corner.includes('r') ? boxLeft + boxWidth : boxLeft}px`,
                     top: `${corner.includes('b') ? boxTop + boxHeight : boxTop}px`,
                     transform: 'translate(-50%, -50%)',
+                    cursor: resizeCursor(corner, 0),
                   }}
                   onMouseDown={(e) => handleGroupMouseDown(e, 'group-scale', corner)}
                   onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale', corner)}
@@ -9707,12 +9691,9 @@ return (
                     <select
                       value={editingTrace.fontFamily ?? 'sans'}
                       onChange={e => {
-                        const effectiveFontSize = fontPxOf(editingTrace.fontSize)
-                        const effectiveFontFamily = resolveFontFamilyCss(e.target.value)
-                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', effectiveFontSize, { fontFamily: effectiveFontFamily })
-                        const updated = { ...editingTrace, fontFamily: e.target.value, width: textSize.width, height: textSize.height };
-                        setEditingTrace(updated);
-                        updateTraceCustomization(editingTrace.id, { fontFamily: e.target.value, width: textSize.width, height: textSize.height })
+                        // Its box grown if its text no longer fits (lib/textFit).
+                        const patch = { fontFamily: e.target.value }
+                        updateTraceCustomization(editingTrace.id, { ...patch, ...fittedTextBox({ ...editingTrace, ...patch }) })
                       }}
                       className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
                     >
@@ -9729,13 +9710,10 @@ return (
                       max={200}
                       value={typeof editingTrace.fontSize === 'number' ? editingTrace.fontSize : (editingTrace.fontSize === 'small' ? 12 : editingTrace.fontSize === 'large' ? 24 : 16)}
                       onChange={value => {
-                        const effectiveFontFamilyKey = editingTrace.fontFamily ?? 'sans'
-                        const effectiveFontFamily = resolveFontFamilyCss(effectiveFontFamilyKey)
-                        const textSize = computeAutoFitTextSize(editingTrace.content ?? '', value, { fontFamily: effectiveFontFamily })
                         // Through updateTraceCustomization, as every other
                         // setting: it was written straight into the store, so
                         // a size change was no step of undo at all.
-                        updateTraceCustomization(editingTrace.id, { fontSize: value, width: textSize.width, height: textSize.height })
+                        updateTraceCustomization(editingTrace.id, { fontSize: value, ...fittedTextBox({ ...editingTrace, fontSize: value }) })
                       }}
                       placeholder={t('atrium.customize.fontSizeHint')}
                     />
@@ -9823,32 +9801,13 @@ return (
                     </div>
                   </div>
 
-                  {/* Text Alignment */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textAlignment')}</label>
-                    <div className="flex gap-2">
-                      {(['left', 'center', 'right', 'justify'] as const).map((align) => (
-                        <button
-                          key={align}
-                          onClick={() => {
-                            const updated = { ...editingTrace, textAlign: align };
-                            setEditingTrace(updated);
-                            updateTraceCustomization(editingTrace.id, { textAlign: align });
-                          }}
-                          className={`flex-1 px-2 py-2 text-xs border transition-colors ${
-                            (editingTrace.textAlign ?? 'center') === align
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-                          }`}
-                        >
-                          {align === 'left' && '◀'}
-                          {align === 'center' && '◆'}
-                          {align === 'right' && '▶'}
-                          {align === 'justify' && '▣'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <TextAlignField
+                    value={editingTrace.textAlign ?? 'center'}
+                    onChange={align => {
+                      setEditingTrace({ ...editingTrace, textAlign: align })
+                      updateTraceCustomization(editingTrace.id, { textAlign: align })
+                    }}
+                  />
 
                   {/* Up and down in the box: the middle unless chosen. */}
                   <div>
@@ -10203,12 +10162,10 @@ return (
           onChange={changes => inOneStep(() => {
             for (const { ids, patch } of changes) for (const id of ids) updateTraceCustomization(id, patch)
           })}
-          // Each fitted to its own text again: auto-fit depends on the words.
+          // Each box grown if its own text no longer fits (lib/textFit).
           onFont={(ids, family) => inOneStep(() => {
             for (const trace of traces.filter(tr => ids.includes(tr.id))) {
-              // One filling its box keeps the box; its text refits to it.
-              const size = trace.textFit ? null : fittedTextBox({ ...trace, fontFamily: family })
-              updateTraceCustomization(trace.id, size ? { fontFamily: family, width: size.width, height: size.height } : { fontFamily: family })
+              updateTraceCustomization(trace.id, { fontFamily: family, ...fittedTextBox({ ...trace, fontFamily: family }) })
             }
           })}
           onDone={() => {
@@ -10339,12 +10296,16 @@ return (
                             <DeckSlide url={modalTrace.mediaUrl!} page={page} onCount={count => countSlides(modalTrace.id, count)} />
                           </div>
                         )
-                      })() : src ? (
-                        <img src={src} alt="" style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9, filter: modalFilter }} />
-                      ) : (
-                        <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
-                          {documentError[modalTrace.id] ?? t('atrium.controls.rendering')}
-                        </span>
+                      })() : (
+                        <HeldImage
+                          src={src}
+                          style={{ maxHeight, maxWidth: modalViewportSize.width * 0.9, filter: modalFilter }}
+                          fallback={(
+                            <span className="text-black/40 text-xs tracking-wider uppercase px-12 py-24">
+                              {documentError[modalTrace.id] ?? t('atrium.controls.rendering')}
+                            </span>
+                          )}
+                        />
                       )}
                     </div>
 

@@ -122,10 +122,10 @@ export default function TraceLinksLayer({
       // An elbow: routed between the two boxes (lib/elbow), border to
       // border, with no slack to swing.
       if (link.elbow) {
-        const from = `elbow ${ax} ${ay} ${bx} ${by} ${a.hw} ${a.hh} ${b.hw} ${b.hh} ${zoom} ${worldOffset.x} ${worldOffset.y} ${link.width} ${link.arrow} ${link.elbowAt}`
+        const from = `elbow ${ax} ${ay} ${bx} ${by} ${a.hw} ${a.hh} ${a.turn} ${b.hw} ${b.hh} ${b.turn} ${zoom} ${worldOffset.x} ${worldOffset.y} ${link.width} ${link.arrow} ${link.elbowAt}`
         if (drawn.current.get(link.id) === from) continue
         drawn.current.set(link.id, from)
-        const route = elbowRoute({ x: ax, y: ay, hw: a.hw, hh: a.hh }, { x: bx, y: by, hw: b.hw, hh: b.hh }, link.elbowAt).map(p => screen(p.x, p.y))
+        const route = elbowRoute({ ...a, x: ax, y: ay }, { ...b, x: bx, y: by }, link.elbowAt).map(p => screen(p.x, p.y))
         const size = headSize(link, zoom)
         const d = roundedPath(trimEnds(route, headsFrom(link) ? size * 0.8 : 0, headsTo(link) ? size * 0.8 : 0), ELBOW_RADIUS * zoom)
         el.line.setAttribute('d', d)
@@ -279,7 +279,7 @@ export default function TraceLinksLayer({
         if (!link.elbow || !selected.has(link.id)) return null
         const a = place(link.from), b = place(link.to)
         if (!a || !b) return null
-        const across = elbowAxis({ x: a.x, y: a.y, hw: a.hw, hh: a.hh }, { x: b.x, y: b.y, hw: b.hw, hh: b.hh }) === 'x'
+        const across = elbowAxis(a, b) === 'x'
         return (
           <div
             key={`grip-${link.id}`}
@@ -298,7 +298,7 @@ export default function TraceLinksLayer({
                 const from = place(link.from), to = place(link.to)
                 if (!from || !to) return null
                 const world = { x: (ev.clientX - worldOffset.x) / zoom, y: (ev.clientY - worldOffset.y) / zoom }
-                return elbowAtFor({ x: from.x, y: from.y, hw: from.hw, hh: from.hh }, { x: to.x, y: to.y, hw: to.hw, hh: to.hh }, world)
+                return elbowAtFor(from, to, world)
               }
               const move = (ev: PointerEvent) => { const value = at(ev); if (value !== null) onElbowAt(link.id, value, false) }
               const up = (ev: PointerEvent) => {

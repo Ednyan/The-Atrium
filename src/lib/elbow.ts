@@ -7,23 +7,32 @@ export interface Pt { x: number; y: number }
 
 // How much an elbow's corners are rounded, in world units.
 export const ELBOW_RADIUS = 12
-// A box by its centre and half-size. Turned boxes are taken as unturned.
-export interface CentredBox { x: number; y: number; hw: number; hh: number }
+// A box by its centre and half-size, and its turn (radians) if it has one.
+export interface CentredBox { x: number; y: number; hw: number; hh: number; turn?: number }
+
+// How far a box's border is from its middle, straight across (x) or down
+// (y): its half-size when it's upright; turned, where that line meets the
+// turned border -- a text turned upright is as narrow across as it was tall.
+export function reach(box: CentredBox, axis: 'x' | 'y'): number {
+  const cos = Math.abs(Math.cos(box.turn ?? 0)), sin = Math.abs(Math.sin(box.turn ?? 0))
+  const [along, side] = axis === 'x' ? [box.hw, box.hh] : [box.hh, box.hw]
+  return Math.min(cos > 1e-9 ? along / cos : Infinity, sin > 1e-9 ? side / sin : Infinity)
+}
 
 // Which way two boxes lie apart: across (left and right of each other) when
 // the gap across is the larger, down otherwise.
 export const elbowAxis = (a: CentredBox, b: CentredBox): 'x' | 'y' =>
-  Math.abs(b.x - a.x) - (a.hw + b.hw) >= Math.abs(b.y - a.y) - (a.hh + b.hh) ? 'x' : 'y'
+  Math.abs(b.x - a.x) - (reach(a, 'x') + reach(b, 'x')) >= Math.abs(b.y - a.y) - (reach(a, 'y') + reach(b, 'y')) ? 'x' : 'y'
 
-// The ends of an elbow from `a` to `b`: the middle of the side of each that
-// faces the other.
+// The ends of an elbow from `a` to `b`: on the border of each, straight out
+// from its middle toward the other.
 function elbowEnds(a: CentredBox, b: CentredBox, axis: 'x' | 'y'): [Pt, Pt] {
   if (axis === 'x') {
     const s = b.x >= a.x ? 1 : -1
-    return [{ x: a.x + s * a.hw, y: a.y }, { x: b.x - s * b.hw, y: b.y }]
+    return [{ x: a.x + s * reach(a, 'x'), y: a.y }, { x: b.x - s * reach(b, 'x'), y: b.y }]
   }
   const s = b.y >= a.y ? 1 : -1
-  return [{ x: a.x, y: a.y + s * a.hh }, { x: b.x, y: b.y - s * b.hh }]
+  return [{ x: a.x, y: a.y + s * reach(a, 'y') }, { x: b.x, y: b.y - s * reach(b, 'y') }]
 }
 
 // An elbow from box `a` to box `b`: out of the side of `a` facing `b`, into

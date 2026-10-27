@@ -12,7 +12,7 @@ import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import type { Trace } from '../types/database'
 import { has, kindOf, settingsOf, type Setting } from '../lib/traceKinds'
-import { CustomizationPanel, KIND_LABEL, Section, type SectionId } from './Customization'
+import { CustomizationPanel, KIND_LABEL, Section, TextAlignField, type SectionId } from './Customization'
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
 import { rememberShapeStyle, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import ShapeStyleControls, { Check, ColourField, SectionRule, Slider } from './ShapeStyleControls'
@@ -79,6 +79,8 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         const family = targets[0].fontFamily ?? 'sans'
         const mixedFamily = targets.some(tr => (tr.fontFamily ?? 'sans') !== family)
         const scales = switchOf(targets, tr => tr.textScaleWithBox ?? true)
+        const align = targets[0].textAlign ?? 'center'
+        const mixedAlign = targets.some(tr => (tr.textAlign ?? 'center') !== align)
         return [{ id: 'text', node: (
           <div className="space-y-3">
             <div>
@@ -90,6 +92,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
               </select>
             </div>
             <ColourField label={t('atrium.customize.textColour')} value={targets[0].textColor ?? '#ffffff'} onChange={c => set(targets, { textColor: c })} />
+            <TextAlignField value={mixedAlign ? null : align} onChange={textAlign => set(targets, { textAlign })} />
             <div>
               <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
               <div className="flex gap-2">

@@ -154,10 +154,22 @@ export function fontPxOf(fontSize: 'small' | 'medium' | 'large' | number | undef
   return typeof fontSize === 'number' ? fontSize : fontSize === 'small' ? 10 : fontSize === 'large' ? 14 : 12
 }
 
-// The box a text trace fits its text in, in its own font and size -- as when a
-// font is set on it (Customize, Batch Edit, Paste Style).
-export function fittedTextBox(trace: { content?: string | null; fontSize?: 'small' | 'medium' | 'large' | number; fontFamily?: string }): { width: number; height: number } {
-  return computeAutoFitTextSize(trace.content ?? '', fontPxOf(trace.fontSize), { fontFamily: resolveFontFamilyCss(trace.fontFamily ?? 'sans') })
+// The box a text trace needs when its font or size is set (Customize, Batch
+// Edit, Paste Style), or null to keep the one it has: its own box, grown only
+// as far as its text no longer fits in it -- never shrunk, nor put back to
+// the usual size. A text filling its box (its font fits the box instead) or
+// set to a fixed size keeps its box whatever its font.
+export function fittedTextBox(trace: {
+  content?: string | null; fontSize?: 'small' | 'medium' | 'large' | number; fontFamily?: string
+  width?: number; height?: number; textFit?: boolean; textScaleWithBox?: boolean
+}): { width: number; height: number } | null {
+  if (trace.textFit || trace.textScaleWithBox === false) return null
+  const box = computeAutoFitTextSize(trace.content ?? '', fontPxOf(trace.fontSize), {
+    fontFamily: resolveFontFamilyCss(trace.fontFamily ?? 'sans'),
+    baseWidth: trace.width || BASE_TEXT_WIDTH,
+    baseHeight: trace.height || BASE_TEXT_HEIGHT,
+  })
+  return box.width === trace.width && box.height === trace.height ? null : box
 }
 
 // The font size, in the box's own units, at which `content` fills a `width` x

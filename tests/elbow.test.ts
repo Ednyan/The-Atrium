@@ -20,6 +20,16 @@ test('boxes one above the other are joined top and bottom; the middle run goes w
   assert.deepEqual(elbowGrip(route), { x: 20, y: 90 })
 })
 
+test('a turned box is met at its turned border', () => {
+  // Turned upright, a wide box is as narrow across as it was tall.
+  const upright = { ...box(0, 0, 50, 10), turn: Math.PI / 2 }
+  const route = elbowRoute(upright, box(300, 0), 0.5)
+  assert.ok(Math.abs(route[0].x - 10) < 1e-9, `leaves at x ${route[0].x}`)
+  // A square turned 45 degrees: its corner, half a diagonal out.
+  const corner = { ...box(0, 0, 20, 20), turn: Math.PI / 4 }
+  assert.ok(Math.abs(elbowRoute(corner, box(300, 0), 0.5)[0].x - 20 * Math.SQRT2) < 1e-9)
+})
+
 test('dragging the middle run: `at` from the pointer, and back again', () => {
   const a = box(0, 0), b = box(300, 100)
   const at = elbowAtFor(a, b, { x: 200, y: 999 })
