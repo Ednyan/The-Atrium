@@ -207,7 +207,8 @@ def place(union: nx.Graph, ids: list[str]) -> tuple[dict, dict]:
     layout = graphify_layout()
     if not layout:
         print('  (graphify\'s layout unavailable; laying out here)')
-        pos = nx.forceatlas2_layout(union, seed=7, max_iter=600, linlog=True, scaling_ratio=2.0, strong_gravity=True)
+        # As plain floats: networkx hands back numpy's, which JSON won't write.
+        pos = {n: (float(x), float(y)) for n, (x, y) in nx.forceatlas2_layout(union, seed=7, max_iter=600, linlog=True, scaling_ratio=2.0, strong_gravity=True).items()}
         colour = {}
         for c, members in enumerate(sorted(nx.community.louvain_communities(union, seed=7), key=len, reverse=True)):
             r, g, b = colorsys.hls_to_rgb((c * 0.381966) % 1, 0.62, 0.72)
