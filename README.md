@@ -79,7 +79,7 @@ npm test             # unit tests
 Verify with `npx tsc --noEmit -p tsconfig.json`, then `npm run build`. Use
 `npm run tauri:build` for the desktop bundle.
 
-The site deploys from the `desktop` branch. Publishing a desktop update is its
+The site deploys from the `main` branch. Publishing a desktop update is its
 own process, with a signing key that cannot be regenerated. It is written down
 in [RELEASING.md](RELEASING.md) and should be read before the first release,
 not during it.
