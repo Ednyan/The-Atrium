@@ -7,6 +7,7 @@
 // spills past its edges.
 
 import { useTranslation } from '../lib/i18n'
+import { Slider } from './ShapeStyleControls'
 import { lookSteps, NEUTRAL_LOOK, type TraceLook } from '../lib/traceLook'
 
 export default function LookFilter({ id, look }: { id: string; look: TraceLook }) {
@@ -29,7 +30,6 @@ export default function LookFilter({ id, look }: { id: string; look: TraceLook }
   )
 }
 
-const LABEL = 'block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2'
 const signed = (v: number, digits = 0) => `${v > 0 ? '+' : ''}${v.toFixed(digits)}`
 
 /** Its three controls, as an EXR's (ExrGradePanel), and Reset: each move a
@@ -38,23 +38,14 @@ export function LookControls({ look, onChange }: { look: TraceLook; onChange: (l
   const { t } = useTranslation()
   const set = (change: Partial<TraceLook>) => onChange({ ...look, ...change })
   return (
-    <div className="space-y-4">
-      <div>
-        <label className={LABEL}>{t('atrium.exr.exposure', { value: signed(look.exposure, 1) })}</label>
-        <input type="range" min="-3" max="3" step="0.1" value={look.exposure} onChange={e => set({ exposure: parseFloat(e.target.value) })} className="w-full accent-nier-bg" />
-      </div>
-      <div>
-        <label className={LABEL}>{t('atrium.exr.brightness', { value: signed(Math.round(look.brightness * 100)) })}</label>
-        <input type="range" min="-100" max="100" step="1" value={Math.round(look.brightness * 100)} onChange={e => set({ brightness: parseInt(e.target.value, 10) / 100 })} className="w-full accent-nier-bg" />
-      </div>
-      <div>
-        <label className={LABEL}>{t('atrium.exr.contrast', { value: signed(Math.round(look.contrast * 100)) })}</label>
-        <input type="range" min="-100" max="100" step="1" value={Math.round(look.contrast * 100)} onChange={e => set({ contrast: parseInt(e.target.value, 10) / 100 })} className="w-full accent-nier-bg" />
-      </div>
+    <div className="space-y-2.5">
+      <Slider label={t('atrium.customize.rowExposure')} min={-3} max={3} step={0.1} value={look.exposure} shown={signed(look.exposure, 1)} onChange={exposure => set({ exposure })} />
+      <Slider label={t('atrium.customize.rowBrightness')} min={-100} max={100} step={1} value={Math.round(look.brightness * 100)} shown={signed(Math.round(look.brightness * 100))} onChange={v => set({ brightness: v / 100 })} />
+      <Slider label={t('atrium.customize.rowContrast')} min={-100} max={100} step={1} value={Math.round(look.contrast * 100)} shown={signed(Math.round(look.contrast * 100))} onChange={v => set({ contrast: v / 100 })} />
       <button
         type="button"
         onClick={() => onChange(NEUTRAL_LOOK)}
-        className="px-3 py-1.5 border border-nier-border/40 text-nier-bg text-xs tracking-[0.1em] uppercase hover:border-nier-border/80"
+        className="h-8 px-3 border border-nier-border/40 text-nier-bg text-[10px] tracking-[0.1em] uppercase hover:border-nier-border/80"
       >
         {t('atrium.exr.reset')}
       </button>

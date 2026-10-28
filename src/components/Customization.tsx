@@ -1,11 +1,12 @@
 // The Customization panel, as Excalidraw's properties are: one frame, docked
-// on the right (--right-rail), its sections always in
-// one order -- Name, Style, Fill, Outline, Text, Shape, Content, Effects,
-// Size, a text trace's Content first -- and only those the thing being
-// customized has. For a trace, for
-// several at once (Batch Edit), for the tool in hand (how what it makes
-// starts), and for drawing. Its sections fold, and stay folded, on this
-// device; its foot is a row of actions.
+// on the right (--right-rail), its sections in the order the work goes --
+// what a thing is, then how it looks, then where it sits -- and only those
+// the thing being customized has. For a trace, for several at once (Batch
+// Edit), for the tool in hand (how what it makes starts), and for drawing.
+// Its sections fold, and stay folded, on this device; one that can be off
+// has its switch in its heading, and says how it's set while folded. Each
+// setting is a row: its name on the left, what sets it on the right. Its
+// foot is a row of actions.
 
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from '../lib/i18n'
@@ -15,6 +16,7 @@ import type { Trace } from '../types/database'
 import { MenuIcon, SlideLabel } from './AtriumMenu'
 
 export type SectionId = 'name' | 'style' | 'fill' | 'outline' | 'text' | 'shape' | 'content' | 'effects' | 'size' | 'brush' | 'colour' | 'stroke' | 'exr' | 'look'
+  | 'background' | 'border' | 'shadow' | 'light' | 'captions' | 'arrange'
   // Atrium Themes (ThemeCustomization).
   | 'presets' | 'mine' | 'grid' | 'room' | 'particles' | 'ground'
   // User Preferences (ProfileCustomization).
@@ -96,7 +98,19 @@ export function CustomizationPanel({ subtitle, onClose, closeLabel, actions, zIn
 
 // One section: its title a button that folds it. Folded or not is kept for
 // every panel alike -- fold Effects once and it's folded everywhere.
-export function Section({ id, title, note, children }: { id: SectionId; title: string; note?: string | null; children: ReactNode }) {
+// `summary`: how it's set, beside the title, so a folded one still tells.
+// `on`/`onSwitch`: a section that can be off (a border, a light) has its
+// switch in its heading; off, there is nothing in it to set.
+export function Section({ id, title, note, summary, on, onSwitch, children }: {
+  id: SectionId
+  title: string
+  note?: string | null
+  summary?: string | null
+  on?: boolean
+  onSwitch?: (on: boolean) => void
+  children?: ReactNode
+}) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(() => !readFolded().has(id))
   const toggle = () => {
     setOpen(was => {
@@ -107,20 +121,95 @@ export function Section({ id, title, note, children }: { id: SectionId; title: s
       return !was
     })
   }
+  const off = on === false
+  const aside = note ?? (off ? t('atrium.customize.off') : summary)
   return (
     <section data-section={id} className="border-b border-nier-border/15 last:border-b-0">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="w-full flex items-center gap-2 py-2.5 text-left text-nier-strong text-[11px] tracking-[0.2em] uppercase hover:text-nier-bg"
-      >
-        <span className={`text-nier-bg/60 text-[10px] transition-transform ${open ? '' : '-rotate-90'}`}>▾</span>
-        <span className="truncate">{title}</span>
-        {note && <span className="ml-auto text-nier-bg/55 text-[10px] tracking-wide normal-case truncate">{note}</span>}
-      </button>
-      {open && <div className="pb-4 space-y-4">{children}</div>}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex-1 min-w-0 flex items-center gap-2 py-3 text-left text-nier-strong text-[11px] tracking-[0.2em] uppercase hover:text-nier-bg"
+        >
+          <span className={`text-nier-bg/60 text-[10px] transition-transform ${open ? '' : '-rotate-90'}`}>▾</span>
+          <span className="shrink-0">{title}</span>
+          {aside && <span data-section-summary="" className="ml-auto min-w-0 text-nier-bg/55 text-[10px] tracking-wide normal-case truncate">{aside}</span>}
+        </button>
+        {onSwitch && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!off}
+            aria-label={title}
+            data-section-switch={id}
+            onClick={() => onSwitch(off)}
+            className="group shrink-0 flex items-center py-2"
+          >
+            <ToggleTrack on={!off} />
+          </button>
+        )}
+      </div>
+      {open && !off && children && <div className="pb-4 pl-5 space-y-2.5">{children}</div>}
     </section>
+  )
+}
+
+// One setting: its name on the left, what sets it on the right -- or, for
+// one too wide to share the line (`stacked`), under it.
+export function Row({ label, hint, stacked, children }: { label: ReactNode; hint?: string; stacked?: boolean; children: ReactNode }) {
+  return (
+    <div className={stacked ? 'space-y-1.5' : 'flex items-center gap-3 min-h-8'} title={hint}>
+      <span className={`${stacked ? 'block' : 'w-[5.75rem] shrink-0'} text-nier-bg/70 text-[11px] tracking-[0.06em] leading-tight`}>{label}</span>
+      {stacked ? children : <div className="flex-1 min-w-0">{children}</div>}
+    </div>
+  )
+}
+
+// One of a few, side by side, the chosen one lit. `title`: its name, where
+// it's shown as a mark (◀, B). Pressed or not on its own, it's one of a set
+// of toggles (bold, italic) rather than one choice among them.
+export function ChoiceButton({ on, title, onClick, className = '', children, data }: {
+  on: boolean
+  title?: string
+  onClick: () => void
+  className?: string
+  children: ReactNode
+  // Data attributes, for whatever looks for this button.
+  data?: Record<string, string>
+}) {
+  return (
+    <button
+      type="button"
+      {...data}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      onClick={onClick}
+      className={`flex-1 min-w-0 h-8 px-1.5 truncate text-[10px] tracking-[0.08em] uppercase border transition-colors ${
+        on ? 'bg-nier-bg text-nier-black border-nier-bg' : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+      } ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
+export function Choices<T extends string>({ options, value, onChange, name }: {
+  options: readonly { value: T; label: ReactNode; title?: string }[]
+  // null while several disagree (Batch Edit): none lit.
+  value: T | null
+  onChange: (value: T) => void
+  // The data attribute each carries its value in: data-<name>="top".
+  name?: string
+}) {
+  return (
+    <div className="flex gap-1">
+      {options.map(option => (
+        <ChoiceButton key={option.value} on={value === option.value} title={option.title} onClick={() => onChange(option.value)} data={name ? { [`data-${name}`]: option.value } : undefined}>
+          {option.label}
+        </ChoiceButton>
+      ))}
+    </div>
   )
 }
 
@@ -209,25 +298,14 @@ const ALIGN_MARK: Record<TextAlign, string> = { left: '◀', center: '◆', righ
 export function TextAlignField({ value, onChange }: { value: TextAlign | null; onChange: (align: TextAlign) => void }) {
   const { t } = useTranslation()
   return (
-    <div>
-      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textAlignment')}</label>
-      <div className="flex gap-2">
-        {(Object.keys(ALIGN_MARK) as TextAlign[]).map(align => (
-          <button
-            key={align}
-            type="button"
-            onClick={() => onChange(align)}
-            className={`flex-1 px-2 py-2 text-xs border transition-colors ${
-              value === align
-                ? 'bg-nier-bg text-nier-black border-nier-bg'
-                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-            }`}
-          >
-            {ALIGN_MARK[align]}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Row label={t('atrium.customize.textAlignment')}>
+      <Choices
+        name="text-align"
+        value={value}
+        onChange={onChange}
+        options={(Object.keys(ALIGN_MARK) as TextAlign[]).map(align => ({ value: align, label: ALIGN_MARK[align], title: align }))}
+      />
+    </Row>
   )
 }
 
@@ -242,29 +320,14 @@ const VALIGN: Record<TextValign, { mark: string; label: TranslationKey }> = {
 export function TextValignField({ value, onChange }: { value: TextValign | null; onChange: (valign: TextValign) => void }) {
   const { t } = useTranslation()
   return (
-    <div>
-      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.verticalAlignment')}</label>
-      <div className="flex gap-2">
-        {(Object.keys(VALIGN) as TextValign[]).map(valign => (
-          <button
-            key={valign}
-            type="button"
-            data-text-valign={valign}
-            title={t(VALIGN[valign].label)}
-            aria-label={t(VALIGN[valign].label)}
-            aria-pressed={value === valign}
-            onClick={() => onChange(valign)}
-            className={`flex-1 px-2 py-2 text-xs border transition-colors ${
-              value === valign
-                ? 'bg-nier-bg text-nier-black border-nier-bg'
-                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-            }`}
-          >
-            {VALIGN[valign].mark}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Row label={t('atrium.customize.verticalAlignment')}>
+      <Choices
+        name="text-valign"
+        value={value}
+        onChange={onChange}
+        options={(Object.keys(VALIGN) as TextValign[]).map(valign => ({ value: valign, label: VALIGN[valign].mark, title: t(VALIGN[valign].label) }))}
+      />
+    </Row>
   )
 }
 

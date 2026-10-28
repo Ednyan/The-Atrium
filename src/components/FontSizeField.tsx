@@ -67,14 +67,14 @@ export default function FontSizeField({ value, onChange, min = 8, max = 200, pla
           if (e.key === 'ArrowDown' && !open) setOpen(true)
         }}
         placeholder={placeholder}
-        className="flex-1 min-w-0 bg-nier-black text-nier-bg border border-nier-border/30 border-r-0 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+        className="flex-1 min-w-0 h-8 bg-nier-black text-nier-bg border border-nier-border/30 border-r-0 px-2 font-mono text-xs focus:outline-none focus:border-nier-border/60"
       />
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="px-3 bg-nier-black border border-nier-border/30 text-nier-bg/70 hover:text-nier-strong hover:border-nier-border/60 transition-colors text-[10px]"
+        className="w-8 h-8 shrink-0 bg-nier-black border border-nier-border/30 text-nier-bg/70 hover:text-nier-strong hover:border-nier-border/60 transition-colors text-[10px]"
       >
         ▾
       </button>

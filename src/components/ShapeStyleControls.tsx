@@ -14,7 +14,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { showToast } from '../lib/toast'
 import { BOX_SHAPES, type ArrowKind, type ShapeKind, type ShapeStyle } from '../lib/shapeStyle'
-import { Switch, ToggleTrack } from './Customization'
+import { Choices, Row, ToggleTrack } from './Customization'
+import { MenuIcon } from './AtriumMenu'
 import { dashProps, STROKE_STYLES, type StrokeStyle } from '../lib/strokeStyle'
 
 const PALETTE = [
@@ -27,11 +28,6 @@ const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i
 
 const LABEL = 'block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2'
 const HINT = 'text-nier-bg/55 text-[0.7rem] leading-relaxed tracking-wide normal-case mt-1.5'
-const choice = (on: boolean) => `px-3 py-2 text-[10px] tracking-wider uppercase font-mono transition-all border ${
-  on
-    ? 'bg-nier-bg text-nier-black border-nier-bg'
-    : 'bg-transparent text-nier-bg/80 border-nier-border/30 hover:border-nier-border/60 hover:text-nier-bg'
-}`
 
 // A path's kinds of line, named as a connection's are.
 const PATH_LINES: { kind: ShapeStyle['pathCurveType']; glyph: string; key: 'atrium.links.straight' | 'atrium.links.curved' | 'atrium.links.elbow' }[] = [
@@ -58,9 +54,10 @@ export function SectionRule({ label, note }: { label: string; note?: string | nu
 }
 
 // A switch. `mixed`: some of the traces it's for have it on and some off --
-// shown as a dash, and turned on for all of them by a click.
-export function Check({ checked, onChange, label, hint, mixed = false }: {
-  checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string; mixed?: boolean
+// shown as a dash, and turned on for all of them by a click. `row`: among the
+// Customization panel's rows, named as they are.
+export function Check({ checked, onChange, label, hint, mixed = false, row = false }: {
+  checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string; mixed?: boolean; row?: boolean
 }) {
   const on = checked && !mixed
   return (
@@ -71,21 +68,27 @@ export function Check({ checked, onChange, label, hint, mixed = false }: {
       data-check={label}
       title={hint}
       onClick={() => onChange(!on)}
-      className="group w-full flex items-center justify-between gap-3 text-left"
+      className={`group w-full flex items-center justify-between gap-3 text-left ${row ? 'min-h-8' : ''}`}
     >
-      <span className="min-w-0 tracking-[0.1em] uppercase text-xs text-nier-strong">{label}</span>
+      <span className={`min-w-0 text-nier-strong ${row ? 'text-[12px] tracking-[0.04em]' : 'tracking-[0.1em] uppercase text-xs'}`}>{label}</span>
       <ToggleTrack on={on} mixed={mixed} />
     </button>
   )
 }
 
-/** Palette, eyedropper, native picker and a hex field -- for fill and outline alike. */
-export function ColourField({ label, value, onChange }: { label: string; value: string; onChange: (colour: string) => void }) {
+const EYEDROPPER = 'M11 7l6 6M4 16l11.7 -11.7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-11.7 11.7h-4v-4z'
+const RESET = 'M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4'
+
+/** A colour, in one row: its swatch -- which opens the palette, the system's
+    picker and, given `onReset`, the way back to the default -- its hex, and
+    the eyedropper. For fill, outline, text and light alike. */
+export function ColourField({ label, value, onChange, onReset }: { label: string; value: string; onChange: (colour: string) => void; onReset?: () => void }) {
   const { t } = useTranslation()
   // The hex field keeps its own text while it is being typed, so a half-typed
   // "#3b8" is not pushed onto the shape; it applies once it is a colour.
   const [draft, setDraft] = useState(value)
   useEffect(() => { setDraft(value) }, [value])
+  const [open, setOpen] = useState(false)
 
   const commitDraft = () => {
     if (HEX.test(draft)) onChange(draft)
@@ -105,53 +108,94 @@ export function ColourField({ label, value, onChange }: { label: string; value: 
     }
   }
 
+  const tool = 'w-8 h-8 shrink-0 flex items-center justify-center border border-nier-border/30 text-nier-bg hover:border-nier-border/60 hover:text-nier-strong transition-colors'
   return (
-    <div>
-      <label className={LABEL}>{label}</label>
-      <div className="grid grid-cols-8 gap-1.5 mb-3">
-        {PALETTE.map(colour => (
+    <div className="space-y-2">
+      <Row label={label}>
+        <div className="flex items-center gap-1.5">
           <button
-            key={colour}
             type="button"
-            onClick={() => onChange(colour)}
-            className="w-7 h-7 border border-nier-border/30 hover:border-nier-border/60 transition-all hover:scale-110"
-            style={{ backgroundColor: colour }}
-            title={colour}
+            data-colour-swatch=""
+            aria-expanded={open}
+            aria-label={label}
+            title={label}
+            onClick={() => setOpen(was => !was)}
+            className="w-8 h-8 shrink-0 border border-nier-border/50 hover:border-nier-border/80 transition-colors"
+            style={{ backgroundColor: HEX.test(value) ? value : 'transparent' }}
           />
-        ))}
-      </div>
-      <div className="flex gap-2 items-center">
-        <button
-          type="button"
-          onClick={e => { e.preventDefault(); e.stopPropagation(); void pick() }}
-          className="p-2 border transition-all bg-nier-black border-nier-border/30 text-nier-bg hover:border-nier-border/60"
-          title={t('atrium.customize.pickColour')}
-        >
-          💧
-        </button>
-        <input
-          type="color"
-          value={HEX.test(value) && value.length === 7 ? value : '#3b82f6'}
-          onChange={e => onChange(e.target.value)}
-          className="w-14 h-9 cursor-pointer bg-nier-black border border-nier-border/30"
-        />
-        <input
-          type="text"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commitDraft}
-          onKeyDown={e => { if (e.key === 'Enter') commitDraft() }}
-          placeholder="#3b82f6"
-          className="flex-1 min-w-0 px-3 py-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-sm"
-        />
-      </div>
+          <input
+            type="text"
+            value={draft}
+            aria-label={label}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={e => { if (e.key === 'Enter') commitDraft() }}
+            placeholder="#3b82f6"
+            className="flex-1 min-w-0 h-8 px-2 bg-nier-black border border-nier-border/30 text-nier-bg placeholder-nier-bg/50 focus:outline-none focus:border-nier-border/60 transition-colors font-mono text-xs uppercase"
+          />
+          <button
+            type="button"
+            onClick={e => { e.preventDefault(); e.stopPropagation(); void pick() }}
+            className={tool}
+            title={t('atrium.customize.pickColour')}
+            aria-label={t('atrium.customize.pickColour')}
+          >
+            <MenuIcon d={EYEDROPPER} size={14} />
+          </button>
+        </div>
+      </Row>
+      {open && (
+        <div data-colour-palette="" className="pl-[6.5rem] space-y-1.5">
+          <div className="grid grid-cols-8 gap-1">
+            {PALETTE.map(colour => (
+              <button
+                key={colour}
+                type="button"
+                onClick={() => onChange(colour)}
+                className={`aspect-square border transition-colors ${colour.toLowerCase() === value.toLowerCase() ? 'border-nier-strong' : 'border-nier-border/30 hover:border-nier-border/70'}`}
+                style={{ backgroundColor: colour }}
+                title={colour}
+                aria-label={colour}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="color"
+              value={HEX.test(value) && value.length === 7 ? value : '#3b82f6'}
+              onChange={e => onChange(e.target.value)}
+              className="flex-1 min-w-0 h-8 cursor-pointer bg-nier-black border border-nier-border/30"
+            />
+            {onReset && (
+              <button type="button" onClick={onReset} className={tool} title={t('atrium.customize.resetDefault')} aria-label={t('atrium.customize.resetDefault')}>
+                <MenuIcon d={RESET} size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export function Slider({ label, hint, min, max, step, value, onChange }: {
-  label: string; hint?: string; min: number; max: number; step: number; value: number; onChange: (value: number) => void
+// `shown`: the value as it reads (92%, 2 px) -- given, the slider is one of
+// the Customization panel's rows, the value at its end; not, its label says it.
+export function Slider({ label, hint, min, max, step, value, onChange, shown }: {
+  label: string; hint?: string; min: number; max: number; step: number; value: number; onChange: (value: number) => void; shown?: string
 }) {
+  if (shown !== undefined) return (
+    <Row label={label} hint={hint}>
+      <div className="flex items-center gap-2">
+        <input
+          type="range" min={min} max={max} step={step} value={value}
+          aria-label={label}
+          onChange={e => onChange(parseFloat(e.target.value))}
+          className="flex-1 min-w-0 accent-nier-bg"
+        />
+        <span className="w-12 shrink-0 text-right text-[11px] text-nier-strong tabular-nums">{shown}</span>
+      </div>
+    </Row>
+  )
   return (
     <div>
       <label className={LABEL}>{label}</label>
@@ -180,18 +224,18 @@ function SizeInput({ label, value, onCommit }: { label: string; value: number; o
     else setDraft(String(Math.round(value)))
   }
   return (
-    <div>
-      <label className={LABEL}>{label}</label>
+    <Row label={label}>
       <input
         type="text"
         inputMode="numeric"
         value={draft}
+        aria-label={label}
         onChange={e => setDraft(e.target.value.replace(/[^\d]/g, ''))}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit() }}
-        className="w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60"
+        className="w-full h-8 bg-nier-black text-nier-bg border border-nier-border/30 px-2 font-mono text-xs focus:outline-none focus:border-nier-border/60"
       />
-    </div>
+    </Row>
   )
 }
 
@@ -203,28 +247,22 @@ export function StrokeStylePicker({ value, onChange }: { value: StrokeStyle | un
   const { t } = useTranslation()
   const current = value ?? 'solid'
   return (
-    <div>
-      <label className={LABEL}>{t('atrium.customize.strokeStyle')}</label>
-      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={t('atrium.customize.strokeStyle')}>
-        {STROKE_STYLES.map(style => (
-          <button
-            key={style}
-            type="button"
-            role="radio"
-            data-stroke-style={style}
-            aria-checked={current === style}
-            aria-label={t(`atrium.customize.stroke.${style}`)}
-            title={t(`atrium.customize.stroke.${style}`)}
-            onClick={() => onChange(style)}
-            className={choice(current === style)}
-          >
-            <svg width="40" height="10" viewBox="0 0 40 10" className="mx-auto block" aria-hidden="true">
-              <line x1="4" y1="5" x2="36" y2="5" stroke="currentColor" strokeWidth="2" {...dashProps(style, 2)} />
+    <Row label={t('atrium.customize.strokeStyle')}>
+      <Choices
+        name="stroke-style"
+        value={current}
+        onChange={onChange}
+        options={STROKE_STYLES.map(style => ({
+          value: style,
+          title: t(`atrium.customize.stroke.${style}`),
+          label: (
+            <svg width="32" height="10" viewBox="0 0 32 10" className="mx-auto block" aria-hidden="true">
+              <line x1="3" y1="5" x2="29" y2="5" stroke="currentColor" strokeWidth="2" {...dashProps(style, 2)} />
             </svg>
-          </button>
-        ))}
-      </div>
-    </div>
+          ),
+        }))}
+      />
+    </Row>
   )
 }
 
@@ -248,16 +286,14 @@ export function ScaleControls({ scaleX, scaleY, onChange }: { scaleX: number; sc
   }
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
-        <SizeInput label={t('atrium.customize.scaleX')} value={Math.abs(scaleX) * 100} onCommit={p => set('x', p)} />
-        <SizeInput label={t('atrium.customize.scaleY')} value={Math.abs(scaleY) * 100} onCommit={p => set('y', p)} />
-      </div>
-      <Switch label={t('atrium.customize.keepProportions')} on={linked} onChange={setLinked} testId="keep-proportions" />
+      <SizeInput label={t('atrium.customize.scaleX')} value={Math.abs(scaleX) * 100} onCommit={p => set('x', p)} />
+      <SizeInput label={t('atrium.customize.scaleY')} value={Math.abs(scaleY) * 100} onCommit={p => set('y', p)} />
+      <Check row label={t('atrium.customize.keepProportions')} checked={linked} onChange={setLinked} />
     </>
   )
 }
 
-export default function ShapeStyleControls({ value, onChange, size, onSizeChange, typePicker = true, note, part }: {
+export default function ShapeStyleControls({ value, onChange, size, onSizeChange, typePicker = true, note, part, switches = false }: {
   value: ShapeStyle
   onChange: (patch: Partial<ShapeStyle>) => void
   /** Off in Batch Edit: shapes and paths are edited apart there, and a type picked for all of them could turn a box into a line with no points. */
@@ -271,54 +307,57 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       the kind and a path's line, the size, the fill, the outline. All of
       them, each under its own heading, when not given. */
   part?: 'shape' | 'size' | 'fill' | 'outline'
+  /** The fill's and the outline's on/off are in their sections' headings
+      (the Customization panel), so not here as well. */
+  switches?: boolean
 }) {
   const { t } = useTranslation()
   const isPath = value.shapeType === 'path'
   const arrows = (key: 'pathArrowStart' | 'pathArrowEnd', pointer: string) => (
-    <div>
-      <label className={LABEL}>{t(key === 'pathArrowStart' ? 'atrium.customize.arrowStart' : 'atrium.customize.arrowEnd')}</label>
-      <div className="grid grid-cols-3 gap-2">
-        {(['none', 'triangle', 'diamond'] as ArrowKind[]).map(kind => (
-          <button key={kind} type="button" onClick={() => onChange({ [key]: kind })} className={choice(value[key] === kind).replace('px-3', 'px-2')}>
-            {kind === 'none' && '— None'}
-            {kind === 'triangle' && `${pointer} Arrow`}
-            {kind === 'diamond' && '◆ Diamond'}
-          </button>
-        ))}
-      </div>
-    </div>
+    <Row label={t(key === 'pathArrowStart' ? 'atrium.customize.arrowStart' : 'atrium.customize.arrowEnd')}>
+      <Choices
+        value={value[key]}
+        onChange={kind => onChange({ [key]: kind })}
+        options={(['none', 'triangle', 'diamond'] as ArrowKind[]).map(kind => ({
+          value: kind,
+          label: kind === 'none' ? '—' : kind === 'triangle' ? pointer : '◆',
+          title: kind === 'none' ? 'None' : kind === 'triangle' ? 'Arrow' : 'Diamond',
+        }))}
+      />
+    </Row>
   )
 
   const show = (p: NonNullable<typeof part>) => !part || part === p
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {!part && <SectionRule label={isPath ? t('atrium.trace.shape.path') : t('atrium.customize.shape')} note={note} />}
 
-      {show('shape') && typePicker && <div>
-        <label className={LABEL}>{t('atrium.customize.shapeType')}</label>
-        <div className="grid grid-cols-2 gap-2">
-          {([...BOX_SHAPES, 'path'] as ShapeKind[]).map(kind => (
-            <button key={kind} type="button" onClick={() => onChange({ shapeType: kind })} className={choice(value.shapeType === kind)}>
-              {SHAPE_GLYPH[kind]} {t(`atrium.trace.shape.${kind}` as const)}
-            </button>
-          ))}
-        </div>
-      </div>}
+      {show('shape') && typePicker && (
+        <Row label={t('atrium.customize.shapeType')}>
+          <Choices
+            value={value.shapeType}
+            onChange={shapeType => onChange({ shapeType })}
+            options={([...BOX_SHAPES, 'path'] as ShapeKind[]).map(kind => ({ value: kind, label: SHAPE_GLYPH[kind], title: t(`atrium.trace.shape.${kind}` as const) }))}
+          />
+        </Row>
+      )}
 
       {/* A path is sized by the points it passes through, not by a box. */}
       {show('size') && size && onSizeChange && !isPath && (
-        <div className="grid grid-cols-2 gap-4">
+        <>
           <SizeInput label={t('atrium.trace.width')} value={size.width} onCommit={w => onSizeChange(w, size.height)} />
           <SizeInput label={t('atrium.trace.height')} value={size.height} onCommit={h => onSizeChange(size.width, h)} />
-        </div>
+        </>
       )}
 
-      {/* Circles have no corners; paths are shaped by their points. */}
-      {show('outline') && value.shapeType !== 'circle' && !isPath && (
+      {/* The shape's own: circles have no corners; paths are shaped by their
+          points. Not with the outline, which can be off -- they round the
+          fill as much. */}
+      {show('shape') && value.shapeType !== 'circle' && !isPath && (
         <Slider
-          label={t('atrium.customize.cornerRadiusLabel', { value: value.cornerRadius })}
+          label={t('atrium.customize.rowCorners')}
           hint={t('atrium.customize.roundsCorners')}
-          min={0} max={100} step={1} value={value.cornerRadius}
+          min={0} max={100} step={1} value={value.cornerRadius} shown={`${value.cornerRadius} px`}
           onChange={v => onChange({ cornerRadius: v })}
         />
       )}
@@ -326,22 +365,19 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
       {show('shape') && isPath && (
         <>
           <Slider
-            label={t('atrium.customize.pathThicknessLabel', { value: value.shapeOutlineWidth })}
+            label={t('atrium.customize.rowThickness')}
             hint={t('atrium.customize.pathThickness')}
-            min={1} max={20} step={1} value={value.shapeOutlineWidth}
+            min={1} max={20} step={1} value={value.shapeOutlineWidth} shown={`${value.shapeOutlineWidth} px`}
             onChange={v => onChange({ shapeOutlineWidth: v })}
           />
           <StrokeStylePicker value={value.strokeStyle} onChange={strokeStyle => onChange({ strokeStyle })} />
-          <div>
-            <label className={LABEL}>{t('atrium.customize.pathStyle')}</label>
-            <div className="grid grid-cols-3 gap-2">
-              {PATH_LINES.map(({ kind, glyph, key }) => (
-                <button key={kind} type="button" onClick={() => onChange({ pathCurveType: kind })} className={choice(value.pathCurveType === kind)}>
-                  {glyph} {t(key)}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Row label={t('atrium.customize.pathStyle')}>
+            <Choices
+              value={value.pathCurveType}
+              onChange={pathCurveType => onChange({ pathCurveType })}
+              options={PATH_LINES.map(({ kind, glyph, key }) => ({ value: kind, label: glyph, title: t(key) }))}
+            />
+          </Row>
           {arrows('pathArrowStart', '◄')}
           {arrows('pathArrowEnd', '►')}
         </>
@@ -351,53 +387,42 @@ export default function ShapeStyleControls({ value, onChange, size, onSizeChange
 
       {/* A path is a line: its colour and how opaque it is (arrows and
           all), with nothing to fill. */}
-      {show('fill') && <ColourField label={isPath ? t('atrium.customize.lineColour') : t('atrium.customize.fillColour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />}
+      {show('fill') && <ColourField label={isPath ? t('atrium.customize.lineColour') : t('atrium.customize.colour')} value={value.shapeColor} onChange={c => onChange({ shapeColor: c })} />}
 
       {show('fill') && <Slider
-        label={isPath
-          ? t('atrium.customize.opacity', { value: (value.shapeOpacity * 100).toFixed(0) })
-          : t('atrium.customize.fillOpacity', { value: (value.shapeOpacity * 100).toFixed(0) })}
-        min={0} max={1} step={0.01} value={value.shapeOpacity}
+        label={t('atrium.customize.rowOpacity')}
+        min={0} max={1} step={0.01} value={value.shapeOpacity} shown={`${Math.round(value.shapeOpacity * 100)}%`}
         onChange={v => onChange({ shapeOpacity: v })}
       />}
 
-      {show('fill') && !isPath && (
-        <div className="space-y-2">
-          <Check checked={value.shapeNoFill} onChange={v => onChange({ shapeNoFill: v })} label={t('atrium.customize.noFill')} />
-        </div>
+      {show('fill') && !isPath && !switches && (
+        <Check row checked={value.shapeNoFill} onChange={v => onChange({ shapeNoFill: v })} label={t('atrium.customize.noFill')} />
       )}
 
       {/* A path is only ever its outline, so it has no switch for one. */}
-      {show('outline') && !isPath && (
-        <div>
-          <div className="mb-2">
-            <Check checked={value.shapeOutlineOnly} onChange={v => onChange({ shapeOutlineOnly: v })} label={t('atrium.customize.showOutline')} />
-          </div>
-          {value.shapeOutlineOnly && (
-            <div className="ml-6 space-y-3">
-              <Slider
-                label={t('atrium.customize.outlineWidth', { value: value.shapeOutlineWidth })}
-                hint={t('atrium.customize.outlineThickness')}
-                min={1} max={20} step={1} value={value.shapeOutlineWidth}
-                onChange={v => onChange({ shapeOutlineWidth: v })}
-              />
-              <Slider
-                label={t('atrium.customize.outlineOpacity', { value: (value.shapeOutlineOpacity * 100).toFixed(0) })}
-                min={0} max={1} step={0.01} value={value.shapeOutlineOpacity}
-                onChange={v => onChange({ shapeOutlineOpacity: v })}
-              />
-              <StrokeStylePicker value={value.strokeStyle} onChange={strokeStyle => onChange({ strokeStyle })} />
-            </div>
-          )}
-        </div>
+      {show('outline') && !isPath && !switches && (
+        <Check row checked={value.shapeOutlineOnly} onChange={v => onChange({ shapeOutlineOnly: v })} label={t('atrium.customize.showOutline')} />
       )}
-
       {show('outline') && !isPath && value.shapeOutlineOnly && (
-        <ColourField
-          label={t('atrium.customize.outlineColour')}
-          value={value.shapeOutlineColor || value.shapeColor}
-          onChange={c => onChange({ shapeOutlineColor: c })}
-        />
+        <>
+          <ColourField
+            label={t('atrium.customize.colour')}
+            value={value.shapeOutlineColor || value.shapeColor}
+            onChange={c => onChange({ shapeOutlineColor: c })}
+          />
+          <Slider
+            label={t('atrium.customize.rowThickness')}
+            hint={t('atrium.customize.outlineThickness')}
+            min={1} max={20} step={1} value={value.shapeOutlineWidth} shown={`${value.shapeOutlineWidth} px`}
+            onChange={v => onChange({ shapeOutlineWidth: v })}
+          />
+          <Slider
+            label={t('atrium.customize.rowOpacity')}
+            min={0} max={1} step={0.01} value={value.shapeOutlineOpacity} shown={`${Math.round(value.shapeOutlineOpacity * 100)}%`}
+            onChange={v => onChange({ shapeOutlineOpacity: v })}
+          />
+          <StrokeStylePicker value={value.strokeStyle} onChange={strokeStyle => onChange({ strokeStyle })} />
+        </>
       )}
     </div>
   )

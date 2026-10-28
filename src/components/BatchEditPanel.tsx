@@ -12,7 +12,7 @@ import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
 import type { Trace } from '../types/database'
 import { has, kindOf, settingsOf, type Setting } from '../lib/traceKinds'
-import { CustomizationPanel, KIND_LABEL, Section, TextAlignField, TextValignField, type SectionId } from './Customization'
+import { Choices, CustomizationPanel, KIND_LABEL, Row, Section, TextAlignField, TextValignField, type SectionId } from './Customization'
 import { TRACE_PRESETS, rememberTracePreset } from '../lib/tracePresets'
 import { rememberShapeStyle, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import ShapeStyleControls, { Check, ColourField, SectionRule, Slider } from './ShapeStyleControls'
@@ -21,10 +21,7 @@ import StrokeStyleField from './StrokeStyleField'
 export type BatchChange = { ids: string[]; patch: Partial<Trace> }
 
 
-const SELECT = 'w-full bg-nier-black text-nier-bg border border-nier-border/30 px-3 py-2 font-mono text-sm focus:outline-none focus:border-nier-border/60'
-const choice = (on: boolean) => `flex-1 px-2 py-2 text-[10px] tracking-[0.1em] uppercase border transition-colors ${
-  on ? 'bg-nier-bg text-nier-black border-nier-bg' : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-}`
+const SELECT = 'w-full h-8 bg-nier-black text-nier-bg border border-nier-border/30 px-2 font-mono text-xs focus:outline-none focus:border-nier-border/60'
 
 export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOptions, borderColourOf, onChange, onFont, onDone, actions }: {
   traces: Trace[]
@@ -74,7 +71,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
           },
         }
         return setting === 'shape'
-          ? [{ id: 'fill', node: <ShapeStyleControls {...props} part="fill" /> }, { id: 'outline', node: <ShapeStyleControls {...props} part="outline" /> }]
+          ? [{ id: 'fill', node: <ShapeStyleControls {...props} part="fill" /> }, { id: 'outline', node: <ShapeStyleControls {...props} part="outline" /> }, { id: 'shape', node: <ShapeStyleControls {...props} part="shape" /> }]
           : [{ id: 'fill', node: <ShapeStyleControls {...props} part="fill" /> }, { id: 'shape', node: <ShapeStyleControls {...props} part="shape" /> }]
       }
 
@@ -87,25 +84,27 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         const valign = targets[0].textValign ?? 'middle'
         const mixedValign = targets.some(tr => (tr.textValign ?? 'middle') !== valign)
         return [{ id: 'text', node: (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.fontFamily')}</label>
+          <div className="space-y-2.5">
+            <Row label={t('atrium.customize.fontFamily')}>
               <select value={mixedFamily ? '' : family} onChange={e => { if (e.target.value) onFont(ids(targets), e.target.value) }} className={SELECT}>
                 {/* Only while they disagree, and not to be picked. */}
                 {mixedFamily && <option value="" disabled>{t('common.mixed')}</option>}
                 {fontOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               </select>
-            </div>
+            </Row>
+            <Row stacked label={t('atrium.customize.textSizing')}>
+              <Choices
+                value={scales.mixed ? null : scales.checked ? 'scale' : 'fixed'}
+                onChange={key => set(targets, { textScaleWithBox: key === 'scale' })}
+                options={[
+                  { value: 'scale', label: t('atrium.controls.scalesWithBox'), title: t('atrium.controls.scalesWithBox') },
+                  { value: 'fixed', label: t('atrium.controls.fixedSize'), title: t('atrium.controls.fixedSize') },
+                ]}
+              />
+            </Row>
             <ColourField label={t('atrium.customize.textColour')} value={targets[0].textColor ?? '#ffffff'} onChange={c => set(targets, { textColor: c })} />
             <TextAlignField value={mixedAlign ? null : align} onChange={textAlign => set(targets, { textAlign })} />
             <TextValignField value={mixedValign ? null : valign} onChange={textValign => set(targets, { textValign })} />
-            <div>
-              <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.textSizing')}</label>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => set(targets, { textScaleWithBox: true })} className={choice(scales.checked)}>{t('atrium.controls.scalesWithBox')}</button>
-                <button type="button" onClick={() => set(targets, { textScaleWithBox: false })} className={choice(!scales.checked && !scales.mixed)}>{t('atrium.controls.fixedSize')}</button>
-              </div>
-            </div>
           </div>
         ) }]
       }
@@ -134,7 +133,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
                       ])
                       if (lobbyId) rememberTracePreset(lobbyId, preset.id)
                     }}
-                    className="px-2 py-1.5 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[11px] tracking-[0.12em] uppercase hover:border-nier-border/60 hover:text-nier-strong transition-colors"
+                    className="h-8 px-2 bg-nier-black border border-nier-border/30 text-nier-bg/80 text-[9px] tracking-[0.12em] uppercase truncate hover:border-nier-border/60 hover:text-nier-strong transition-colors"
                     style={{ borderLeftColor: preset.border, borderLeftWidth: '2px' }}
                   >
                     {t(preset.labelKey as TranslationKey)}
@@ -145,55 +144,55 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
           ) },
           { id: 'fill', node: (
             <>
-              <Check {...background} label={t('atrium.customize.showBackground')} onChange={on => set(targets, { showBackground: on })} />
+              <Check row {...background} label={t('atrium.customize.showBackground')} onChange={on => set(targets, { showBackground: on })} />
               {(background.checked || background.mixed) && (
-                <div className="ml-6 space-y-3">
+                <>
                   <ColourField label={t('atrium.customize.fillColour')} value={first.fillColor || '#191919'} onChange={c => set(targets, { fillColor: c })} />
                   <Slider
-                    label={t('atrium.customize.fillOpacity', { value: Math.round((first.fillOpacity ?? 0.95) * 100) })}
+                    label={t('atrium.customize.rowOpacity')} shown={`${Math.round((first.fillOpacity ?? 0.95) * 100)}%`}
                     min={0} max={1} step={0.01} value={first.fillOpacity ?? 0.95}
                     onChange={v => set(targets, { fillOpacity: v })}
                   />
-                </div>
+                </>
               )}
             </>
           ) },
           { id: 'outline', node: (
             <>
-              <Check {...border} label={t('atrium.customize.showBorder')} onChange={on => set(targets, { showBorder: on })} />
+              <Check row {...border} label={t('atrium.customize.showBorder')} onChange={on => set(targets, { showBorder: on })} />
               {(border.checked || border.mixed) && (
-                <div className="ml-6 space-y-3">
+                <>
                   <ColourField label={t('atrium.customize.borderColour')} value={first.borderColor || borderColourOf(first.type)} onChange={c => set(targets, { borderColor: c })} />
                   <Slider
-                    label={t('atrium.customize.borderOpacity', { value: Math.round((first.borderOpacity ?? 1) * 100) })}
+                    label={t('atrium.customize.rowOpacity')} shown={`${Math.round((first.borderOpacity ?? 1) * 100)}%`}
                     min={0} max={1} step={0.01} value={first.borderOpacity ?? 1}
                     onChange={v => set(targets, { borderOpacity: v })}
                   />
                   <Slider
-                    label={t('atrium.customize.borderThickness', { value: first.borderWidth ?? 2 })}
+                    label={t('atrium.customize.rowThickness')} shown={`${first.borderWidth ?? 2} px`}
                     min={1} max={20} step={1} value={first.borderWidth ?? 2}
                     onChange={v => set(targets, { borderWidth: v })}
                   />
-                </div>
+                </>
               )}
               <Slider
-                label={t('atrium.customize.borderRadius', { value: first.borderRadius ?? 0 })}
+                label={t('atrium.customize.rowCorners')} shown={`${first.borderRadius ?? 0} px`}
                 min={0} max={50} step={1} value={first.borderRadius ?? 0}
                 onChange={v => set(targets, { borderRadius: v })}
               />
             </>
           ) },
           { id: 'effects', node: (
-            <Check {...shadow} label={t('atrium.customize.softShadow')} hint={t('atrium.customize.softShadowHint')} onChange={on => set(targets, { showShadow: on })} />
+            <Check row {...shadow} label={t('atrium.customize.softShadow')} hint={t('atrium.customize.softShadowHint')} onChange={on => set(targets, { showShadow: on })} />
           ) },
         ]
       }
 
       case 'captions':
         return [{ id: 'content', node: (
-          <div className="space-y-3">
-            <Check {...switchOf(targets, tr => tr.showFilename ?? true)} label={t('atrium.customize.showUsername')} onChange={on => set(targets, { showFilename: on })} />
-            <Check {...switchOf(targets, tr => tr.showDescription ?? false)} label={t('atrium.customize.showDescription')} onChange={on => set(targets, { showDescription: on })} />
+          <div className="space-y-2.5">
+            <Check row {...switchOf(targets, tr => tr.showFilename ?? true)} label={t('atrium.customize.showUsername')} onChange={on => set(targets, { showFilename: on })} />
+            <Check row {...switchOf(targets, tr => tr.showDescription ?? false)} label={t('atrium.customize.showDescription')} onChange={on => set(targets, { showDescription: on })} />
           </div>
         ) }]
 
@@ -204,25 +203,25 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         const round = targets.filter(tr => kindOf(tr) !== 'path')
         const glowOnly = round.length === 0
         return [{ id: 'effects', node: (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <SectionRule label={glowOnly ? t('atrium.controls.glow') : t('atrium.controls.light')} />
-            <Check {...lit} label={glowOnly ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')} onChange={on => set(targets, { illuminate: on })} />
+            <Check row {...lit} label={glowOnly ? t('atrium.controls.enableGlow') : t('atrium.controls.enableLight')} onChange={on => set(targets, { illuminate: on })} />
             {(lit.checked || lit.mixed) && (
-              <div className="ml-6 space-y-3">
+              <>
                 <ColourField label={glowOnly ? t('atrium.controls.glowColour') : t('atrium.controls.lightColour')} value={first.lightColor ?? '#ffffff'} onChange={c => set(targets, { lightColor: c })} />
                 <Slider
-                  label={t('atrium.customize.intensity', { value: (first.lightIntensity ?? 1).toFixed(1) })}
+                  label={t('atrium.customize.rowIntensity')} shown={`${(first.lightIntensity ?? 1).toFixed(1)}×`}
                   min={0} max={2} step={0.1} value={first.lightIntensity ?? 1}
                   onChange={v => set(targets, { lightIntensity: v })}
                 />
                 {round.length > 0 && (
                   <Slider
-                    label={t('atrium.customize.radius', { value: round[0].lightRadius ?? 200 })}
+                    label={t('atrium.customize.rowRadius')} shown={`${round[0].lightRadius ?? 200} px`}
                     min={50} max={3000} step={50} value={round[0].lightRadius ?? 200}
                     onChange={v => set(round, { lightRadius: v })}
                   />
                 )}
-              </div>
+              </>
             )}
           </div>
         ) }]
@@ -263,7 +262,7 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
         return (
           <Section key={id} id={id} title={TITLE[id] ?? id}>
             {here.map(part => (
-              <div key={part.key} className="space-y-3">
+              <div key={part.key} className="space-y-2.5">
                 {part.note && <p className="text-nier-bg/55 text-[10px] tracking-wide">{part.note}</p>}
                 {part.node}
               </div>

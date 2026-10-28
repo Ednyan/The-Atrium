@@ -5488,11 +5488,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             <Section id="fill" title={t('atrium.customize.sectionFill')}>
               <ShapeStyleControls {...props} part="fill" />
             </Section>
-            {placeTool === 'path' ? (
-              <Section id="shape" title={t('atrium.trace.shape.path')}>
-                <ShapeStyleControls {...props} part="shape" />
-              </Section>
-            ) : (
+            <Section id="shape" title={placeTool === 'path' ? t('atrium.trace.shape.path') : t('atrium.customize.sectionShape')}>
+              <ShapeStyleControls {...props} part="shape" />
+            </Section>
+            {placeTool !== 'path' && (
               <Section id="outline" title={t('atrium.customize.sectionOutline')}>
                 <ShapeStyleControls {...props} part="outline" />
               </Section>
