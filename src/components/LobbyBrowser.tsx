@@ -44,6 +44,7 @@ import { Check } from './ShapeStyleControls'
 import type { PreviewDetail } from '../lib/atriumPreview'
 import { googleOpen } from '../lib/drive'
 import { ACCOUNT_EVENT, googleAccount, workerAccount } from '../lib/signedIn'
+import { inFront } from '../lib/appFront'
 
 // An atrium in the browser's lists, the same in each (AtriumCard): as cards,
 // three to a row where there's room, or as a list, a row each.
@@ -58,6 +59,9 @@ const SMALL_BUTTON = 'px-3 h-8 shrink-0 flex items-center justify-center border 
 const FOOT_BUTTON = 'flex-1 min-w-[10rem] py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 // Which way the lists are shown, kept for the next visit.
 const VIEW_KEY = 'atrium.browserView'
+// When each Drive or hosted atrium on the list was last looked at, this visit.
+const LOOK_AGAIN_MS = 10 * 60_000
+const lookedAt = new Map<string, number>()
 
 // One of the browser's lists: numbered as it's shown, its name, how many,
 // and what can be done to the list as a whole.
@@ -816,12 +820,16 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // Drive atriums one's out of -- removed, blocked, or deleted by their owner,
   // as each one's roster says -- let go of: off the list, the copy here gone
   // (lib/driveSync, leaveDriveAtrium), and said. Those one's in, their
-  // owner's latest picture taken along the way.
+  // owner's latest picture taken along the way. Each looked at no more than
+  // every LOOK_AGAIN_MS: a hosted atrium's look is a request to the Atrium's
+  // own server, and every atrium looked at each minute was most of its day.
   const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
     // The account, or this browser's guest (a public atrium's viewer).
     const me = sharedId()
     if (!me) return
     for (const lobby of lobbies) {
+      if (Date.now() - (lookedAt.get(lobby.id) ?? 0) < LOOK_AGAIN_MS) continue
+      lookedAt.set(lobby.id, Date.now())
       const standing = await lookAtDriveAtrium(lobby.id, me)
       if (!standing || standing === 'in') continue
       await leaveDriveAtrium(lobby.id, standing === 'deleted').catch(error => console.warn('[drive] letting go of', lobby.id, error))
@@ -839,18 +847,19 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       ownerUsername: atrium.owner_name ?? '', inDrive: true, publicRoster: atrium.roster, previewUrl: publicPreviewUrl(atrium),
     })))
   }
-  // While the browser's open: Drive atriums looked at again each minute --
-  // their owners' latest pictures taken, those one's out of let go (Google's
-  // quota, a few metadata reads each) -- and every fifth, the public list and
-  // what's come for one meanwhile (invitations, one's own atriums put online
-  // elsewhere): that's the Atrium's own server, whose free day is 100,000
-  // requests for everyone together. Not while the page is hidden.
+  // While the browser's open: the list again each minute -- Drive and hosted
+  // atriums looked at with it, each at most every LOOK_AGAIN_MS -- and every
+  // fifth, the public list and what's come for one meanwhile (invitations,
+  // one's own atriums put online elsewhere): that's the Atrium's own server,
+  // whose free day is 100,000 requests for everyone together. Only while the
+  // app is in front (lib/appFront): a desktop window behind others, or
+  // minimised, says it's visible.
   const lookAgain = useRef(lookForInvitations)
   lookAgain.current = lookForInvitations
   useEffect(() => {
     let minutes = 0
     const every = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+      if (!inFront()) return
       void loadBrowserLobbies()
       if (++minutes % 5 === 0) {
         void loadPublicDrive()

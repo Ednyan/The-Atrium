@@ -28,6 +28,7 @@ import { ThemeCustomization } from './ThemeCustomization'
 import ProfileCustomization from './ProfileCustomization'
 import { ThemeManager } from '../lib/themeManager'
 import { supabase, isDesktop, isLocalData } from '../lib/supabase'
+import { onFront } from '../lib/appFront'
 import { isGhostEntry as resolveGhostEntry } from '../lib/operatorGhost'
 import { showToast } from '../lib/toast'
 import PalettePanel from './PalettePanel'
@@ -1203,16 +1204,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     }
     window.addEventListener('pointermove', touched, { passive: true })
     window.addEventListener('wheel', touched, { passive: true })
-    void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-      const win = getCurrentWindow()
-      const read = async () => { minimised = await win.isMinimized().catch(() => false); apply() }
-      offs.push(await win.onFocusChanged(({ payload }) => { focused = payload; void read() }))
-      offs.push(await win.onResized(() => void read()))
-      if (gone) { offs.forEach(off => off()); return }
-      // As it is now: opened behind another app, it was never focused, and no change says so.
-      focused = await win.isFocused().catch(() => true)
-      void read()
-    })
+    // The window's own state (lib/appFront).
+    offs.push(onFront(now => { focused = now.focused; minimised = now.minimised; apply() }))
     return () => {
       gone = true
       window.clearTimeout(settle)
