@@ -10,6 +10,7 @@ import { hexToRgb } from '../lib/cursorLook'
 import { dashProps } from '../lib/strokeStyle'
 import { UNSUPPORTED } from '../lib/atriumFile'
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import type { Trace } from '../types/database'
 import { supabase, isDesktop, isLocalData } from '../lib/supabase'
 import { useGameStore, lobbyFullMessage, useGamePick } from '../store/gameStore'
@@ -2614,9 +2615,18 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // what gets saved, snapped and aligned, still follows the pointer exactly.
   //
   // Its handles and everything else attached to it hide while it moves.
+  //
+  // The move itself is drawn the same way: React draws a moved trace where
+  // the drag began, and its translate carries it the rest (dragDeltaRef, in
+  // world units, for the traces in draggedIdsRef) -- no render per frame.
+  // Rendered on every frame, as it was, a drag re-ran the whole atrium's
+  // component and wrote the store each frame, and that was most of a drag's
+  // time. The store has the move once, when it's let go (handleMouseUp).
+  const dragDeltaRef = useRef({ x: 0, y: 0 })
+  const draggedIdsRef = useRef<ReadonlySet<string>>(new Set())
   const dragBounceRef = useRef(dragBounce)
   dragBounceRef.current = dragBounce
-  const dragFeelRef = useRef<{ held: boolean; stop: () => void } | null>(null)
+  const dragFeelRef = useRef<{ held: boolean; stop: () => void; paint: () => void } | null>(null)
   // Traces being moved -- set on the first movement of a drag, not on the
   // press, so clicking a trace doesn't flicker its handles -- and cleared once
   // they come to rest.
@@ -2629,8 +2639,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
   const startDragFeel = (ids: string[]) => {
     dragFeelRef.current?.stop()
+    // With no bounce, no trail: the move alone.
     const strength = dragBounceRef.current / 100
-    if (!strength || ids.length === 0) return
+    if (ids.length === 0) return
     // One spring for everything dragged together, as one body: it chases the
     // middle of their box as they're drawn right now -- their own left/top --
     // rather than the pointer (the pointer and the position React last drew
@@ -2639,10 +2650,13 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // thing that trails and leans as one, turning about its own middle --
     // not each of its traces swinging on a spring of its own.
     let spring: FeelSpring | null = null
+    let trail = { ox: 0, oy: 0, lean: 0, moving: false }
     const moved = new Set<HTMLElement>()
     let raf = 0, last = performance.now()
     const feel = {
       held: true,
+      // Drawn now, the spring where it is: the move went on, or was set down.
+      paint: () => { paint(0) },
       stop: () => {
         cancelAnimationFrame(raf)
         for (const el of moved) { el.style.translate = ''; el.style.rotate = '' }
@@ -2652,36 +2666,47 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         if (!feel.held) endMoving()
       },
     }
-    const tick = (now: number) => {
-      const dt = Math.min(now - last, 48)
-      last = now
-      const boxes: { id: string; el: HTMLElement; x: number; y: number; w: number; h: number }[] = []
+    // Where each is drawn: where React put it, carried by the move so far,
+    // and the trail and lean on that. True while there's more to draw.
+    const paint = (dt: number) => {
+      const zoomNow = zoomRef.current || 1
+      const delta = dragDeltaRef.current
+      const boxes: { id: string; el: HTMLElement; x: number; y: number; w: number; h: number; mx: number; my: number }[] = []
+      // A path is a sheet of its own, drawn from its points: carried and
+      // trailed by its translate, not turned (it has no box to turn about).
+      const paths: { id: string; el: HTMLElement; mx: number; my: number }[] = []
       for (const id of ids) {
+        const carried = draggedIdsRef.current.has(id)
+        const mx = carried ? delta.x * zoomNow : 0, my = carried ? delta.y * zoomNow : 0
         const el = document.querySelector<HTMLElement>(`[data-trace-id="${CSS.escape(id)}"]`)
-        if (el) boxes.push({ id, el, x: parseFloat(el.style.left), y: parseFloat(el.style.top), w: el.offsetWidth, h: el.offsetHeight })
+        if (el) boxes.push({ id, el, x: parseFloat(el.style.left) + mx, y: parseFloat(el.style.top) + my, w: el.offsetWidth, h: el.offsetHeight, mx, my })
+        else {
+          const path = document.querySelector<HTMLElement>(`[data-path-for="${CSS.escape(id)}"]`)
+          if (path) paths.push({ id, el: path, mx, my })
+        }
       }
-      if (boxes.length === 0) { raf = requestAnimationFrame(tick); return }
+      for (const p of paths) {
+        p.el.style.translate = `${p.mx + trail.ox}px ${p.my + trail.oy}px`
+        moved.add(p.el)
+      }
+      if (boxes.length === 0) { wakeLinksRef.current(); return paths.length ? trail.moving : feel.held }
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
       for (const b of boxes) {
         minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2)
         minY = Math.min(minY, b.y - b.h / 2); maxY = Math.max(maxY, b.y + b.h / 2)
       }
       const gx = (minX + maxX) / 2, gy = (minY + maxY) / 2
-      if (!spring) spring = feelSpring(gx, gy, maxX - minX, maxY - minY, strength)
+      if (strength && !spring) spring = feelSpring(gx, gy, maxX - minX, maxY - minY, strength)
       // Shift is for placing exactly -- snapping, centring, lining up -- so
       // while it's held the drag is rigid, as it always was, and lets go of
       // any trail at once. Released mid-drag, the feel starts again from rest.
-      if (dragShiftRef.current) {
-        feelRest(spring, gx, gy)
-        for (const b of boxes) {
-          b.el.style.translate = ''
-          b.el.style.rotate = ''
-          dragOffsetsRef.current.delete(b.id)
-        }
-        raf = requestAnimationFrame(tick)
-        return
+      if (!spring || dragShiftRef.current) {
+        if (spring) feelRest(spring, gx, gy)
+        trail = { ox: 0, oy: 0, lean: 0, moving: false }
+      } else if (dt > 0) {
+        trail = feelStep(spring, gx, gy, dt)
       }
-      const { ox, oy, lean, moving } = feelStep(spring, gx, gy, dt)
+      const { ox, oy, lean } = trail
       const cos = Math.cos(lean), sin = Math.sin(lean)
       for (const b of boxes) {
         // Where the body's turn about its middle carries this trace's centre,
@@ -2691,8 +2716,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         // layout box's centre, but the trace is drawn shifted back half its
         // size from there, which the extra translate undoes.
         const dx = -b.w / 2, dy = -b.h / 2
-        b.el.style.translate = `${dx - (dx * cos - dy * sin) + ox + sx}px ${dy - (dx * sin + dy * cos) + oy + sy}px`
-        b.el.style.rotate = `${lean}rad`
+        b.el.style.translate = `${b.mx + dx - (dx * cos - dy * sin) + ox + sx}px ${b.my + dy - (dx * sin + dy * cos) + oy + sy}px`
+        b.el.style.rotate = lean ? `${lean}rad` : ''
         moved.add(b.el)
         // Its light, carried along: wherever its middle is, moved as that
         // point of the body is, and turned with it.
@@ -2700,15 +2725,22 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         if (light) {
           // Every light is centred by its margins, so it turns about its own
           // middle, and only that point need be carried.
-          const lx = parseFloat(light.style.left) - gx, ly = parseFloat(light.style.top) - gy
-          light.style.translate = `${lx * cos - ly * sin - lx + ox}px ${lx * sin + ly * cos - ly + oy}px`
-          light.style.rotate = `${lean}rad`
+          const lx = parseFloat(light.style.left) + b.mx - gx, ly = parseFloat(light.style.top) + b.my - gy
+          light.style.translate = `${b.mx + lx * cos - ly * sin - lx + ox}px ${b.my + lx * sin + ly * cos - ly + oy}px`
+          light.style.rotate = lean ? `${lean}rad` : ''
           moved.add(light)
         }
-        dragOffsetsRef.current.set(b.id, { x: ox + sx, y: oy + sy })
+        if (ox || oy || sx || sy) dragOffsetsRef.current.set(b.id, { x: ox + sx, y: oy + sy })
+        else dragOffsetsRef.current.delete(b.id)
       }
       wakeLinksRef.current()
-      if (!feel.held && !moving) {
+      return trail.moving
+    }
+    const tick = (now: number) => {
+      const dt = Math.min(now - last, 48)
+      last = now
+      const more = paint(dt)
+      if (!feel.held && !more) {
         feel.stop()
         return
       }
@@ -2985,7 +3017,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       : traceBoxFor(trace, localTraceTransforms[id])
     // A path's box is its points', already turned; anything else turns about its centre.
     const turn = isPathTrace(trace) ? 0 : (((localTraceTransforms[id] || getTraceTransform(trace)).rotation ?? 0) * Math.PI) / 180
-    return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || borderColourOf(trace.type), z: zOf(trace) }
+    // Being moved, where the move has carried it so far (the drag feel draws it there).
+    const delta = draggedIdsRef.current.has(id) ? dragDeltaRef.current : { x: 0, y: 0 }
+    return { x: box.cx + delta.x, y: box.cy + delta.y, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || borderColourOf(trace.type), z: zOf(trace) }
   }
 
   // The lowest level a thread can be drawn at and look the same
@@ -4086,7 +4120,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       dragShiftRef.current = !!e.shiftKey
       if (!movingRef.current) {
         movingRef.current = true
-        setMovingIds(new Set(isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : [activeSelectedTraceId]))
+        const ids = isMultiDragActiveRef.current ? Object.keys(multiStartTransformsRef.current) : [activeSelectedTraceId]
+        draggedIdsRef.current = new Set(ids)
+        dragDeltaRef.current = { x: 0, y: 0 }
+        setMovingIds(new Set(ids))
       }
 
       // Convert screen delta to world delta
@@ -4181,47 +4218,12 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         setAlignGuides(null)
       }
       
-      // Everything taken hold of together: the selection with the trace
-      // pressed, and what any frame among them holds.
-      const takenIds = Object.keys(multiStartTransformsRef.current)
-      if (isMultiDragActiveRef.current && takenIds.length > 0) {
-        takenIds.forEach(id => {
-          const t = tracesRef.current.find(tr => tr.id === id)
-          // For path shapes, move all points instead of transform
-          if (t && t.type === 'shape' && t.shapeType === 'path') {
-            const startPoints = multiStartPathPointsRef.current[id]
-            if (startPoints) {
-              const newPoints = startPoints.map(p => {
-                const newP: any = { ...p, x: p.x + worldDeltaX, y: p.y + worldDeltaY }
-                // Also offset control points if they exist
-                if (p.cp1x !== undefined) newP.cp1x = p.cp1x + worldDeltaX
-                if (p.cp1y !== undefined) newP.cp1y = p.cp1y + worldDeltaY
-                if (p.cp2x !== undefined) newP.cp2x = p.cp2x + worldDeltaX
-                if (p.cp2y !== undefined) newP.cp2y = p.cp2y + worldDeltaY
-                return newP
-              })
-              setLocalShapePoints(prev => ({ ...prev, [id]: newPoints }))
-              // skipUndo -- this whole multi-select move is recorded as ONE
-              // batched undo step on mouseup instead of per-trace-per-frame.
-              updateTraceCustomization(id, { shapePoints: newPoints }, { skipUndo: true })
-            }
-          } else {
-            const startPos = multiStartTransformsRef.current[id]
-            if (startPos) {
-              updateTraceTransform(id, {
-                x: startPos.x + worldDeltaX,
-                y: startPos.y + worldDeltaY,
-              }, { skipUndo: true })
-            }
-          }
-        })
-      } else {
-        // Single trace move
-        updateTraceTransform(activeSelectedTraceId, {
-          x: startTransformRef.current.x + worldDeltaX,
-          y: startTransformRef.current.y + worldDeltaY,
-        })
-      }
+      // Everything taken hold of together -- the selection with the trace
+      // pressed, and what any frame among them holds -- carried by its
+      // translate (the drag feel), not rendered: written to the store once,
+      // when it's let go (handleMouseUp).
+      dragDeltaRef.current = { x: worldDeltaX, y: worldDeltaY }
+      dragFeelRef.current?.paint()
     } else if (transformMode === 'crop') {
       // The pointer's travel, turned into the trace's own axes and measured
       // in shares of its whole box, moves the handle's edges (lib/traceCrop).
@@ -4661,6 +4663,34 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       if (at) panelDrop.current?.drop(carried, at.x, at.y)
       else panelDrop.current?.leave()
     }
+    // A move drawn by translate: written to the store now, in one render --
+    // the path traces' points, the rest's positions; one undo step for the
+    // lot (below) or the single trace's own -- and in the same frame its
+    // translate is let go of, so it's never drawn twice as far or not at all.
+    if (activeTransformMode === 'move' && draggedIdsRef.current.size) {
+      const delta = releasedInPanel ? { x: 0, y: 0 } : dragDeltaRef.current
+      const multi = isMultiDragActiveRef.current
+      flushSync(() => {
+        for (const id of draggedIdsRef.current) {
+          const startPoints = multiStartPathPointsRef.current[id]
+          if (multi && startPoints) {
+            const points = startPoints.map(p => ({
+              ...p, x: p.x + delta.x, y: p.y + delta.y,
+              ...(p.cp1x !== undefined && p.cp1y !== undefined ? { cp1x: p.cp1x + delta.x, cp1y: p.cp1y + delta.y } : {}),
+              ...(p.cp2x !== undefined && p.cp2y !== undefined ? { cp2x: p.cp2x + delta.x, cp2y: p.cp2y + delta.y } : {}),
+            }))
+            setLocalShapePoints(prev => ({ ...prev, [id]: points }))
+            updateTraceCustomization(id, { shapePoints: points }, { skipUndo: true })
+            continue
+          }
+          const start = multi ? multiStartTransformsRef.current[id] : startTransformRef.current
+          if (start) updateTraceTransform(id, { x: start.x + delta.x, y: start.y + delta.y }, { skipUndo: multi })
+        }
+      })
+      dragDeltaRef.current = { x: 0, y: 0 }
+      draggedIdsRef.current = new Set()
+      dragFeelRef.current?.paint()
+    }
     const thrown = activeTransformMode === 'move' && !releasedInPanel ? carried : []
     // Let go: it settles onto where the trace now is, and its handles come
     // back once it has; with no settling to wait for, now.
@@ -4766,8 +4796,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // of times per drag; see the 'batch' UndoOp comment).
     if (isMultiDragActiveRef.current && (activeTransformMode === 'move' || activeTransformMode === 'move-path')) {
       const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+      // From the store, which has the move already; tracesRef follows a render later.
+      const nowTraces = useGameStore.getState().traces
       for (const id of Object.keys(multiStartTransformsRef.current)) {
-        const finalTrace = currentTraces.find(t => t.id === id)
+        const finalTrace = nowTraces.find(t => t.id === id)
         if (!finalTrace) continue
         const startPoints = multiStartPathPointsRef.current[id]
         if (startPoints) {
@@ -6091,6 +6123,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
     return (
       <svg
+        data-path-for={trace.id}
         className="absolute select-none"
         style={{
           left: 0,
