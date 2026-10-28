@@ -668,8 +668,17 @@ const TraceSlot = React.memo(
 // runs before it has to be laid out again.
 export const CULL_MARGIN = 500
 
-export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, lassoSelectRequest, selecting = false, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
+export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackground, gridLineSpacing, zoom, worldOffset, worldLayerRef, onEdgePan, lobbyId, selectedTraceId, setSelectedTraceId, multiSelectRequest, areaSelectRequest, lassoSelectRequest, selecting = false, customizeRequest, newPathRequest, newTextRequest, directSelect = false, frameRequest, isDrawingMode, hideCursor, panning = false, placing = false, onEditDrawing, hiddenTraceIds, toolSwitch = 0, onMultiSelectionChange, onExport, onCustomizeOpen, canEdit = true }: TraceOverlayProps) {
   const { t, language } = useTranslation()
+  // A crop under way: the trace as cropped so far, in place of the store's,
+  // and into the store as it ends (handleMouseUp). Written on every step,
+  // the store's every listener redrew with it, the whole scene among them.
+  const [liveCrop, setLiveCrop] = useState<{ id: string; patch: Partial<Trace> } | null>(null)
+  const liveCropRef = useRef(liveCrop)
+  const traces = useMemo(
+    () => liveCrop ? storeTraces.map(t => t.id === liveCrop.id ? { ...t, ...liveCrop.patch } : t) : storeTraces,
+    [storeTraces, liveCrop],
+  )
   // A web font arrived: text fitted to its box is fitted again, in it.
   const fontsVersion = useSyncExternalStore(watchFonts, fontsLoadedVersion)
     // Register an @font-face for each custom font bundled from
@@ -1491,7 +1500,14 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // Keep refs updated
   useEffect(() => { tracesRef.current = traces }, [traces])
   useEffect(() => { editingTraceRef.current = editingTrace }, [editingTrace])
-  useEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
+  useLayoutEffect(() => { localShapePointsRef.current = localShapePoints }, [localShapePoints])
+  // A path's points as a gesture moves them: drawn from this copy, and saved
+  // as it's let go. The ref at once -- the release reads it, maybe before
+  // React has drawn the last step.
+  const livePoints = (id: string, points: PathPoint[]) => {
+    localShapePointsRef.current = { ...localShapePointsRef.current, [id]: points }
+    setLocalShapePoints(prev => ({ ...prev, [id]: points }))
+  }
   useEffect(() => { zoomRef.current = zoom }, [zoom])
   useEffect(() => { multiSelectedIdsRef.current = multiSelectedIds }, [multiSelectedIds])
   useEffect(() => { transformModeRef.current = transformMode }, [transformMode])
@@ -4092,8 +4108,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
             }
             return next
           })
-          setLocalShapePoints(prev => ({ ...prev, [id]: newPoints }))
-          updateTraceCustomization(id, { shapePoints: newPoints }, { skipUndo: true })
+          livePoints(id, newPoints)
         } else {
           const moved = mapPoint(start.x, start.y)
           // A turned trace stretched along the screen's axes would skew,
@@ -4292,15 +4307,13 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         return turn(d.u * boxW, d.v * boxH, start.rotation)
       })()
       const position = { x: start.x + shift.x, y: start.y + shift.y }
-      // One undo step for the crop and the move together, from where the
-      // drag began (updates to one trace in a gesture are merged).
-      pushUpdateOp(activeSelectedTraceId, { ...startCrop, x: start.x, y: start.y }, { ...crop, ...position })
-      // Crop and position in one write to the store, and nowhere else. The
+      // Crop and position in one copy (liveCrop), and nowhere else. The
       // position also went to the local override (updateTraceTransform),
       // which React renders on its own schedule: for a frame the trace was
       // drawn with the new crop at the old place, then put right -- a
       // jitter on every step of the drag.
-      updateTraceCustomization(activeSelectedTraceId, { ...crop, ...position }, { skipUndo: true })
+      liveCropRef.current = { id: activeSelectedTraceId, patch: { ...crop, ...position } }
+      setLiveCrop(liveCropRef.current)
     } else if (transformMode === 'scale') {
       // Anchors the handle's OPPOSITE edge/corner in place, so dragging the
       // bottom only grows downward (not also upward from the center), and
@@ -4594,7 +4607,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           cp2y: initial.cp2y !== undefined ? initial.cp2y + dy : undefined,
         }
         // Update local state for instant feedback, DB update on mouseup
-        setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
+        livePoints(activeSelectedTraceId, newPoints)
       }
     } else if (activeTransformMode === 'control-in' || activeTransformMode === 'control-out') {
       // A curve handle dragged. The point's other handle turns with it, in
@@ -4627,7 +4640,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         const [cp1, cp2] = inward ? [moved, other] : [other, moved]
         newPoints[pointIndex] = { ...point, cp1x: cp1.x, cp1y: cp1.y, cp2x: cp2.x, cp2y: cp2.y }
         // Update local state for instant feedback, DB update on mouseup
-        setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
+        livePoints(activeSelectedTraceId, newPoints)
       }
     } else if (activeTransformMode === 'move-path') {
       // Move all points of a path shape together -- once the press is a
@@ -4652,46 +4665,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
       }))
       
-      // Update local state for instant feedback, DB update on mouseup
-      setLocalShapePoints(prev => ({ ...prev, [activeSelectedTraceId]: newPoints }))
-      
-      // Also move other multi-selected traces
-      const currentMultiSelected = multiSelectedIdsRef.current
-      if (currentMultiSelected.size > 0) {
-        currentMultiSelected.forEach(id => {
-          if (id === activeSelectedTraceId) return // Already handled above
-          const t = tracesRef.current.find(tr => tr.id === id)
-          if (!t) return
-          
-          // For path shapes, move all points
-          if (t.type === 'shape' && t.shapeType === 'path') {
-            const startPoints = multiStartPathPointsRef.current[id]
-            if (startPoints) {
-              const newPathPoints = startPoints.map(p => ({
-                x: p.x + worldDeltaX,
-                y: p.y + worldDeltaY,
-                cp1x: p.cp1x !== undefined ? p.cp1x + worldDeltaX : undefined,
-                cp1y: p.cp1y !== undefined ? p.cp1y + worldDeltaY : undefined,
-                cp2x: p.cp2x !== undefined ? p.cp2x + worldDeltaX : undefined,
-                cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
-              }))
-              setLocalShapePoints(prev => ({ ...prev, [id]: newPathPoints }))
-              // skipUndo -- batched into ONE undo step on mouseup, see the
-              // primary path's own shapePoints commit there too.
-              updateTraceCustomization(id, { shapePoints: newPathPoints }, { skipUndo: true })
-            }
-          } else {
-            // For non-path traces, move by transform
-            const startPos = multiStartTransformsRef.current[id]
-            if (startPos) {
-              updateTraceTransform(id, {
-                x: startPos.x + worldDeltaX,
-                y: startPos.y + worldDeltaY,
-              }, { skipUndo: true })
-            }
-          }
-        })
-      }
+      // Update local state for instant feedback, DB update on mouseup.
+      // Alone: with others, a path moves as they do ('move').
+      livePoints(activeSelectedTraceId, newPoints)
     }
   }
 
@@ -4919,6 +4895,19 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // For point/control editing, keep the trace selected but clear transform mode
     // This allows clicking on control handles after dragging a point
     if (activeTransformMode === 'crop') {
+      // Into the store, as one undo step from where the drag began -- the
+      // crop and the move together -- and its live copy let go of in the
+      // same render.
+      const live = liveCropRef.current
+      liveCropRef.current = null
+      if (live) {
+        const start = startTransformRef.current, startCrop = startCropRef.current
+        pushUpdateOp(live.id, { ...startCrop, x: start.x, y: start.y }, live.patch)
+        flushSync(() => {
+          updateTraceCustomization(live.id, live.patch, { skipUndo: true })
+          setLiveCrop(null)
+        })
+      }
       setTransformMode('none')
       // isCropMode stays true so crop handles remain visible
     } else if (activeTransformMode !== 'point' && activeTransformMode !== 'control-in' && activeTransformMode !== 'control-out' && activeTransformMode !== 'move-path') {
@@ -8036,8 +8025,7 @@ return (
           const addBetween = (i: number, press: () => void) => {
             const added = pointBetween(points, curve, i)
             const next = [...points.slice(0, i + 1), { x: added.x, y: added.y }, ...points.slice(i + 1)]
-            localShapePointsRef.current = { ...localShapePointsRef.current, [trace.id]: next }
-            setLocalShapePoints(prev => ({ ...prev, [trace.id]: next }))
+            livePoints(trace.id, next)
             setSelectedPointIndex(i + 1)
             press()
           }
