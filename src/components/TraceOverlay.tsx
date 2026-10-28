@@ -2449,7 +2449,25 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   }, [undo, redo])
   // --- End undo/redo history ------------------------------------------------
 
-  const updateTraceTransform = (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>, options?: { skipUndo?: boolean }) => {
+  const liveTransformsRef = useRef(new Map<string, { x: number; y: number; scaleX: number; scaleY: number; rotation: number }>())
+  // The gesture's transforms, into the store at its end: each trace once.
+  const commitLiveTransforms = () => {
+    const live = liveTransformsRef.current
+    if (!live.size) return
+    for (const [id, t] of live) {
+      const trace = useGameStore.getState().traces.find(tr => tr.id === id)
+      if (!trace) continue
+      addTrace({ ...trace, x: t.x, y: t.y, scaleX: t.scaleX, scaleY: t.scaleY, rotation: t.rotation })
+      markTraceChanged(id)
+    }
+    live.clear()
+  }
+  // `live`: a gesture's step (a resize, a turn, a selection scaled or
+  // turned) -- drawn from this component's own copy alone, and written to
+  // the store once, at the gesture's end (commitLiveTransforms). Written on
+  // every step, the store's every listener redrew with it, the whole scene
+  // among them: a resize ran at 33fps with 300 traces at 4x CPU.
+  const updateTraceTransform = (traceId: string, updates: Partial<{ x: number; y: number; scale?: number; scaleX?: number; scaleY?: number; rotation: number }>, options?: { skipUndo?: boolean; live?: boolean }) => {
     const trace = traces.find(t => t.id === traceId)
     if (!trace) return
 
@@ -2474,6 +2492,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
     // Update local state immediately for smooth UI
     setLocalTraceTransforms(prev => ({ ...prev, [traceId]: newTransform }))
+    if (options?.live) {
+      liveTransformsRef.current.set(traceId, newTransform)
+      return
+    }
 
     // Update the trace in the store (local only - no DB sync)
     const updatedTrace: Trace = {
@@ -2557,12 +2579,31 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
     let ox = 0, oy = 0, last = now, raf = 0
     const began = now
+    // Drawn by translate, as the drag was (the drag feel, which keeps
+    // drawing while it glides), not rendered on every frame: written once,
+    // where it comes to rest.
+    draggedIdsRef.current = new Set(ids)
+    dragDeltaRef.current = { x: 0, y: 0 }
+    if (!dragFeelRef.current) {
+      startDragFeel(ids)
+      const started = dragFeelRef.current as { held: boolean } | null
+      if (started) started.held = false
+    }
     const place = (x: number, y: number) => {
-      for (const o of origins) updateTraceTransformRef.current(o.id, { x: o.x + x, y: o.y + y }, { skipUndo: true })
+      dragDeltaRef.current = { x, y }
+      dragFeelRef.current?.paint()
     }
     const finish = () => {
       cancelAnimationFrame(raf)
       glideRef.current = null
+      // Where it came to rest, into the store -- and the translate that
+      // carried it let go of in the same frame.
+      flushSync(() => {
+        for (const o of origins) updateTraceTransformRef.current(o.id, { x: o.x + ox, y: o.y + oy }, { skipUndo: true })
+      })
+      dragDeltaRef.current = { x: 0, y: 0 }
+      draggedIdsRef.current = new Set()
+      dragFeelRef.current?.paint()
       setGlidingIds(new Set())
       // The move's undo entry is the top one; it ends where the glide did.
       const top = undoStackRef.current[undoStackRef.current.length - 1]
@@ -2740,7 +2781,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       const dt = Math.min(now - last, 48)
       last = now
       const more = paint(dt)
-      if (!feel.held && !more) {
+      if (!feel.held && !more && !glideRef.current) {
         feel.stop()
         return
       }
@@ -4061,7 +4102,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
             scaleX: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleX * alongX) : start.scaleX,
             scaleY: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleY * alongY) : start.scaleY,
             rotation: activeTransformMode === 'group-rotate' ? start.rotation + angleDeg : start.rotation,
-          }, { skipUndo: true })
+          }, { skipUndo: true, live: true })
         }
       }
       return
@@ -4477,7 +4518,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         y: startTransformRef.current.y + worldDy,
         scaleX: newScaleX,
         scaleY: newScaleY,
-      })
+      }, { live: true })
     } else if (activeTransformMode === 'rotate') {
       // Calculate rotation based on angle from center
       const startAngle = Math.atan2(
@@ -4499,7 +4540,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         snap ? Math.round(rawRotation / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES : rawRotation
       )
 
-      updateTraceTransform(activeSelectedTraceId, { rotation: newRotation })
+      updateTraceTransform(activeSelectedTraceId, { rotation: newRotation }, { live: true })
       setRotationReadout({
         screenX: e.clientX,
         screenY: e.clientY,
@@ -4663,6 +4704,9 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       if (at) panelDrop.current?.drop(carried, at.x, at.y)
       else panelDrop.current?.leave()
     }
+    // A resize or a turn, the selection's too: into the store now, before
+    // anything below reads where it ended.
+    commitLiveTransforms()
     // A move drawn by translate: written to the store now, in one render --
     // the path traces' points, the rest's positions; one undo step for the
     // lot (below) or the single trace's own -- and in the same frame its
@@ -4816,8 +4860,10 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     // per-trace update during the drag was pushed with skipUndo.
     if (activeTransformMode === 'group-scale' || activeTransformMode === 'group-rotate') {
       const batchOps: { traceId: string; before: Partial<Trace>; after: Partial<Trace> }[] = []
+      // From the store, which has them now (commitLiveTransforms, above).
+      const nowTraces = useGameStore.getState().traces
       for (const [id, start] of Object.entries(groupStartRef.current.traces)) {
-        const finalTrace = currentTraces.find(t => t.id === id)
+        const finalTrace = nowTraces.find(t => t.id === id)
         if (!finalTrace) continue
         if (start.shapePoints) {
           const finalPoints = currentLocalShapePoints[id] || finalTrace.shapePoints
