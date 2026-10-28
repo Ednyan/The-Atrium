@@ -17,6 +17,7 @@
 // A donor list is not worth a spinner, and is worth even less as an error.
 
 import { workerUrl } from './rooms'
+import { viaBatch } from './worker'
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // hourly while the app is open
 const CACHE_KEY = 'atrium_contributions_cache_v2'
@@ -93,7 +94,7 @@ const NOT_MOVED = Symbol('not moved')
 async function fromWorker(path: string, signal: AbortSignal): Promise<any> {
   const url = workerUrl()
   if (!url) return NOT_MOVED
-  const response = await fetch(`${url}/contributions/${path}`, { signal })
+  const response = (path === 'wall' ? await viaBatch('/contributions/wall', undefined, true) : null) ?? await fetch(`${url}/contributions/${path}`, { signal })
   if (response.status === 409) return NOT_MOVED
   if (!response.ok) throw new Error(`${response.status}`)
   return response.json()

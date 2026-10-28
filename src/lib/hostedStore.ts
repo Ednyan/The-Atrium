@@ -13,6 +13,7 @@
 // Drive says them ("Drive 404", "Drive 403"), which the sync knows.
 import { accountToken } from './signedIn'
 import { workerUrl } from './rooms'
+import { viaBatch } from './worker'
 import { base64ToBytes, bytesToBase64 } from './driveFormat'
 import { keptSpace } from './drive'
 import type { DriveStore } from './driveSync'
@@ -42,7 +43,9 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
   }
   // A change, with one's sign-in: a plain request (a text body), sent without asking first.
   async function ask<T>(what: string, body: object): Promise<T> {
-    const response = await fetch(at(what), { method: 'POST', body: JSON.stringify({ ...body, token: await signedInToken() }) })
+    const sent = { ...body, token: await signedInToken() }
+    // Reads go with others about then (lib/worker, viaBatch).
+    const response = (await viaBatch(`/store/${what}`, sent)) ?? await fetch(at(what), { method: 'POST', body: JSON.stringify(sent) })
     if (!response.ok) throw await failed(response)
     return response.json()
   }

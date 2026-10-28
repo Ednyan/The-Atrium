@@ -26,7 +26,7 @@ import { ops } from './ops'
 import { held } from './held'
 import { themes } from './themes'
 import { relay } from './relay'
-import { whoIs, type Env } from './who'
+import { replies, whoIs, type Env } from './who'
 
 // What each socket keeps through hibernation (2 KB at most).
 interface Seat { user: string; ref: string; meta: unknown }
@@ -41,48 +41,78 @@ const MOST_META = 1500
 // honest use, well short of spending the day's free requests in minutes.
 const MOST_PER_SECOND = 40
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url)
-    if (url.pathname.startsWith('/google/')) return google(request, env, url.pathname.slice('/google/'.length))
-    // Email accounts (phase 10, step 4).
-    if (url.pathname.startsWith('/auth/')) return auth(request, env, url.pathname.slice('/auth/'.length))
-    if (url.pathname.startsWith('/people/')) return people(request, env, url.pathname.slice('/people/'.length))
-    // The hosted store (phase 10).
-    if (url.pathname.startsWith('/store/')) return store(request, env, url.pathname.slice('/store/'.length))
-    // Public Drive atriums' mirrors (phase 10, step 3).
-    if (url.pathname.startsWith('/mirror/')) return mirror(request, env, url.pathname.slice('/mirror/'.length))
-    // A public atrium's picture (phase 8), for anyone.
-    const picture = url.pathname.match(/^\/public\/([\w-]{1,64})\.webp$/)?.[1]
-    if (picture && request.method === 'GET') return publicPreview(env, picture)
-    // What the account calls on (phase 6, step 6): its relay pass, the report
-    // form, a Google account's Pinterest.
-    if (url.pathname === '/relay') return relay(request, env)
-    if (url.pathname === '/feedback') return feedback(request, env)
-    if (url.pathname.startsWith('/pinterest/')) return pinterest(request, env, url.pathname.slice('/pinterest/'.length))
-    // Contributions (phase 10, step 6), Stripe's word on them, and the operator's dashboard.
-    if (url.pathname.startsWith('/contributions/')) return contributions(request, env, url.pathname.slice('/contributions/'.length))
-    if (url.pathname === '/stripe/webhook') return stripeWebhook(request, env)
-    if (url.pathname.startsWith('/ops/')) return ops(request, env, url.pathname.slice('/ops/'.length))
-    // The developer's special themes, for anyone; changed by the operator.
-    if (url.pathname === '/themes' || url.pathname.startsWith('/themes/')) return themes(request, env, url.pathname.slice('/themes'.length).replace(/^\//, ''))
-    // Cloud atriums held for their owners (phase 10, step 5c).
-    if (url.pathname.startsWith('/held/')) return held(request, env, url.pathname.slice('/held/'.length))
-    const atrium = url.pathname.match(ATRIUM)?.[1]
-    if (!atrium) return new Response('Not found', { status: 404 })
-    if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })
-    // A browser's WebSocket can't carry headers: the token comes as a
-    // subprotocol after "atrium" -- or, from the first version of the page,
-    // in the URL.
-    const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map(part => part.trim())
-    const token = offered[0] === 'atrium' && offered[1] ? offered[1] : url.searchParams.get('token')
-    const user = (await whoIs(token, env))?.id
-    if (!user) return new Response('Not signed in', { status: 401 })
-    const headers = new Headers(request.headers)
-    headers.set('X-Atrium-User', user)
-    headers.set('X-Atrium-Protocol', offered[0] === 'atrium' ? 'atrium' : '')
-    return env.ROOMS.get(env.ROOMS.idFromName(atrium)).fetch(new Request(request.url, { headers }))
-  },
+// Several of the app's reads in one request (src/lib/worker.ts, viaBatch):
+// each answered here as if it had come alone -- its own body and sign-in,
+// the same checks -- and the answers sent back in order. Only the reads a
+// visit makes, a few at once: a request is one of the free day's 100,000
+// whatever it holds, and this is how a visit's dozen became two or three.
+const BATCHABLE = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator',
+  '/pinterest/status', '/store/usage', '/store/appdata', '/themes', '/contributions/wall'])
+const MOST_IN_BATCH = 16
+
+async function batch(request: Request, env: Env): Promise<Response> {
+  const { allowed, answer } = replies(request)
+  if (!allowed) return answer(403, { error: 'origin' })
+  const asked = await request.json().catch(() => null) as { calls?: unknown } | null
+  const calls = Array.isArray(asked?.calls) ? asked.calls as { path?: unknown; body?: unknown; get?: unknown }[] : null
+  if (!calls || calls.length > MOST_IN_BATCH) return answer(400, { error: 'calls' })
+  const origin = request.headers.get('Origin') ?? ''
+  const answers = await Promise.all(calls.map(async call => {
+    const path = typeof call?.path === 'string' ? call.path : ''
+    if (!BATCHABLE.has(path)) return { status: 400, body: { error: 'not batchable' } }
+    const inner = new Request(new URL(path, request.url), call.get
+      ? { method: 'GET', headers: { Origin: origin } }
+      : { method: 'POST', headers: { Origin: origin }, body: JSON.stringify(call.body ?? {}) })
+    const response = await handle(inner, env).catch(() => new Response(JSON.stringify({ error: 'failed' }), { status: 500 }))
+    const text = await response.text()
+    try { return { status: response.status, body: JSON.parse(text) } } catch { return { status: response.status, body: text } }
+  }))
+  return answer(200, { answers })
+}
+
+export default { fetch: (request: Request, env: Env) => handle(request, env) }
+
+async function handle(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url)
+  if (url.pathname === '/batch') return batch(request, env)
+  if (url.pathname.startsWith('/google/')) return google(request, env, url.pathname.slice('/google/'.length))
+  // Email accounts (phase 10, step 4).
+  if (url.pathname.startsWith('/auth/')) return auth(request, env, url.pathname.slice('/auth/'.length))
+  if (url.pathname.startsWith('/people/')) return people(request, env, url.pathname.slice('/people/'.length))
+  // The hosted store (phase 10).
+  if (url.pathname.startsWith('/store/')) return store(request, env, url.pathname.slice('/store/'.length))
+  // Public Drive atriums' mirrors (phase 10, step 3).
+  if (url.pathname.startsWith('/mirror/')) return mirror(request, env, url.pathname.slice('/mirror/'.length))
+  // A public atrium's picture (phase 8), for anyone.
+  const picture = url.pathname.match(/^\/public\/([\w-]{1,64})\.webp$/)?.[1]
+  if (picture && request.method === 'GET') return publicPreview(env, picture)
+  // What the account calls on (phase 6, step 6): its relay pass, the report
+  // form, a Google account's Pinterest.
+  if (url.pathname === '/relay') return relay(request, env)
+  if (url.pathname === '/feedback') return feedback(request, env)
+  if (url.pathname.startsWith('/pinterest/')) return pinterest(request, env, url.pathname.slice('/pinterest/'.length))
+  // Contributions (phase 10, step 6), Stripe's word on them, and the operator's dashboard.
+  if (url.pathname.startsWith('/contributions/')) return contributions(request, env, url.pathname.slice('/contributions/'.length))
+  if (url.pathname === '/stripe/webhook') return stripeWebhook(request, env)
+  if (url.pathname.startsWith('/ops/')) return ops(request, env, url.pathname.slice('/ops/'.length))
+  // The developer's special themes, for anyone; changed by the operator.
+  if (url.pathname === '/themes' || url.pathname.startsWith('/themes/')) return themes(request, env, url.pathname.slice('/themes'.length).replace(/^\//, ''))
+  // Cloud atriums held for their owners (phase 10, step 5c).
+  if (url.pathname.startsWith('/held/')) return held(request, env, url.pathname.slice('/held/'.length))
+  const atrium = url.pathname.match(ATRIUM)?.[1]
+  if (!atrium) return new Response('Not found', { status: 404 })
+  if (request.headers.get('Upgrade') !== 'websocket') return new Response('A WebSocket only', { status: 426 })
+  // A browser's WebSocket can't carry headers: the token comes as a
+  // subprotocol after "atrium" -- or, from the first version of the page,
+  // in the URL.
+  const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '').split(',').map(part => part.trim())
+  const token = offered[0] === 'atrium' && offered[1] ? offered[1] : url.searchParams.get('token')
+  const user = (await whoIs(token, env))?.id
+  if (!user) return new Response('Not signed in', { status: 401 })
+  const headers = new Headers(request.headers)
+  headers.set('X-Atrium-User', user)
+  headers.set('X-Atrium-Protocol', offered[0] === 'atrium' ? 'atrium' : '')
+  return env.ROOMS.get(env.ROOMS.idFromName(atrium)).fetch(new Request(request.url, { headers }))
 }
 
 export class Room extends DurableObject<Env> {

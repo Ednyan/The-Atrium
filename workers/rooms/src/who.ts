@@ -66,8 +66,23 @@ export const outbound = (env: Env, url: string) => (env.TEST_UPSTREAM ? `${env.T
  *  Supabase knows, or an account banned (people.ts), as good as signed out
  *  for everything the worker runs. */
 export async function whoIs(token: string | null | undefined, env: Env): Promise<Who | null> {
-  const who = await identify(token, env)
+  const who = await identified(token, env)
   return who && !(await isBanned(env, who.id)) ? who : null
+}
+
+// Who a token is, kept a few seconds: a batch's calls (src/index.ts) carry
+// the same one, and an old sign-in's is a request to Supabase each time.
+const KNOWN_MS = 10_000
+const known = new Map<string, { at: number; who: Promise<Who | null> }>()
+function identified(token: string | null | undefined, env: Env): Promise<Who | null> {
+  if (!token) return Promise.resolve(null)
+  const now = Date.now()
+  const kept = known.get(token)
+  if (kept && now - kept.at < KNOWN_MS) return kept.who
+  if (known.size > 500) known.clear()
+  const who = identify(token, env)
+  known.set(token, { at: now, who })
+  return who
 }
 async function identify(token: string | null | undefined, env: Env): Promise<Who | null> {
   if (!token) return null
