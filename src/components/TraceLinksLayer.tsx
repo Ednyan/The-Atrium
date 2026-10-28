@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { dashProps } from '../lib/strokeStyle'
 import { useTranslation } from '../lib/i18n'
 import { LABEL_SIZE_RANGE, arrowhead, bend, curveMiddle, restOf, visiblePart, type LinkArrow, type TraceLink } from '../lib/traceLinks'
@@ -21,10 +21,14 @@ const headsFrom = (link: TraceLink) => link.arrow === 'back' || link.arrow === '
 // the layer's own. An SVG boxed to its thread, with the viewBox and clip that
 // takes, split the painting at every thread: zooming with 400 threads on
 // screen, the browser spent 1.8s grouping it into layers against 1.1s.
-// ponytail: a thread between two traces breaks the GPU's batching of their
-// drawing, so with hundreds of threads on screen a zoom rasterises ~40%
-// longer (400: 67 -> 50fps; 60: no difference). If that ever matters, draw a
-// thread at the very bottom, together, when no trace below its level overlaps it.
+//
+// One sheet per level, not per thread: a thread is drawn as low as it can be
+// and look the same -- just above the highest trace under its own level that
+// it reaches (levelOf) -- so most share a few. A sheet each, 300 threads took
+// a pan from 54 to 33fps (4x CPU): the browser layered, painted and drew
+// hundreds of view-sized sheets. A sheet's threads are laid out in the
+// world's units at its zoom, and moved together by the view's offset, so
+// moving about re-draws none of them; only a zoom does.
 const SHEET = { position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' } as const
 
 type Parts = {
@@ -55,11 +59,13 @@ const SLACK_DAMPING = 0.45
  * and on every frame while any of them is still swinging -- so a thread can
  * move without re-rendering every trace.
  */
-export default function TraceLinksLayer({
-  links, place, offsets, zoom, worldOffset, selected, preview, canEdit, onPress, onMenu, onElbowAt, wakeRef,
-}: {
+interface LinksProps {
   links: TraceLink[]
   place: (traceId: string) => LinkEnd | null
+  // The lowest level a thread can be drawn at: just above the highest trace
+  // under `below` that its line (`route`, in world units) comes within
+  // `room` of; `box` holds the whole line, to pass by the rest quickly.
+  levelOf: (below: number, box: { minX: number; minY: number; maxX: number; maxY: number }, route: { x: number; y: number }[], room: number) => number
   // The drag feel's trail on each moving trace, in screen pixels: the threads
   // follow the trace where it's drawn, not only where it is.
   offsets: React.MutableRefObject<Map<string, { x: number; y: number }>>
@@ -73,18 +79,49 @@ export default function TraceLinksLayer({
   // An elbow's middle run dragged to `at`; `done` when it's let go.
   onElbowAt: (id: string, at: number, done: boolean) => void
   wakeRef: React.MutableRefObject<() => void>
-}) {
+  // The traces as they are, and whether any is being moved: while one is,
+  // the threads follow it from layout() alone, written straight to the SVG,
+  // and React leaves them be -- only on letting go are their levels worked
+  // out again. (Re-rendered on every frame of a drag, the threads were most
+  // of it: 300 threads held a drag to 7fps at 4x CPU.)
+  version: unknown
+  moving: boolean
+  // The traces being moved: their threads are drawn in a sheet of their own
+  // at their level, so a frame repaints those threads and not every thread
+  // sharing the level (an SVG repaints as a whole), and only they are laid
+  // out again on each frame.
+  movingIds: ReadonlySet<string>
+}
+
+// Re-drawn by React only for what React says: the threads, the view, the
+// selection, the thread being drawn -- and the traces, once nothing moves.
+// `place` and the handlers are stable (TraceOverlay, useLatestHandlers).
+const same = (a: LinksProps, b: LinksProps) =>
+  a.links === b.links && a.zoom === b.zoom && a.worldOffset.x === b.worldOffset.x && a.worldOffset.y === b.worldOffset.y
+  && a.selected === b.selected && a.preview === b.preview && a.canEdit === b.canEdit && a.moving === b.moving
+  && a.movingIds === b.movingIds && (b.moving || a.version === b.version)
+
+export default memo(TraceLinksLayer, same)
+
+function TraceLinksLayer({
+  links, place, levelOf, offsets, zoom, worldOffset, selected, preview, canEdit, onPress, onMenu, onElbowAt, wakeRef, movingIds,
+}: LinksProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const parts = useRef(new Map<string, Parts>())
   const springs = useRef(new Map<string, { x: number; y: number; vx: number; vy: number }>())
-  const latest = useRef({ links, place, zoom, worldOffset })
-  latest.current = { links, place, zoom, worldOffset }
+  const latest = useRef({ links, place, zoom, worldOffset, movingIds })
+  latest.current = { links, place, zoom, worldOffset, movingIds }
+  // Threads still swinging, laid out on each frame with the moving ones.
+  const swinging = useRef(new Set<string>())
   const frame = useRef(0)
   const lastTick = useRef(0)
 
   // What each thread was last drawn from: while that holds, it's left as
-  // it is, so moving one trace redraws its threads and no others.
+  // it is, so moving one trace redraws its threads and no others -- and
+  // moving the view, none. Its label's (and elbow grip's) place, in the
+  // world's units at the zoom: placed on screen with the offset each time.
   const drawn = useRef(new Map<string, string>())
+  const middles = useRef(new Map<string, { x: number; y: number }>())
   // One callback per element, kept, so a render that changes nothing hands
   // React nothing to re-attach; a new element (a glow on selecting, say)
   // gets the thread drawn afresh.
@@ -107,10 +144,14 @@ export default function TraceLinksLayer({
   // Lays every thread out from where its traces are drawn now, first letting
   // each bend chase its rest for dt milliseconds. True while any is moving.
   const layout = (dt: number) => {
-    const { links, place, zoom, worldOffset } = latest.current
-    const screen = (x: number, y: number) => ({ x: x * zoom + worldOffset.x, y: y * zoom + worldOffset.y })
+    const { links, place, zoom, worldOffset, movingIds } = latest.current
+    // The world at the zoom; the sheet's own offset puts it on screen.
+    const screen = (x: number, y: number) => ({ x: x * zoom, y: y * zoom })
     let stirring = false
     for (const link of links) {
+      // While traces move, only their threads, and those still swinging:
+      // nothing else changes until the zoom does.
+      if (movingIds.size && !movingIds.has(link.from) && !movingIds.has(link.to) && !swinging.current.has(link.id)) continue
       const el = parts.current.get(link.id)
       const a = place(link.from), b = place(link.to)
       if (!el?.line || !a || !b) continue
@@ -122,7 +163,7 @@ export default function TraceLinksLayer({
       // An elbow: routed between the two boxes (lib/elbow), border to
       // border, with no slack to swing.
       if (link.elbow) {
-        const from = `elbow ${ax} ${ay} ${bx} ${by} ${a.hw} ${a.hh} ${a.turn} ${b.hw} ${b.hh} ${b.turn} ${zoom} ${worldOffset.x} ${worldOffset.y} ${link.width} ${link.arrow} ${link.elbowAt}`
+        const from = `elbow ${ax} ${ay} ${bx} ${by} ${a.hw} ${a.hh} ${a.turn} ${b.hw} ${b.hh} ${b.turn} ${zoom} ${link.width} ${link.arrow} ${link.elbowAt}`
         if (drawn.current.get(link.id) === from) continue
         drawn.current.set(link.id, from)
         const route = elbowRoute({ ...a, x: ax, y: ay }, { ...b, x: bx, y: by }, link.elbowAt).map(p => screen(p.x, p.y))
@@ -139,12 +180,7 @@ export default function TraceLinksLayer({
         }
         head(el.headTo, route[n - 1], route[n - 2])
         head(el.headFrom, route[0], route[1])
-        const grip = elbowGrip(route)
-        for (const node of [el.middle, el.grip]) {
-          if (!node) continue
-          node.style.left = `${grip.x}px`
-          node.style.top = `${grip.y}px`
-        }
+        middles.current.set(link.id, elbowGrip(route))
         continue
       }
 
@@ -158,7 +194,10 @@ export default function TraceLinksLayer({
         sp.x += sp.vx * h
         sp.y += sp.vy * h
       }
-      if (Math.hypot(rest.x - sp.x, rest.y - sp.y) * zoom > 0.1 || Math.hypot(sp.vx, sp.vy) * zoom > 0.002) stirring = true
+      if (Math.hypot(rest.x - sp.x, rest.y - sp.y) * zoom > 0.1 || Math.hypot(sp.vx, sp.vy) * zoom > 0.002) {
+        stirring = true
+        swinging.current.add(link.id)
+      } else swinging.current.delete(link.id)
 
       const sa = screen(ax, ay), sb = screen(bx, by), c = screen(sp.x, sp.y)
       const from = `${sa.x} ${sa.y} ${c.x} ${c.y} ${sb.x} ${sb.y} ${a.hw} ${a.hh} ${a.turn} ${b.hw} ${b.hh} ${b.turn} ${zoom} ${link.width} ${link.arrow} ${link.toCenter}`
@@ -188,12 +227,17 @@ export default function TraceLinksLayer({
       }
       head(el.headTo, seen?.to)
       head(el.headFrom, seen?.from)
-      if (el.middle) {
-        const mid = seen && !link.toCenter
-          ? curveMiddle(seen.x0, seen.y0, seen.cx, seen.cy, seen.x1, seen.y1)
-          : curveMiddle(sa.x, sa.y, c.x, c.y, sb.x, sb.y)
-        el.middle.style.left = `${mid.x}px`
-        el.middle.style.top = `${mid.y}px`
+      middles.current.set(link.id, seen && !link.toCenter
+        ? curveMiddle(seen.x0, seen.y0, seen.cx, seen.cy, seen.x1, seen.y1)
+        : curveMiddle(sa.x, sa.y, c.x, c.y, sb.x, sb.y))
+    }
+    // Labels and grips are the page's, not a sheet's: on screen by the offset.
+    for (const [id, at] of middles.current) {
+      const el = parts.current.get(id)
+      for (const node of [el?.middle, el?.grip]) {
+        if (!node) continue
+        node.style.left = `${at.x + worldOffset.x}px`
+        node.style.top = `${at.y + worldOffset.y}px`
       }
     }
     return stirring
@@ -204,31 +248,34 @@ export default function TraceLinksLayer({
     lastTick.current = now
     frame.current = layout(dt) ? requestAnimationFrame(tick) : 0
   }
+  // Laid out now -- the page has just moved something, and the threads go
+  // with it in the same frame -- and on each frame after while any swings.
   const wake = () => {
-    if (frame.current) return
+    if (frame.current || !layout(0)) return
     lastTick.current = performance.now()
     frame.current = requestAnimationFrame(tick)
   }
   wakeRef.current = wake
 
   // After every render: traces may have moved, threads come or gone.
-  useLayoutEffect(() => { if (layout(0)) wake() })
+  useLayoutEffect(() => { if (frame.current) layout(0); else wake() })
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   const screenOf = (end: LinkEnd) => ({ x: end.x * zoom + worldOffset.x, y: end.y * zoom + worldOffset.y })
 
   return (
     <>
-      {/* An SVG each, so each can sit at its own level among the traces;
-          the one for the thread being drawn goes under them all. */}
-      {links.map(link => {
-        const a = place(link.from), b = place(link.to)
-        if (!a || !b) return null
+      {/* A sheet per level among the traces, its threads in it; the one for
+          the thread being drawn goes under them all. */}
+      {[...sheetsOf(links, place, levelOf, zoom, movingIds)].map(([sheet, inSheet]) => (
+        <svg key={sheet} style={{ ...SHEET, zIndex: inSheet[0].level }}>
+          <g transform={`translate(${worldOffset.x} ${worldOffset.y})`}>
+      {inSheet.map(({ link, a }) => {
         const colour = link.color || a.colour
         const width = lineWidth(link, zoom)
         const isSelected = selected.has(link.id)
         return (
-          <svg key={link.id} style={{ ...SHEET, zIndex: Math.min(a.z, b.z) - 2 }}>
+          <g key={link.id}>
             {isSelected && <path ref={part(link.id, 'glow')} fill="none" stroke={colour} strokeOpacity={0.25} strokeWidth={width + 8} strokeLinecap="round" />}
             {/* Line and heads at the thread's one opacity -- as set, selected
                 or not: a selection shows in its glow and weight. On the
@@ -255,9 +302,12 @@ export default function TraceLinksLayer({
               onPointerEnter={() => setHovered(link.id)}
               onPointerLeave={() => setHovered(h => (h === link.id ? null : h))}
             />
-          </svg>
+          </g>
         )
       })}
+          </g>
+        </svg>
+      ))}
       <svg style={SHEET}>
         {preview && preview.from.map(id => {
           const from = place(id)
@@ -355,6 +405,38 @@ export default function TraceLinksLayer({
     </>
   )
 }
+
+// The threads by the level each is drawn at (levelOf): as low as it looks the
+// same, judged by its line at rest -- the curve in short runs, or the elbow's
+// -- with room for its swing and width.
+const RUNS = 24
+function sheetsOf(links: TraceLink[], place: (id: string) => LinkEnd | null, levelOf: TraceLinksLayerLevelOf, zoom: number, movingIds: ReadonlySet<string>) {
+  const sheets = new Map<string, { link: TraceLink; a: LinkEnd; level: number }[]>()
+  for (const link of links) {
+    const a = place(link.from), b = place(link.to)
+    if (!a || !b) continue
+    const c = restOf(link.straight, a.x, a.y, b.x, b.y)
+    const route = link.elbow ? elbowRoute(a, b, link.elbowAt) : Array.from({ length: RUNS + 1 }, (_, i) => {
+      const t = i / RUNS, u = 1 - t
+      return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y }
+    })
+    const room = 40 / zoom
+    const box = {
+      minX: Math.min(...route.map(p => p.x)) - room, maxX: Math.max(...route.map(p => p.x)) + room,
+      minY: Math.min(...route.map(p => p.y)) - room, maxY: Math.max(...route.map(p => p.y)) + room,
+    }
+    const level = levelOf(Math.min(a.z, b.z) - 2, box, route, room)
+    // A moving trace's threads in a sheet of their own, drawn after the
+    // level's still ones.
+    const key = movingIds.has(link.from) || movingIds.has(link.to) ? `level-${level}-moving` : `level-${level}`
+    const sheet = sheets.get(key)
+    if (sheet) sheet.push({ link, a, level })
+    else sheets.set(key, [{ link, a, level }])
+  }
+  return sheets
+}
+
+type TraceLinksLayerLevelOf = (below: number, box: { minX: number; minY: number; maxX: number; maxY: number }, route: { x: number; y: number }[], room: number) => number
 
 // How a thread runs: hanging in a curve, straight, or as an elbow.
 type Line = 'curved' | 'straight' | 'elbow'

@@ -303,6 +303,15 @@ const ROTATION_SNAP_DEGREES = 5
 // How close to the viewport edge the cursor has to get before dragging a
 // trace starts scrolling the canvas, and how far it scrolls per frame at the
 // very edge (screen pixels, converted to world units at the current zoom).
+// A drag's pointer, held by the page (pointer capture) until it's let go: its
+// moves go straight to the page and on to the drag's listeners on the
+// window, and the browser no longer looks through every trace and thread
+// under it on each one to find what it's over -- with hundreds of each, a
+// large part of a drag's frame. The mouse's pointer is always 1.
+function holdPointer() {
+  try { document.body.setPointerCapture(1) } catch { /* a touch, or no pointer down: nothing to hold */ }
+}
+
 const EDGE_PAN_ZONE_PX = 64
 const EDGE_PAN_MAX_SPEED_PX = 14
 
@@ -2979,6 +2988,26 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     return { x: box.cx, y: box.cy, hw: box.halfW, hh: box.halfH, turn, colour: trace.borderColor || borderColourOf(trace.type), z: zOf(trace) }
   }
 
+  // The lowest level a thread can be drawn at and look the same
+  // (TraceLinksLayer): just above the highest trace under `below` that its
+  // line comes within `room` of -- or under them all, where none does.
+  // Levels go in threes (zOf): a trace, its light below it, threads below that.
+  // Measured once a render, when the threads first ask (placeTrace needs
+  // what's defined further down).
+  let linkFloors: { z: number; box: ReturnType<typeof boundsOf> }[] | null = null
+  const levelOfLink = (below: number, box: { minX: number; minY: number; maxX: number; maxY: number }, route: { x: number; y: number }[], room: number) => {
+    linkFloors ??= traces
+      .map(trace => { const end = placeTrace(trace.id); return end && { z: end.z, box: boundsOf({ cx: end.x, cy: end.y, halfW: end.hw, halfH: end.hh, turn: end.turn }) } })
+      .filter((under): under is { z: number; box: ReturnType<typeof boundsOf> } => !!under)
+      .sort((p, q) => q.z - p.z)
+    for (const under of linkFloors) {
+      if (under.z >= below) continue
+      if (under.box.maxX < box.minX || under.box.minX > box.maxX || under.box.maxY < box.minY || under.box.minY > box.maxY) continue
+      if (lineCrosses(route, { left: under.box.minX - room, top: under.box.minY - room, right: under.box.maxX + room, bottom: under.box.maxY + room })) return under.z + 1
+    }
+    return -2
+  }
+
   // Ctrl+S: Save (lib/traceSave).
   useEffect(() => {
     const handleSaveShortcut = (e: KeyboardEvent) => {
@@ -3687,6 +3716,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     
     // Prevent text selection during drag
     document.body.classList.add('dragging')
+    holdPointer()
     
     const transform = getTraceTransform(trace)
     startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
@@ -3806,6 +3836,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     isMultiDragActiveRef.current = true
     setCursorState('grabbing')
     document.body.classList.add('dragging')
+    holdPointer()
   }
 
   const handleGroupTouchDown = (e: React.TouchEvent, mode: 'group-scale' | 'group-rotate', corner = 'br') => {
@@ -6229,6 +6260,11 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   // and all -- for many renders, and a plain handler would act on the state of
   // the render it was made in.
   const on = useLatestHandlers({ handleMouseDown, handleTouchDown, endTextEdit, fitTextLive, isClickThrough, updateTraceCustomization, renameFrame, commitSheetCell, countSlides })
+  // The threads' (TraceLinksLayer): the same functions every render, each
+  // reading the traces as they are now, so the layer can skip a render.
+  const linkOn = useLatestHandlers({ place: placeTrace, levelOf: levelOfLink, press: pressLink, menu: openLinkMenu, elbowAt: dragElbow })
+  // After every render here, the threads to where their traces are now.
+  useLayoutEffect(() => { wakeLinksRef.current() })
 
   // Everything renderTrace reads while drawing `trace`, narrowed to this trace
   // wherever it only ever asks about this one: while none of it changes, the
@@ -6588,7 +6624,7 @@ return (
         // compositor. Always composited, as it was, the browser drew a trace
         // between pixels at most zooms and without subpixel text, which is
         // why text looked soft; at rest it's drawn flat, and crisp.
-        willChange: movingIds.has(trace.id) || glidingIds.has(trace.id) ? 'transform, translate, rotate' : undefined,
+        willChange: glidingIds.has(trace.id) ? 'transform, translate, rotate' : undefined,
         transformOrigin: 'center center',
         // Floating (Profile > Animations): a slow drift of a few
         // pixels. Held still while selected, pressed, edited in place,
@@ -7852,17 +7888,21 @@ return (
           trace far off (and not drawn) still runs off toward it. */}
       <TraceLinksLayer
         links={links}
-        place={placeTrace}
+        place={linkOn.place}
+        levelOf={linkOn.levelOf}
         offsets={dragOffsetsRef}
         zoom={zoom}
         worldOffset={worldOffset}
         selected={selectedLinks}
         preview={connectFrom && connectPointer ? { from: connectFrom, to: connectPointer } : null}
         canEdit={canEdit}
-        onPress={pressLink}
-        onMenu={openLinkMenu}
-        onElbowAt={dragElbow}
+        onPress={linkOn.press}
+        onMenu={linkOn.menu}
+        onElbowAt={linkOn.elbowAt}
         wakeRef={wakeLinksRef}
+        version={traces}
+        moving={transformMode !== 'none'}
+        movingIds={movingIds}
       />
 
       {sortedItems.filter(item => item.type !== 'player').map(renderSortedItem)}
