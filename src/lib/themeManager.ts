@@ -49,6 +49,7 @@ export class ThemeManager {
   }
 
   createParticles(viewportWidth: number, viewportHeight: number, centerX: number = 0, centerY: number = 0) {
+    this._rebuilt = true
     // Clear existing particles
     this.particles.forEach(p => {
       this.particleContainer.removeChild(p.sprite)
@@ -123,13 +124,18 @@ export class ThemeManager {
     }
   }
 
-  private _particleFrameCounter = 0
-  
-  updateParticles(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number) {
-    // Skip frames for performance (update every 2nd frame)
-    this._particleFrameCounter++
-    if (this._particleFrameCounter % 2 !== 0) return
-    
+  private _movedAt = 0
+  private _rebuilt = false
+
+  // Moved every other frame on a 60Hz screen, as they always were, and about
+  // as often on a faster one; says whether they look different now, so the
+  // canvas is drawn again only then.
+  updateParticles(cameraX: number, cameraY: number, viewportWidth: number, viewportHeight: number): boolean {
+    const now = performance.now()
+    if (!this._rebuilt && (!this.particles.length || now - this._movedAt < 25)) return false
+    this._rebuilt = false
+    this._movedAt = now
+
     const time = Date.now() * 0.001
     
     // Calculate viewport radius for fade effect (in world coordinates)
@@ -179,6 +185,7 @@ export class ThemeManager {
       const pulseAlpha = baseAlpha + Math.sin(time * 0.5 + pulseOffset) * 0.15
       particle.sprite.alpha = pulseAlpha * fadeOpacity
     }
+    return true
   }
 
   destroy() {

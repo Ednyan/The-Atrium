@@ -3349,6 +3349,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       canvasRef.current.appendChild(canvas)
       appRef.current = app
       app.renderer.background.alpha = 1
+      // Drawn by the frame below, when something on it has changed -- not by
+      // Pixi on every frame, the same picture again and again while the view
+      // is still.
+      app.ticker.remove(app.render, app)
 
       // Create world container that will move (camera effect)
       const worldContainer = new Container()
@@ -3391,6 +3395,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // -- left it drawn for a canvas that was no longer there, and the grid
       // was gone until the view next moved.
       let drawnFor = ''
+      // Whether the canvas has to be drawn again: set by whatever changes
+      // what's on it, and cleared as it's drawn (the render loop).
+      let drawAgain = true
+      canvas.addEventListener('webglcontextrestored', () => { drawAgain = true })
       const drawGrid = () => {
         const theme = themeSettingsRef.current
         const width = app.screen.width, height = app.screen.height
@@ -3398,6 +3406,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           gridStyleOf(theme), theme?.gridColor, theme?.gridOpacity, theme?.gridLineSpacing, backdrop.version].join('|')
         if (key === drawnFor) return
         drawnFor = key
+        drawAgain = true
         // The ground's tile, where the world is: its origin at the world's.
         ground.width = width
         ground.height = height
@@ -3840,12 +3849,28 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
       // so one exception here used to stop the canvas for good -- frozen,
       // and blank at the next resize.
       let frameFailed = false
+      // What's on the canvas that the frame doesn't redraw itself: the room's
+      // colour and the ground's tile. Compared each frame, as the grid is.
+      let shownLook: unknown[] = []
+      const lookChanged = () => {
+        const look = [app.renderer.background.color, app.renderer.background.alpha, ground.texture, ground.tint, ground.alpha, ground.visible]
+        if (look.every((value, i) => value === shownLook[i])) return false
+        shownLook = look
+        return true
+      }
+      // Off-screen arrows shown last frame: while any are, they pulse.
+      let arrowsShown = 0
       app.ticker.add(() => {
         try {
           frame()
         } catch (error) {
           if (!frameFailed) console.error('[atrium] a frame failed:', error)
           frameFailed = true
+        }
+        if (lookChanged()) drawAgain = true
+        if (drawAgain) {
+          drawAgain = false
+          app.render()
         }
       })
       const frame = () => {
@@ -3925,8 +3950,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         
         minimapRef.current?.frame(cameraPositionRef.current.x, cameraPositionRef.current.y, zoomRef.current, window.innerWidth, window.innerHeight)
 
-        // Floating particles, which drift every frame.
-        themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)
+        // Floating particles, which drift.
+        if (themeManagerRef.current?.updateParticles(cameraPositionRef.current.x, cameraPositionRef.current.y, viewportWidth, viewportHeight)) drawAgain = true
 
         // NOTE: Lighting is now handled in TraceOverlay.tsx using DOM elements with blur
         // The Pixi.js lighting layer is kept for potential future use but not actively rendering
@@ -3948,6 +3973,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               graphics.visible = false
               if (graphics.parent) graphics.parent.removeChild(graphics)
             })
+            if (arrowsShown) drawAgain = true
+            arrowsShown = 0
           } else {
           pulseTime += 0.02 // Slower pulse for elegant animation
 
@@ -3995,6 +4022,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           offScreenTraces.sort((a, b) => a.distance - b.distance)
           const closestTraces = offScreenTraces.slice(0, 10)
           const neededCount = closestTraces.length
+          if (neededCount || arrowsShown) drawAgain = true
+          arrowsShown = neededCount
           
           // Ensure pool has enough indicators (create if needed, only once)
           while (indicatorPoolRef.current.length < neededCount) {
