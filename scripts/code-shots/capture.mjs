@@ -44,8 +44,19 @@ const PORT = 5301, CDP = 9341
 const WIDTH = 1440, HEIGHT = 900, SCALE = 2 / 3
 const SCREENS = ['landing', 'welcome', 'browse', 'atrium', 'contributors']
 // How different a screen must look from its last kept picture to be kept:
-// the mean difference of the two, small, blurred and grey, as a share of white.
-const CHANGE = Number(process.env.SHOTS_CHANGE ?? 0.05)
+// one less the correlation of the two, small, blurred and grey -- how far
+// the shapes moved, whatever the brightness. A mean difference barely moved
+// for a whole redesign: these screens are mostly dark ground.
+const CHANGE = Number(process.env.SHOTS_CHANGE ?? 0.25)
+// An atrium's edges alone (see pick) are mostly its interface: less moves more.
+const ATRIUM_CHANGE = 0.15
+const correlation = (a, b) => {
+  const mean = v => v.reduce((sum, x) => sum + x, 0) / v.length
+  const ma = mean(a), mb = mean(b)
+  let ab = 0, aa = 0, bb = 0
+  for (let i = 0; i < a.length; i++) { const da = a[i] - ma, db = b[i] - mb; ab += da * db; aa += da * da; bb += db * db }
+  return aa && bb ? ab / Math.sqrt(aa * bb) : 0
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const FAKE_HASH = createHash('sha256').update(readFileSync(FAKE)).digest('hex').slice(0, 10)
 const git = (...args) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' }).trim()
@@ -214,23 +225,35 @@ async function pick() {
   const p = await page()
   await p.evaluate(`window.look = async src => {
     const img = new Image(); img.src = src; await img.decode()
-    const c = document.createElement('canvas'); c.width = 64; c.height = 40
-    const g = c.getContext('2d'); g.filter = 'blur(1px) grayscale(1)'; g.drawImage(img, 0, 0, 64, 40)
-    return [...g.getImageData(0, 0, 64, 40).data].filter((_, i) => i % 4 === 0)
+    const c = document.createElement('canvas'); c.width = 96; c.height = 60
+    const g = c.getContext('2d'); g.filter = 'blur(1px) grayscale(1)'; g.drawImage(img, 0, 0, 96, 60)
+    return [...g.getImageData(0, 0, 96, 60).data].filter((_, i) => i % 4 === 0)
   }; 1`)
-  const last = {}, picked = []
-  for (const day of all) {
-    const screens = {}
+  // Per screen, its pictures in order, each marked kept or not.
+  const last = {}, kept = new Map()
+  for (const [at, day] of all.entries()) {
     for (const [screen, file] of Object.entries(day.screens)) {
       if (!existsSync(join(RAW, file))) continue
       const pixels = await p.evaluate(`look('data:image/webp;base64,${readFileSync(join(RAW, file)).toString('base64')}')`)
+      // Inside an atrium, its interface is round the edges and the middle is
+      // the same demo atrium every day: a new toolbar is looked for there
+      // alone, and a new way of drawing traces in the whole.
+      const edges = pixels.filter((_, i) => { const x = i % 96, y = Math.floor(i / 96); return x < 12 || x >= 84 || y < 8 || y >= 52 })
       const before = last[screen]
-      const change = before ? pixels.reduce((sum, v, i) => sum + Math.abs(v - before[i]), 0) / pixels.length / 255 : 1
-      if (process.env.SHOTS_DEBUG) console.log(day.day, screen, change.toFixed(3))
-      if (change > CHANGE) { last[screen] = pixels; screens[screen] = file }
+      const whole = before ? 1 - correlation(pixels, before.pixels) : 1
+      const edge = before ? 1 - correlation(edges, before.edges) : 1
+      if (process.env.SHOTS_DEBUG) console.log(day.day, screen, whole.toFixed(3), edge.toFixed(3))
+      if (whole > CHANGE || (screen === 'atrium' && edge > ATRIUM_CHANGE)) {
+        last[screen] = { pixels, edges }
+        // A look still settling over days in a row: its last day stands for it.
+        const previous = kept.get(screen)?.at(-1)
+        if (previous && previous.at === at - 1 && previous.at !== 0) kept.get(screen).pop()
+        kept.set(screen, [...(kept.get(screen) ?? []), { at, file }])
+      }
     }
-    if (Object.keys(screens).length) picked.push({ ...day, screens })
   }
+  const picked = all.map((day, at) => ({ ...day, screens: Object.fromEntries([...kept].flatMap(([screen, list]) => list.filter(k => k.at === at).map(k => [screen, k.file]))) }))
+    .filter(day => Object.keys(day.screens).length)
   await p.close()
   const keep = new Set(picked.flatMap(day => Object.values(day.screens)))
   for (const file of readdirSync(OUT)) if (file.endsWith('.webp') && !keep.has(file)) rmSync(join(OUT, file))
@@ -267,6 +290,20 @@ try {
         // `open: false`: the oldest configs open a browser on the desktop.
         server: { port: PORT, strictPort: true, host: '127.0.0.1', open: false, fs: { strict: false }, hmr: false, watch: null },
         resolve: { alias: [{ find: /^@supabase\/supabase-js$/, replacement: FAKE }] },
+        // The site's image proxy (functions/api/proxy-image.js), which some
+        // versions show every web picture through: a dev server has none.
+        plugins: [{
+          name: 'code-shots-proxy',
+          configureServer(dev) {
+            dev.middlewares.use('/api/proxy-image', async (req, res) => {
+              const address = new URL(req.url, 'http://x').searchParams.get('url')
+              const answer = address ? await fetch(address).catch(() => null) : null
+              if (!answer?.ok) { res.statusCode = 404; res.end(); return }
+              res.setHeader('content-type', answer.headers.get('content-type') || 'image/jpeg')
+              res.end(Buffer.from(await answer.arrayBuffer()))
+            })
+          },
+        }],
       })
       await server.listen()
       const taken = await shoot(day, wall, routing())
