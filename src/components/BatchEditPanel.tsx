@@ -60,6 +60,9 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
       case 'strokes':
         return lobbyId ? [{ id: 'fill', node: <StrokeStyleField key={ids(targets).join(',')} traceIds={ids(targets)} lobbyId={lobbyId} userId={userId} /> }] : []
 
+      case 'bars':
+        return [{ id: 'look', node: <ColourField label={t('atrium.customize.barColour')} value={targets[0].shapeColor || targets[0].borderColor || '#cbcbcb'} onChange={shapeColor => set(targets, { shapeColor })} /> }]
+
       case 'shape':
       case 'line': {
         const props = {
@@ -242,8 +245,9 @@ export default function BatchEditPanel({ traces, lobbyId, userId, zIndex, fontOp
     shape: t('atrium.customize.sectionShape'),
     content: t('atrium.customize.sectionContent'),
     effects: t('atrium.customize.sectionEffects'),
+    look: t('atrium.customize.sectionLook'),
   }
-  const ORDER: SectionId[] = ['style', 'fill', 'outline', 'text', 'shape', 'content', 'effects']
+  const ORDER: SectionId[] = ['look', 'style', 'fill', 'outline', 'text', 'shape', 'content', 'effects']
 
   return (
     <CustomizationPanel

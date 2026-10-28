@@ -24,7 +24,11 @@ const LOW = 50, HIGH = 14000
 // frames from playing it may not.
 const FALL = 0.04, SETTLE = 8
 
+// `color`: the bars' (a sound's own, or its border's); else the theme's ink,
+// which reads on a light atrium and a dark one alike -- a fixed light grey
+// all but vanished on a light one.
 export default function AudioBars({ traceId, playing, color }: { traceId: string; playing: boolean; color?: string }) {
+  const ink = color || 'rgb(var(--c-fg))'
   const box = useRef<HTMLDivElement>(null)
   const [count, setCount] = useState(24)
   useEffect(() => {
@@ -79,9 +83,10 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
   }, [playing, traceId, count])
 
   const live = mode === 'heard'
+  // Played, the colour full; at rest, the same colour fainter -- seen, but quiet.
   const fill = mode !== 'rest'
-    ? `linear-gradient(to top, ${color || '#8f8f8f'}, ${color ? color + '88' : '#cbcbcb'})`
-    : 'linear-gradient(to top, rgba(203, 203, 203,0.3), rgba(203, 203, 203,0.1))'
+    ? `linear-gradient(to top, ${ink}, color-mix(in srgb, ${ink} 55%, transparent))`
+    : `linear-gradient(to top, color-mix(in srgb, ${ink} 45%, transparent), color-mix(in srgb, ${ink} 18%, transparent))`
   return (
     <div ref={box} className="flex items-stretch justify-center gap-[2px] flex-1 w-full min-h-[24px]" style={{ contain: 'layout paint' }}>
       {rest.map((h, i) => (
@@ -102,7 +107,7 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
           />
           {live && (
             <div ref={el => { peaks.current[i] = el }} className="absolute inset-0 pointer-events-none" style={{ transform: 'translateY(100%)' }}>
-              <div className="h-[2px] w-full" style={{ background: color || '#e8e8e8', opacity: 0.9 }} />
+              <div className="h-[2px] w-full" style={{ background: ink, opacity: 0.9 }} />
             </div>
           )}
         </div>

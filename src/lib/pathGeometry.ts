@@ -57,6 +57,26 @@ export function pathOutline(points: PathPoint[], curve: PathCurve | undefined, r
       : points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 }
 
+// A path's line as it's drawn, in straight runs: its points, its elbow's
+// corners, or its curve in short runs -- to ask what touches the line
+// itself (area and lasso selection), not the box around it.
+export function pathLine(points: PathPoint[], curve: PathCurve | undefined, runs = 12): Pt[] {
+  if (points.length < 2 || (curve !== 'bezier' && curve !== 'elbow')) return points
+  if (curve === 'elbow') return elbowThrough(points)
+  const line: Pt[] = [points[0]]
+  for (let i = 0; i < points.length - 1; i++) {
+    const p = points[i], a = handlesAt(points, i).cp2, b = handlesAt(points, i + 1).cp1, q = points[i + 1]
+    for (let k = 1; k <= runs; k++) {
+      const t = k / runs, u = 1 - t
+      line.push({
+        x: u * u * u * p.x + 3 * u * u * t * a.x + 3 * u * t * t * b.x + t * t * t * q.x,
+        y: u * u * u * p.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * q.y,
+      })
+    }
+  }
+  return line
+}
+
 // One handle moved, the other turned to stay in line with it, through the
 // point, keeping its own length: an aligned node, as in a drawing program.
 export function alignedHandle(point: Pt, moved: Pt, other: Pt): Pt {

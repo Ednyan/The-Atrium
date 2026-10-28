@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { elbowAtFor, elbowGrip, elbowRoute, elbowThrough, lineCrosses, lineMiddle, roundedPath, trimEnds } from '../src/lib/elbow.ts'
-import { alignedHandle, curvePath, handlesAt, pointBetween, snapToBorder, borderMarks, boxHolds } from '../src/lib/pathGeometry.ts'
+import { alignedHandle, curvePath, handlesAt, pathLine, pointBetween, snapToBorder, borderMarks, boxHolds } from '../src/lib/pathGeometry.ts'
+import { lineInLasso } from '../src/lib/traceLinks.ts'
 
 const box = (x: number, y: number, hw = 50, hh = 30) => ({ x, y, hw, hh })
 
@@ -28,6 +29,19 @@ test('a turned box is met at its turned border', () => {
   // A square turned 45 degrees: its corner, half a diagonal out.
   const corner = { ...box(0, 0, 20, 20), turn: Math.PI / 4 }
   assert.ok(Math.abs(elbowRoute(corner, box(300, 0), 0.5)[0].x - 20 * Math.SQRT2) < 1e-9)
+})
+
+test('a path is taken by its line, not the box round it', () => {
+  // A V: its box holds the space between its arms, which no line crosses.
+  const v = [{ x: 0, y: 0 }, { x: 100, y: 200 }, { x: 200, y: 0 }]
+  const between = { left: 80, top: 10, right: 120, bottom: 60 }
+  assert.equal(lineCrosses(pathLine(v, 'straight'), between), false)
+  assert.equal(lineCrosses(pathLine(v, 'straight'), { left: 90, top: 150, right: 110, bottom: 210 }), true)
+  // A curved one, sampled along its curve; a lasso round the gap takes nothing.
+  assert.equal(lineCrosses(pathLine(v, 'bezier'), between), false)
+  const gap = [{ x: 80, y: 10 }, { x: 120, y: 10 }, { x: 120, y: 60 }, { x: 80, y: 60 }]
+  assert.equal(lineInLasso(pathLine(v, 'straight'), gap), false)
+  assert.equal(lineInLasso(pathLine(v, 'straight'), [{ x: -10, y: -10 }, { x: 20, y: -10 }, { x: 20, y: 20 }, { x: -10, y: 20 }]), true)
 })
 
 test('dragging the middle run: `at` from the pointer, and back again', () => {

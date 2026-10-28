@@ -1479,6 +1479,7 @@ const ptPT: Catalogue = {
   'atrium.customize.sectionEffects': 'Efeitos',
   'atrium.customize.sectionExr': "EXR",
   'atrium.customize.sectionLook': "Cor",
+  'atrium.customize.barColour': 'Cor das barras',
   'atrium.exr.view': "Transformação de visualização",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

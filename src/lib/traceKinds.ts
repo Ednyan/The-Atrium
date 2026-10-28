@@ -27,6 +27,7 @@ export type Setting =
   | 'line'      // a path's colour, thickness, curve and arrows
   | 'strokes'   // a drawing's stroke colour
   | 'light'     // the light it gives off; a glow along a path
+  | 'bars'      // a sound's bars: their colour
 
 // Everything drawn in the usual box: every trace that isn't a shape.
 const BOXED: readonly Setting[] = ['frame', 'captions', 'light']
@@ -39,7 +40,7 @@ export const SETTINGS: Record<TraceKind, readonly Setting[]> = {
   document: BOXED,
   sheet: BOXED,
   chart: BOXED,
-  audio: BOXED,
+  audio: ['bars', ...BOXED],
   video: BOXED,
   frame: ['frame', 'light'],
   shape: ['shape', 'link', 'light'],
@@ -64,6 +65,8 @@ export const SETTING_FIELDS: Record<Exclude<Setting, 'link' | 'strokes'>, readon
   shape: ['shapeColor', 'shapeOpacity', 'shapeNoFill', 'shapeOutlineOnly', 'shapeOutlineColor', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'cornerRadius'],
   line: ['shapeColor', 'shapeOpacity', 'shapeOutlineWidth', 'shapeOutlineOpacity', 'strokeStyle', 'pathCurveType', 'pathArrowStart', 'pathArrowEnd'],
   light: ['illuminate', 'lightColor', 'lightIntensity', 'lightRadius', 'lightPulse', 'lightPulseSpeed', 'lightEmit'],
+  // Kept in the shape's colour field, which a sound has no other use for.
+  bars: ['shapeColor'],
 }
 
 // Every field of a trace's look, by its settings.
@@ -79,7 +82,7 @@ export function styleFieldsOf(trace: Kinded): Set<keyof Trace> {
 export const has = (trace: Kinded, setting: Setting): boolean => SETTINGS[kindOf(trace)]?.includes(setting) ?? false
 
 // What Batch Edit offers, in the order it shows it.
-export const BATCH_SETTINGS: readonly Setting[] = ['strokes', 'shape', 'line', 'font', 'frame', 'captions', 'light']
+export const BATCH_SETTINGS: readonly Setting[] = ['strokes', 'bars', 'shape', 'line', 'font', 'frame', 'captions', 'light']
 
 // Each of `order`'s settings that any of the traces has, with the ones that
 // have it.

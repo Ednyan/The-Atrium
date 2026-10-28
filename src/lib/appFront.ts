@@ -29,11 +29,31 @@ function watch() {
   }
   void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
     const win = getCurrentWindow()
-    const read = async () => tell({ focused: await win.isFocused().catch(() => true), minimised: await win.isMinimized().catch(() => false) })
-    await win.onFocusChanged(() => void read())
+    const read = async (focused?: boolean) => tell({
+      focused: focused ?? await win.isFocused().catch(() => true),
+      minimised: await win.isMinimized().catch(() => false),
+    })
+    await win.onFocusChanged(({ payload }) => void read(payload))
     await win.onResized(() => void read())
     // As it is now: opened behind another app, it was never focused, and no change says so.
     void read()
+    // A change of focus can go unheard -- after long behind other windows,
+    // the app came back slowed (BACKGROUND_FPS) and stayed so, quickening
+    // only while moved about, until the atrium was opened again. So while
+    // it believes itself behind, any use of it asks again, and so does a
+    // look every few seconds.
+    let askedAt = 0
+    const ask = () => {
+      if (front.focused && !front.minimised) return
+      const now = performance.now()
+      if (now - askedAt < 500) return
+      askedAt = now
+      void read()
+    }
+    for (const event of ['focus', 'pointerdown', 'keydown', 'wheel', 'pointermove'] as const) {
+      window.addEventListener(event, ask, { capture: true, passive: true })
+    }
+    window.setInterval(ask, 2000)
   })
 }
 

@@ -40,10 +40,10 @@ import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { APPLY_COLOUR_EVENT, type ApplyColour } from '../lib/palette'
 import { ELBOW_RADIUS, elbowRoute, lineCrosses } from '../lib/elbow'
-import { alignedHandle, boxHolds, borderMarks, handlesAt, pathOutline, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
+import { alignedHandle, boxHolds, borderMarks, handlesAt, pathLine, pathOutline, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
-import ShapeStyleControls, { Check, ScaleControls, StrokeStylePicker } from './ShapeStyleControls'
+import ShapeStyleControls, { Check, ColourField, ScaleControls, StrokeStylePicker } from './ShapeStyleControls'
 import BatchEditPanel from './BatchEditPanel'
 import HeldImage from './HeldImage'
 import { has } from '../lib/traceKinds'
@@ -59,7 +59,7 @@ import { fileName, followed, stopFollowing, watchFollowing } from '../lib/liveFi
 import { asStrokeData, drawingOf, isDrawingTrace, strokeDensity, strokesIn } from '../lib/brushes'
 import { changeStrokes, rasterizeDrawings, splitDrawing } from '../lib/drawingFiles'
 import { extractPages } from '../lib/pdfTraces'
-import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink, boxInLasso, threadInLasso } from '../lib/traceLinks'
+import { DEFAULT_LABEL_SIZE, DEFAULT_LINK_OPACITY, DEFAULT_LINK_WIDTH, boxCrosses, joins, threadCrosses, type Box, type TraceLink, boxInLasso, lineInLasso, threadInLasso } from '../lib/traceLinks'
 import TraceLinksLayer, { LinkMenu, type LinkEnd } from './TraceLinksLayer'
 import RotateHandles from './RotateHandles'
 import StrokeStyleField from './StrokeStyleField'
@@ -2876,7 +2876,13 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
       // A frame only when all of it is in the area: one drawn inside a frame,
       // to take some of what's in it, shouldn't take the frame too.
       if (isFrame(t)) return b.cx - b.halfW >= area.left && b.cx + b.halfW <= area.right && b.cy - b.halfH >= area.top && b.cy + b.halfH <= area.bottom
-      const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
+      // A path by its line, as drawn -- not the box around it, which took
+      // a path lying near what the area was drawn round.
+      if (isPathTrace(t)) {
+        const w = (t.shapeOutlineWidth ?? 2) / 2
+        return lineCrosses(pathLine((t.shapePoints ?? []) as PathPoint[], t.pathCurveType), { left: area.left - w, top: area.top - w, right: area.right + w, bottom: area.bottom + w })
+      }
+      const turn = ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
       return boxCrosses(b.cx, b.cy, b.halfW, b.halfH, turn, area)
     }).map(t => t.id)
     const edges = (id: string) => {
@@ -2913,7 +2919,8 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
     const picked = all.filter(t => {
       if (isLockedTrace(t)) return false
       const b = boxes.get(t.id)!
-      const turn = isPathTrace(t) ? 0 : ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
+      if (isPathTrace(t)) return lineInLasso(pathLine((t.shapePoints ?? []) as PathPoint[], t.pathCurveType), lasso)
+      const turn = ((getTraceTransform(t).rotation ?? 0) * Math.PI) / 180
       return boxInLasso(b.cx, b.cy, b.halfW, b.halfH, turn, lasso, isFrame(t))
     }).map(t => t.id)
     const edges = (id: string) => {
@@ -5732,7 +5739,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
   const colourOf = (trace: Trace, colour: string): Partial<Trace> | null => {
     if (trace.strokeData) return null
     if (isPathTrace(trace)) return { shapeOutlineColor: colour }
-    if (trace.type === 'shape') return { shapeColor: colour }
+    if (trace.type === 'shape' || trace.type === 'audio') return { shapeColor: colour }
     if (trace.type === 'text') return { textColor: colour }
     if (isFrame(trace)) return { borderColor: colour }
     return null
@@ -7586,8 +7593,19 @@ return (
                 </div>
               )}
               {trace.type === 'audio' && (
-                <div className="absolute inset-0 flex flex-col select-none" style={{ padding: '12px 10px 4px' }}>
-                  <AudioBars traceId={trace.id} playing={playingMedia.has(trace.id)} color={trace.borderColor} />
+                // With no background of its own it sits on the atrium's ground:
+                // on a light one, its bars, controls and name in dark ink --
+                // the page's own ink is light, and they all but vanished.
+                <div
+                  className="absolute inset-0 flex flex-col select-none"
+                  style={{
+                    padding: '12px 10px 4px',
+                    ...(!(trace.showBackground ?? true) && previewFrameColour(atriumBackground) === 0x1a1a1a
+                      ? { ['--c-fg' as string]: '34 34 34', ['--c-strong' as string]: '20 20 20' }
+                      : {}),
+                  }}
+                >
+                  <AudioBars traceId={trace.id} playing={playingMedia.has(trace.id)} color={trace.shapeColor || trace.borderColor} />
                   {showDescription && trace.content && (
                     <p className="mt-2 text-[10px] text-nier-strong/60 text-center truncate tracking-wide">{trace.content}</p>
                   )}
@@ -9564,6 +9582,16 @@ return (
                     return url ? { ...rest, [id]: url } : rest
                   })}
                   onCommit={(id, updates) => updateTraceCustomization(id, updates)}
+                />
+              </Section>
+            )}
+            {/* A sound's bars: their colour, the border's until set. */}
+            {has(editingTrace, 'bars') && (
+              <Section id="look" title={t('atrium.customize.sectionLook')}>
+                <ColourField
+                  label={t('atrium.customize.barColour')}
+                  value={editingTrace.shapeColor || editingTrace.borderColor || '#cbcbcb'}
+                  onChange={shapeColor => updateTraceCustomization(editingTrace.id, { shapeColor })}
                 />
               </Section>
             )}

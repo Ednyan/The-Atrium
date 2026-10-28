@@ -1476,6 +1476,7 @@ const ko: Catalogue = {
   'atrium.customize.sectionEffects': '효과',
   'atrium.customize.sectionExr': "EXR",
   'atrium.customize.sectionLook': "색",
+  'atrium.customize.barColour': '막대 색상',
   'atrium.exr.view': "뷰 변환",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

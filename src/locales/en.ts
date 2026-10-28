@@ -1426,6 +1426,7 @@ export const en = {
   'atrium.customize.sectionEffects': 'Effects',
   'atrium.customize.sectionExr': "EXR",
   'atrium.customize.sectionLook': "Colour",
+  'atrium.customize.barColour': 'Bar colour',
   'atrium.exr.view': "View transform",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

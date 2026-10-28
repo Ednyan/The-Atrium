@@ -243,6 +243,21 @@ export function insidePolygon(x: number, y: number, points: Point[]): boolean {
   return inside
 }
 
+// Whether a lasso takes a line (a path's, pathLine): any of it inside, or
+// crossing the lasso's edge.
+export function lineInLasso(line: Point[], lasso: Point[]): boolean {
+  if (line.some(p => insidePolygon(p.x, p.y, lasso))) return true
+  const side = (p: Point, q: Point, r: Point) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i]
+    for (let j = 0, k = lasso.length - 1; j < lasso.length; k = j++) {
+      const c = lasso[k], d = lasso[j]
+      if (side(a, b, c) !== side(a, b, d) && side(c, d, a) !== side(c, d, b)) return true
+    }
+  }
+  return false
+}
+
 // A trace's turned box, as its four corners.
 function cornersOf(cx: number, cy: number, hw: number, hh: number, turn: number): Point[] {
   const c = Math.cos(turn), s = Math.sin(turn)

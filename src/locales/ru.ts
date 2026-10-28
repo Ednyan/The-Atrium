@@ -1478,6 +1478,7 @@ const ru: Catalogue = {
   'atrium.customize.sectionEffects': 'Эффекты',
   'atrium.customize.sectionExr': "EXR",
   'atrium.customize.sectionLook': "Цвет",
+  'atrium.customize.barColour': 'Цвет полос',
   'atrium.exr.view': "Преобразование вида",
   'atrium.exr.view.aces': "ACES Filmic",
   'atrium.exr.view.agx': "AgX",

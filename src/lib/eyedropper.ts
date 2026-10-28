@@ -23,6 +23,7 @@ function ownColour(trace: Trace): string | null {
   if (trace.strokeData) return null
   if (isPathTrace(trace)) return asHex(shownValue(trace, 'shapeOutlineColor'))
   if (trace.type === 'shape') return asHex(shownValue(trace, 'shapeColor'))
+  if (trace.type === 'audio') return asHex(trace.shapeColor ?? trace.borderColor)
   if (trace.type === 'text') return asHex(shownValue(trace, 'textColor'))
   if (trace.type === 'frame') return asHex(trace.borderColor ?? borderColourOf('frame'))
   return null
