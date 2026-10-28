@@ -231,6 +231,43 @@ export function TextAlignField({ value, onChange }: { value: TextAlign | null; o
   )
 }
 
+// Where a text sits up and down in its box -- the middle unless chosen --
+// for one trace or several, `value` null while they disagree.
+export type TextValign = 'top' | 'middle' | 'bottom'
+const VALIGN: Record<TextValign, { mark: string; label: TranslationKey }> = {
+  top: { mark: '▲', label: 'atrium.customize.alignTop' },
+  middle: { mark: '◆', label: 'atrium.customize.alignCenter' },
+  bottom: { mark: '▼', label: 'atrium.customize.alignBottom' },
+}
+export function TextValignField({ value, onChange }: { value: TextValign | null; onChange: (valign: TextValign) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div>
+      <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.verticalAlignment')}</label>
+      <div className="flex gap-2">
+        {(Object.keys(VALIGN) as TextValign[]).map(valign => (
+          <button
+            key={valign}
+            type="button"
+            data-text-valign={valign}
+            title={t(VALIGN[valign].label)}
+            aria-label={t(VALIGN[valign].label)}
+            aria-pressed={value === valign}
+            onClick={() => onChange(valign)}
+            className={`flex-1 px-2 py-2 text-xs border transition-colors ${
+              value === valign
+                ? 'bg-nier-bg text-nier-black border-nier-bg'
+                : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
+            }`}
+          >
+            {VALIGN[valign].mark}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // The switch itself: a track, its knob at the far end when on -- and in the
 // middle when it's on for some of what's selected and off for the rest. The
 // one look every on/off in the app has (Switch here, Check in the panels).

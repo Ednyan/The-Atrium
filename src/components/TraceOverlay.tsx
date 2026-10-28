@@ -50,7 +50,7 @@ import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceS
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
-import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, Switch, TextAlignField, traceKindLabel } from './Customization'
+import { ACTION_ICONS, CustomizationPanel, PanelAction, Section, Switch, TextAlignField, TextValignField, traceKindLabel } from './Customization'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import DeckSlide from './DeckSlide'
 import { isDeckFile } from '../lib/deckDraw'
@@ -3851,7 +3851,20 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
 
       let factor = 1
       let angleDeg = 0
-      if (activeTransformMode === 'group-scale') {
+      // How much the selection is stretched across and down: both the
+      // factor at a corner, which keeps its shape; one alone at a side.
+      let fx = 1, fy = 1
+      if (activeTransformMode === 'group-scale' && groupCorner.length === 1) {
+        // A side: that axis only, away from the opposite side, under the pointer.
+        const dx = (e.clientX - startPosRef.current.x) / groupZoom
+        const dy = (e.clientY - startPosRef.current.y) / groupZoom
+        const w = Math.max(1e-6, bounds.maxX - bounds.minX), h = Math.max(1e-6, bounds.maxY - bounds.minY)
+        if (groupCorner === 'r') fx = Math.max(0.01, 1 + dx / w)
+        if (groupCorner === 'l') fx = Math.max(0.01, 1 - dx / w)
+        if (groupCorner === 'b') fy = Math.max(0.01, 1 + dy / h)
+        if (groupCorner === 't') fy = Math.max(0.01, 1 - dy / h)
+        setAlignGuides(null)
+      } else if (activeTransformMode === 'group-scale') {
         const startDist = Math.hypot(startPosRef.current.x - centerRef.current.x, startPosRef.current.y - centerRef.current.y)
         const currentDist = Math.hypot(e.clientX - centerRef.current.x, e.clientY - centerRef.current.y)
         factor = startDist > 0 ? Math.max(0.01, currentDist / startDist) : 1
@@ -3918,6 +3931,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           }
         }
         setAlignGuides(guides)
+        fx = fy = factor
       } else {
         angleDeg = (currentAngle - startAngle) * (180 / Math.PI)
         // A group has no single "current angle" to snap onto -- its members
@@ -3945,7 +3959,7 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
         const dx = px - center.x
         const dy = py - center.y
         if (activeTransformMode === 'group-scale') {
-          return { x: pivot.x + (px - pivot.x) * factor, y: pivot.y + (py - pivot.y) * factor }
+          return { x: pivot.x + (px - pivot.x) * fx, y: pivot.y + (py - pivot.y) * fy }
         }
         return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos }
       }
@@ -3969,11 +3983,18 @@ export default function TraceOverlay({ traces, onPaste, atriumBackground, gridLi
           updateTraceCustomization(id, { shapePoints: newPoints }, { skipUndo: true })
         } else {
           const moved = mapPoint(start.x, start.y)
+          // A turned trace stretched along the screen's axes would skew,
+          // which a box can't: its own sides are stretched by as much as
+          // the stretch draws them out -- exactly, when it's upright or
+          // the stretch is even.
+          const turn = (start.rotation * Math.PI) / 180
+          const alongX = Math.hypot(fx * Math.cos(turn), fy * Math.sin(turn))
+          const alongY = Math.hypot(fx * Math.sin(turn), fy * Math.cos(turn))
           updateTraceTransform(id, {
             x: moved.x,
             y: moved.y,
-            scaleX: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleX * factor) : start.scaleX,
-            scaleY: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleY * factor) : start.scaleY,
+            scaleX: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleX * alongX) : start.scaleX,
+            scaleY: activeTransformMode === 'group-scale' ? Math.max(0.01, start.scaleY * alongY) : start.scaleY,
             rotation: activeTransformMode === 'group-rotate' ? start.rotation + angleDeg : start.rotation,
           }, { skipUndo: true })
         }
@@ -8283,6 +8304,22 @@ return (
                   onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale', corner)}
                 />
               ))}
+              {/* Its sides: stretched one way only. */}
+              {['t', 'r', 'b', 'l'].map((side) => (
+                <div
+                  key={`group-${side}`}
+                  data-trace-element="true"
+                  data-keeps-size="" className="absolute trace-nier-handle trace-nier-handle-edge pointer-events-auto z-[1000001]"
+                  style={{
+                    left: `${side === 'l' ? boxLeft : side === 'r' ? boxLeft + boxWidth : boxLeft + boxWidth / 2}px`,
+                    top: `${side === 't' ? boxTop : side === 'b' ? boxTop + boxHeight : boxTop + boxHeight / 2}px`,
+                    transform: 'translate(-50%, -50%)',
+                    cursor: resizeCursor(side, 0),
+                  }}
+                  onMouseDown={(e) => handleGroupMouseDown(e, 'group-scale', side)}
+                  onTouchStart={(e) => handleGroupTouchDown(e, 'group-scale', side)}
+                />
+              ))}
               <RotateHandles
                 cx={boxLeft + boxWidth / 2}
                 cy={boxTop + boxHeight / 2}
@@ -9809,32 +9846,10 @@ return (
                     }}
                   />
 
-                  {/* Up and down in the box: the middle unless chosen. */}
-                  <div>
-                    <label className="block text-nier-strong text-xs tracking-[0.1em] uppercase mb-2">{t('atrium.customize.verticalAlignment')}</label>
-                    <div className="flex gap-2">
-                      {(['top', 'middle', 'bottom'] as const).map(valign => (
-                        <button
-                          key={valign}
-                          data-text-valign={valign}
-                          title={t(valign === 'top' ? 'atrium.customize.alignTop' : valign === 'bottom' ? 'atrium.customize.alignBottom' : 'atrium.customize.alignCenter')}
-                          aria-label={t(valign === 'top' ? 'atrium.customize.alignTop' : valign === 'bottom' ? 'atrium.customize.alignBottom' : 'atrium.customize.alignCenter')}
-                          aria-pressed={(editingTrace.textValign ?? 'middle') === valign}
-                          onClick={() => {
-                            setEditingTrace({ ...editingTrace, textValign: valign })
-                            updateTraceCustomization(editingTrace.id, { textValign: valign })
-                          }}
-                          className={`flex-1 px-2 py-2 text-xs border transition-colors ${
-                            (editingTrace.textValign ?? 'middle') === valign
-                              ? 'bg-nier-bg text-nier-black border-nier-bg'
-                              : 'bg-nier-black text-nier-bg border-nier-border/30 hover:border-nier-border/60'
-                          }`}
-                        >
-                          {valign === 'top' ? '▲' : valign === 'bottom' ? '▼' : '◆'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <TextValignField
+                    value={editingTrace.textValign ?? 'middle'}
+                    onChange={valign => updateTraceCustomization(editingTrace.id, { textValign: valign })}
+                  />
 
                   {/* Text Color */}
                   <div>

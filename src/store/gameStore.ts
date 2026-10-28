@@ -214,9 +214,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const stored = localStorage.getItem('playerColor')
     return stored || '#ffffff'
   })(),
+  // Off unless turned on: the arrows at the screen's edge toward traces
+  // out of sight.
   showTraceIndicators: (() => {
     const stored = localStorage.getItem('showTraceIndicators')
-    return stored !== null ? stored === 'true' : true
+    return stored === 'true'
   })(),
   showTraceTypeLabels: (() => {
     const stored = localStorage.getItem('showTraceTypeLabels')
