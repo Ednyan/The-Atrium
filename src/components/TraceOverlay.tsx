@@ -305,13 +305,15 @@ const ROTATION_SNAP_DEGREES = 5
 // How close to the viewport edge the cursor has to get before dragging a
 // trace starts scrolling the canvas, and how far it scrolls per frame at the
 // very edge (screen pixels, converted to world units at the current zoom).
-// A drag's pointer, held by the page (pointer capture) until it's let go: its
-// moves go straight to the page and on to the drag's listeners on the
+// A drag's pointer, held by the scene (pointer capture) until it's let go: its
+// moves go straight to the scene and on to the drag's listeners on the
 // window, and the browser no longer looks through every trace and thread
 // under it on each one to find what it's over -- with hundreds of each, a
-// large part of a drag's frame. The mouse's pointer is always 1.
+// large part of a drag's frame. The mouse's pointer is always 1. The scene,
+// not the page: Chromium (the desktop app's WebView2) shows the holder's
+// cursor, and only the scene hides the system's (index.css .lobby-scene).
 function holdPointer() {
-  try { document.body.setPointerCapture(1) } catch { /* a touch, or no pointer down: nothing to hold */ }
+  try { document.querySelector('.lobby-scene')?.setPointerCapture(1) } catch { /* a touch, or no pointer down: nothing to hold */ }
 }
 
 const EDGE_PAN_ZONE_PX = 64

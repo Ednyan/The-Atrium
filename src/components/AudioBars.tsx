@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyserOf } from '../lib/spatialSound'
 import { barCount, restHeights } from '../lib/soundBars'
+import { hexToRgb } from '../lib/cursorLook'
 // The bands, spaced as hearing is: 50 Hz to 14 kHz.
 const LOW = 50, HIGH = 14000
 // How far a bar may fall in a frame, of its whole height; and for how many
@@ -78,10 +79,20 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
   }, [playing, traceId, count])
 
   const live = mode === 'heard'
+  // The colour fainter, as rgb(... / alpha): a gradient between such colours
+  // is drawn in sRGB. Between color-mix()es -- colours of the newer kind --
+  // it's drawn in Oklab, which Firefox draws far slower: forty sound traces
+  // held a drag to 17fps there, 25 this way.
+  const faint = (alpha: number) => {
+    if (!color) return `rgb(var(--c-fg) / ${alpha})`
+    if (!/^#[\da-f]{6}$/i.test(color)) return `color-mix(in srgb, ${color} ${alpha * 100}%, transparent)`
+    const { r, g, b } = hexToRgb(color)
+    return `rgb(${r} ${g} ${b} / ${alpha})`
+  }
   // Played, the colour full; at rest, the same colour fainter -- seen, but quiet.
   const fill = mode !== 'rest'
-    ? `linear-gradient(to top, ${ink}, color-mix(in srgb, ${ink} 55%, transparent))`
-    : `linear-gradient(to top, color-mix(in srgb, ${ink} 45%, transparent), color-mix(in srgb, ${ink} 18%, transparent))`
+    ? `linear-gradient(to top, ${ink}, ${faint(0.55)})`
+    : `linear-gradient(to top, ${faint(0.45)}, ${faint(0.18)})`
   return (
     <div ref={box} className="flex items-stretch justify-center gap-[2px] flex-1 w-full min-h-[24px]" style={{ contain: 'layout paint' }}>
       {rest.map((h, i) => (
