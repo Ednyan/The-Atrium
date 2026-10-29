@@ -1184,9 +1184,13 @@ const ROSTER_TOLD_MS = 3_000
 const ROOM_MOST = 40_000
 // With the room live, a save goes through it as it's made, and into the store
 // with the others of the last KEEP_MS: one file for them all, not one for each
-// pause (docs/SCALING.md: each is a write to Drive or R2, and rows in D1).
-// Sooner when the room drops, the page is hidden or closed, or the sync stops.
-const KEEP_MS = 30_000
+// pause (docs/SCALING.md: each is a request, a write to Drive or R2, and rows
+// in D1). Sooner when the room drops, the page is hidden or closed, or the
+// sync stops; what's waiting is kept in the vault meanwhile, so a page closed
+// stores it at its next visit. Two minutes, not thirty seconds: a quarter of
+// the writes, and someone opening the atrium with nobody in its room sees
+// edits up to two minutes late.
+const KEEP_MS = 2 * 60_000
 // The room's first connection, this soon after the opening look: nothing to look for again.
 const ROOM_AFTER_LOOK_MS = 10_000
 

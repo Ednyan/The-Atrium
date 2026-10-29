@@ -67,7 +67,7 @@ redo these tables from it once there's real traffic.
   - saving through the room, staying in an atrium with its room live, and
     coming back to the browser: nothing. Nothing is asked on a timer.
   - Besides: the Google sign-in renewed about hourly while Drive is used,
-    saves stored every 30 s while someone edits an online atrium (below),
+    saves stored every 2 minutes while someone edits an online atrium (below),
     files read the first time on a device, and the image proxy.
 
   A visit (open the browser, two atriums, a change, back) was 10 requests,
@@ -80,13 +80,15 @@ redo these tables from it once there's real traffic.
 - **Saves to online atriums** are the big unknown.
   - A save goes out after each 1.5 s pause (`QUIET_MS` in `lib/driveSync`).
     With the room live, which is whenever someone's inside, it goes
-    through the room at once, and into the store with the others every 30 s
-    (`KEEP_MS`).
+    through the room at once, and into the store with the others every 2
+    minutes (`KEEP_MS`; every 30 s before 2026-10-29).
   - Each stored save is one new file: one R2 write, and about 3 D1 rows
     written (its listing row and two indexes). The write throttle adds its
     own row once every ten writes.
   - Assumed: one person in ten edits an online atrium on a given day, for
-    about 15 stored saves (about 150 before the 30 s batching).
+    about 15 stored saves at 30 s (about 150 before any batching). At 2
+    minutes it's about 4, so the R2 and D1 figures in the table, made at
+    30 s, are on the high side.
   - Per daily active person, with uploads, sessions and throttles: about
     2.5 R2 writes and 15 D1 rows written a day. (20 before 2026-10-29:
     visits are now sent once a sitting, nothing is written to one's profile
@@ -203,6 +205,10 @@ Daily limits reset at 00:00 UTC.
   admin inside kept a socket there to hear it. Now the directory keeps the
   ask a fortnight, and an owner's or admin's app reads it as it opens the
   atrium.
+- **Saves stored every 2 minutes while the room is live** (2026-10-29,
+  `KEEP_MS`), not every 30 s: a quarter of the store writes -- requests, R2
+  writes and D1 rows -- while someone edits. Someone opening the atrium
+  with nobody in its room sees edits up to 2 minutes late.
 - **Writes only when something changed**: one's name and Drive key, one's
   hosted folder, an invitation's secret, the visits (once a sitting).
 - **Mail through two free providers, codes first.**
@@ -254,15 +260,9 @@ Each would lower the requests further; none is needed below Tier 1.
    bucket's own domain by the same unguessable ids, they'd cost R2 reads
    instead. Same trust as now: the files are sealed, and only an id finds
    them.
-3. **Saves stored less often while the room is live.** `KEEP_MS` stores
-   what went through the room every 30 s while someone edits. At 2
-   minutes, a quarter of the store writes: Workers requests, R2 writes and
-   D1 rows, the biggest costs at Tiers 3–4. What's not stored yet is kept
-   in the editor's vault, so nothing is lost; someone opening the atrium
-   without the room live would see edits up to 2 minutes late.
-
-Items 1 and 2 need the R2 bucket given a domain in the Cloudflare
-dashboard first.
+Both need a second R2 bucket, public, with a domain of its own: the files
+bucket also holds the cloud atriums held for their owners (`held/`),
+unsealed, which must never be readable by id.
 
 ## The prices behind the table
 
