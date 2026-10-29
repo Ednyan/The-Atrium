@@ -62,6 +62,9 @@ interface GameState {
   // device; null for the order they come in. Checked against the tools there
   // are where it's read (QuickBar barOrder).
   quickBarOrder: string[] | null
+  // The Customization panel's footer: the actions chosen for it, in their
+  // order (PanelFooter), on this device; null for the ones it comes with.
+  panelActions: string[] | null
   // A playing trace heard from where it is (lib/spatialSound); off by default.
   spatialSound: boolean
   // The atrium in miniature in a corner while the view moves (Minimap); on unless turned off.
@@ -109,6 +112,7 @@ interface GameState {
   setAutoOpenCustomization: (on: boolean) => void
   setConfirmDelete: (on: boolean) => void
   setQuickBarOrder: (order: string[] | null) => void
+  setPanelActions: (actions: string[] | null) => void
   setSpatialSound: (on: boolean) => void
   setShowMinimap: (on: boolean) => void
   setAutoSave: (on: boolean) => void
@@ -249,6 +253,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       return null
     }
   })(),
+  panelActions: (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('atrium.panel.actions') || 'null')
+      return Array.isArray(stored) ? stored.filter((action: unknown): action is string => typeof action === 'string') : null
+    } catch {
+      return null
+    }
+  })(),
   hideOtherNameTags: (() => {
     const stored = localStorage.getItem('hideOtherNameTags')
     return stored !== null ? stored === 'true' : false
@@ -330,6 +342,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (order) localStorage.setItem('atrium.quickBar.order', JSON.stringify(order))
     else localStorage.removeItem('atrium.quickBar.order')
     set({ quickBarOrder: order })
+  },
+  setPanelActions: (actions) => {
+    if (actions) localStorage.setItem('atrium.panel.actions', JSON.stringify(actions))
+    else localStorage.removeItem('atrium.panel.actions')
+    set({ panelActions: actions })
   },
   setHideOtherNameTags: (hide) => {
     localStorage.setItem('hideOtherNameTags', String(hide))

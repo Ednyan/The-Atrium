@@ -51,7 +51,7 @@ import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceS
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
-import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelAction, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel } from './Customization'
+import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelFooter, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel, type FooterAction } from './Customization'
 import { MenuIcon } from './AtriumMenu'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import DeckSlide from './DeckSlide'
@@ -3510,6 +3510,40 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     top: inGroup ? t('atrium.menu.moveTopOfGroup') : t('atrium.menu.moveToTop'),
     bottom: inGroup ? t('atrium.menu.moveBottomOfGroup') : t('atrium.menu.moveToBottom'),
   })
+
+  // Everything the Customization panel's footer can hold, for `ids` -- one
+  // trace, or a selection (Batch Edit) -- each saying whether it applies
+  // there; the footer shows those chosen for it (Customization, PanelFooter).
+  // One list for both panels, which each wrote out their own. `close`: the
+  // panel, as what it customizes is deleted or made a picture.
+  const footerActions = (ids: string[], close: () => void): FooterAction[] => {
+    const chosen = traces.filter(tr => ids.includes(tr.id))
+    const one = chosen.length === 1 ? chosen[0] : null
+    const allLocked = chosen.length > 0 && chosen.every(isLockedTrace)
+    const drawings = chosen.filter(isDrawingTrace).length
+    const flippable = chosen.filter(tr => tr.type !== 'audio' && tr.type !== 'video')
+    // Of one group: to its top; else, of everything.
+    const group = chosen[0] ? groupIdOf(chosen[0], layers) : null
+    const labels = orderLabels(one ? !!group : !!group && chosen.every(tr => tr.layerId === group) && !wholeGroups.groups.has(group))
+    // A change to each, as one step of undo.
+    const each = (patch: (tr: Trace) => Partial<Trace>, of = chosen) => inOneStep(() => { for (const tr of of) updateTraceCustomization(tr.id, patch(tr)) })
+    return [
+      { id: 'duplicate', icon: ACTION_ICONS.duplicate, label: t('common.duplicate'), onClick: () => duplicateTrace(ids[0]) },
+      { id: 'copyStyle', icon: ACTION_ICONS.copyStyle, label: t('atrium.menu.copyStyle'), applies: !!one, onClick: () => copyTraceStyle(ids[0]) },
+      { id: 'pasteStyle', icon: ACTION_ICONS.pasteStyle, label: t('atrium.menu.pasteStyle'), onClick: () => pasteTraceStyle(ids) },
+      ...(['up', 'down', 'top', 'bottom'] as const).map(how => ({ id: how, icon: ACTION_ICONS[how], label: labels[how], onClick: () => moveInOrder(ids, how) })),
+      { id: 'lock', icon: ACTION_ICONS.lock, label: allLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock'), active: allLocked, onClick: () => each(() => (allLocked ? UNLOCKED : { isLocked: true })) },
+      { id: 'delete', icon: ACTION_ICONS.delete, label: t('common.delete'), danger: true, onClick: () => { close(); deleteTraces(ids, []) } },
+      { id: 'crop', icon: ACTION_ICONS.crop, label: t('atrium.customize.actionCrop'), active: isCropMode, applies: !!one && !isPathTrace(one) && !isFrame(one), onClick: () => setIsCropMode(was => !was) },
+      { id: 'flipH', icon: ACTION_ICONS.flipH, label: t('atrium.menu.flipHorizontal'), applies: flippable.length > 0, onClick: () => each(tr => ({ flipHorizontal: !tr.flipHorizontal }), flippable) },
+      { id: 'flipV', icon: ACTION_ICONS.flipV, label: t('atrium.menu.flipVertical'), applies: flippable.length > 0, onClick: () => each(tr => ({ flipVertical: !tr.flipVertical }), flippable) },
+      { id: 'resetRotation', icon: ACTION_ICONS.resetRotation, label: t('atrium.menu.resetRotation'), onClick: () => inOneStep(() => { for (const id of ids) updateTraceTransform(id, { rotation: 0 }) }) },
+      { id: 'connect', icon: ACTION_ICONS.connect, label: t('atrium.menu.connectTo'), onClick: () => setConnectFrom(ids) },
+      { id: 'frame', icon: ACTION_ICONS.frame, label: t('atrium.menu.wrapInFrame'), applies: chosen.some(tr => !isFrame(tr)), onClick: () => wrapInFrame(ids) },
+      { id: 'rasterize', icon: ACTION_ICONS.rasterize, label: drawings > 1 ? t('atrium.menu.rasterizeAll', { count: drawings }) : t('atrium.menu.rasterize'), applies: drawings > 0, onClick: () => { close(); rasterize(ids) } },
+      { id: 'export', icon: ACTION_ICONS.export, label: t('atrium.export.open'), applies: !!onExport, onClick: () => onExport?.(ids) },
+    ]
+  }
 
   const MAX_REORGANIZE_TRACES = 100
 
@@ -9474,26 +9508,7 @@ return (
             onClose={done}
             closeLabel={t('atrium.customize.done')}
             zIndex={MENU_PANEL_Z_INDEX}
-            actions={
-              <>
-                <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(editingTrace.id)} />
-                <PanelAction icon={ACTION_ICONS.copyStyle} label={t('atrium.menu.copyStyle')} onClick={() => copyTraceStyle(editingTrace.id)} />
-                <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle([editingTrace.id])} />
-                {(['up', 'down', 'top', 'bottom'] as const).map(how => (
-                  <PanelAction key={how} icon={ACTION_ICONS[how]} label={orderLabel[how]} onClick={() => moveInOrder([editingTrace.id], how)} />
-                ))}
-                <PanelAction
-                  icon={ACTION_ICONS.lock}
-                  label={locked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
-                  active={locked}
-                  onClick={() => change(locked ? UNLOCKED : { isLocked: true })}
-                />
-                {isDrawingTrace(editingTrace) && (
-                  <PanelAction icon={ACTION_ICONS.rasterize} label={t('atrium.menu.rasterize')} onClick={() => rasterize([editingTrace.id])} />
-                )}
-                <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setEditingTrace(null); deleteTraces([editingTrace.id], []) }} />
-              </>
-            }
+            actions={<PanelFooter actions={footerActions([editingTrace.id], () => setEditingTrace(null))} />}
           >
             {/* Its name in the Layer panel, at the top -- a text trace's is
                 its own (Text 1, ...): its content is its text. */}
@@ -9894,37 +9909,7 @@ return (
             setShowBatchEditPanel(false)
           }}
           // What can be done to all of them; a style is copied from one.
-          actions={(() => {
-            const ids = [...multiSelectedIds]
-            const allLocked = traces.filter(tr => multiSelectedIds.has(tr.id)).every(isLockedTrace)
-            const drawings = traces.filter(tr => multiSelectedIds.has(tr.id) && isDrawingTrace(tr)).length
-            return (
-              <>
-                <PanelAction icon={ACTION_ICONS.duplicate} label={t('common.duplicate')} onClick={() => duplicateTrace(ids[0])} />
-                <PanelAction icon={ACTION_ICONS.pasteStyle} label={t('atrium.menu.pasteStyle')} onClick={() => pasteTraceStyle(ids)} />
-                {(() => {
-                  // Of one group: to its top; else, of everything.
-                  const chosen = traces.filter(tr => multiSelectedIds.has(tr.id))
-                  const group = chosen[0] ? groupIdOf(chosen[0], layers) : null
-                  const oneGroup = !!group && chosen.every(tr => tr.layerId === group) && !wholeGroups.groups.has(group)
-                  const labels = orderLabels(oneGroup)
-                  return (['up', 'down', 'top', 'bottom'] as const).map(how => (
-                    <PanelAction key={how} icon={ACTION_ICONS[how]} label={labels[how]} onClick={() => moveInOrder(ids, how)} />
-                  ))
-                })()}
-                <PanelAction
-                  icon={ACTION_ICONS.lock}
-                  label={allLocked ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
-                  active={allLocked}
-                  onClick={() => inOneStep(() => { for (const id of ids) updateTraceCustomization(id, allLocked ? UNLOCKED : { isLocked: true }) })}
-                />
-                {drawings > 0 && (
-                  <PanelAction icon={ACTION_ICONS.rasterize} label={drawings > 1 ? t('atrium.menu.rasterizeAll', { count: drawings }) : t('atrium.menu.rasterize')} onClick={() => { setShowBatchEditPanel(false); rasterize(ids) }} />
-                )}
-                <PanelAction icon={ACTION_ICONS.delete} label={t('common.delete')} danger onClick={() => { setShowBatchEditPanel(false); deleteTraces(ids, []) }} />
-              </>
-            )
-          })()}
+          actions={<PanelFooter actions={footerActions([...multiSelectedIds], () => setShowBatchEditPanel(false))} />}
         />
       )}
 
