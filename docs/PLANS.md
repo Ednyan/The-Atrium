@@ -21,6 +21,24 @@ accountant confirm the VAT section before launch.
 - **Recommended:** launch at €4 a month or €36 a year (€3 also works). Sell
   the paid plan on features, not storage.
 
+## Decided (2026-10-29)
+
+| | Free | Paid |
+|---|---|---|
+| Cloud atriums (hosted; public or shared) | 1 | 10 |
+| Cloud space, across them | 50 MB | 5 GB |
+| A file, at most | 25 MB (as today) | 200 MB (video) |
+| Mirror of one's public Drive atriums | 100 MB | 1 GB |
+| Drive, browser and desktop atriums, live rooms | unlimited | unlimited |
+| Price | — | €4 a month, or €36 a year |
+
+- In a shared or public atrium, each person's files count against their
+  own space, whatever their plan.
+- 50 MB is today's amount, so nobody already using it goes over. Anyone
+  with more than 1 cloud atrium keeps them all but can't make another,
+  and the same when a subscription ends (see "Changing today's limits").
+- Not built yet: see "Building it".
+
 ## The plans as proposed
 
 **Free**
