@@ -198,11 +198,16 @@ const IDENTITY_HERE = 'atrium.driveIdentity'
 let mine: Mine | null = null
 
 // One's public key and folder, in the directory (lib/people) -- where whoever
-// adds one finds them. Once a visit.
+// adds one finds them. Once a visit, and only if the directory doesn't have
+// them already (read at the page's start anyway): written every visit, it was
+// a request each.
 let identityPublished = ''
 async function publishIdentity(own: Mine): Promise<void> {
   if (identityPublished === `${own.user}/${own.root}`) return
-  await myEntry({ drive_key: own.identity.publicJwk, drive_root: own.root || null })
+  const entry = await myEntry().catch(() => null)
+  if (!entry || !sameKey(entry.drive_key, own.identity.publicJwk) || (entry.drive_root ?? null) !== (own.root || null)) {
+    await myEntry({ drive_key: own.identity.publicJwk, drive_root: own.root || null })
+  }
   identityPublished = `${own.user}/${own.root}`
 }
 
@@ -276,7 +281,8 @@ const rootIn = (person: { drive_root: string | null; hosted_root?: string | null
 // The atrium's picture as this copy last took it: its file (the owner's) and version.
 // `viewer`: a public atrium's (phase 8), with no place in its roster and no
 // folder -- its keys are the roster's own, and it sends nothing.
-interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean; viewer?: boolean; preview?: string; previewVersion?: string }
+// `cleared`: the invitation that let one in has had its secret cleared.
+interface Kept { roster: string; folder: string; keys: Record<string, string>; owner?: boolean; viewer?: boolean; preview?: string; previewVersion?: string; cleared?: boolean }
 const KEPT = 'atrium.driveAtriums.byAccount'
 // Before (2026-10-18): one list for the whole browser. Each entry is claimed
 // by the account its roster, as last read here, has in it, as that account
@@ -1456,9 +1462,13 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
     window.dispatchEvent(new CustomEvent(LOBBY_CHANGED_EVENT, { detail: s.lobbyId }))
     // Let in properly: the invitation's secret cleared -- and the invitation
     // kept, so it's under "Shared with you" again should one leave it here.
-    if (memberOf(roster, s.me) && !s.inviteCleared) {
+    // Once for good, kept with the atrium here: done at every visit, it was a
+    // request each.
+    if (memberOf(roster, s.me) && !s.inviteCleared && !s.kept.cleared) {
       s.inviteCleared = true
       await clearSecret(s.kept.roster)
+      const now = allKept(s.me)[s.lobbyId]
+      if (now) keep(s.lobbyId, { ...now, cleared: true }, s.me)
     }
     // Generations made since, as the roster gives them.
     const keys = await newKeys(roster, s.me, !!s.kept.viewer, await keysOf(s.keyring))

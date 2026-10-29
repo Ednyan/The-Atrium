@@ -49,22 +49,59 @@ const READS: Record<string, (body: Record<string, unknown>) => boolean> = {
 // a file's version, a folder's list.
 const READ_UNDER = ['/store/meta/', '/store/list/']
 const readTest = (path: string, get: boolean) => READS[path] ?? (get && READ_UNDER.some(under => path.startsWith(under)) ? () => true : undefined)
-const BATCH_MS = 40
+// When a batch goes: once the reads have paused this long -- or this long
+// after the first, whatever comes. A page's reads start one after another, a
+// hundred or two milliseconds apart (its parts mount, each asks): sent
+// 40ms after each first, a load of the atrium browser was eight requests;
+// gathered so, two.
+const QUIET_MS = 250
+const MOST_WAIT_MS = 700
 // The worker takes this many in one.
 const MOST_IN_BATCH = 16
 let waiting: { path: string; body?: object; get: boolean; done: (response: Response | null) => void }[] = []
+let firstAt = 0, timer = 0
 let noBatches = false
+
+// The directory's answers -- one's profile, invitations, the atriums listed,
+// one's visits and held atriums, storage, the themes -- kept a few minutes:
+// a page asked for them again and again (the browser loaded twice on
+// opening, and again on coming back from an atrium), each time a request.
+// Anything written through the worker forgets them all (forgetReads), so
+// one's own change is never answered from before it. Not the store's
+// versions and lists: a roster changed, told through the room, is read anew.
+const KEEP_MS = 3 * 60_000
+const KEPT_PATHS = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage', '/themes', '/contributions/wall'])
+const kept = new Map<string, { at: number; status: number; body: string }>()
+/** Every directory answer kept is let go of: something was just written. */
+export const forgetReads = () => kept.clear()
 
 /** `path`'s answer, asked together with the other reads made about now --
  *  or null, for the caller to ask alone: not a read, or the batch failed.
- *  `get`: asked with GET, as the public reads are. */
+ *  `get`: asked with GET, as the public reads are. A call that isn't a read
+ *  is a write (or may be): what's kept is forgotten. */
 export function viaBatch(path: string, body?: Record<string, unknown>, get = false): Promise<Response | null> {
   const url = workerUrl()
   const read = readTest(path, get)
-  if (!url || noBatches || !read || !read(body ?? {})) return Promise.resolve(null)
+  if (!read || !read(body ?? {})) {
+    forgetReads()
+    return Promise.resolve(null)
+  }
+  if (!url || noBatches) return Promise.resolve(null)
+  const key = KEPT_PATHS.has(path) ? `${path} ${JSON.stringify(body ?? {})}` : null
+  const had = key ? kept.get(key) : undefined
+  if (had && Date.now() - had.at < KEEP_MS) return Promise.resolve(new Response(had.body, { status: had.status }))
   return new Promise(done => {
-    waiting.push({ path, body, get, done })
-    if (waiting.length === 1) window.setTimeout(() => void sendBatch(url), BATCH_MS)
+    const now = Date.now()
+    if (!waiting.length) firstAt = now
+    waiting.push({
+      path, body, get,
+      done: response => {
+        if (key && response?.ok) void response.clone().text().then(text => kept.set(key, { at: Date.now(), status: response.status, body: text }))
+        done(response)
+      },
+    })
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => void sendBatch(url), Math.min(QUIET_MS, firstAt + MOST_WAIT_MS - now))
   })
 }
 

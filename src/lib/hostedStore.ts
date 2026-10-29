@@ -13,7 +13,7 @@
 // Drive says them ("Drive 404", "Drive 403"), which the sync knows.
 import { accountToken } from './signedIn'
 import { workerUrl } from './rooms'
-import { viaBatch } from './worker'
+import { forgetReads, viaBatch } from './worker'
 import { base64ToBytes, bytesToBase64 } from './driveFormat'
 import { keptSpace } from './drive'
 import type { DriveStore } from './driveSync'
@@ -64,6 +64,7 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
     // the worker streams on as they come (workers/rooms, who.ts sentFile):
     // also a plain request.
     write: async (name, bytes, place) => {
+      forgetReads()
       const head = JSON.stringify({ token: await signedInToken(), name, ...place })
       const response = await fetch(at('write'), { method: 'POST', body: new Blob([`${head}\n`, bytes as BlobPart]) })
       if (!response.ok) throw await failed(response)

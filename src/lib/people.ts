@@ -73,11 +73,17 @@ export const publishAtrium = (listing: { lobby_id: string; roster: string; name:
 export const unpublishAtrium = (lobbyId: string) => ask('unpublish', { lobby_id: lobbyId })
 
 /** An existing account's name, in the directory -- where others find it to
- *  add it to a Drive atrium. Once a visit; a username already someone
- *  else's there stays theirs. */
+ *  add it to a Drive atrium. Once a visit, and only if the directory doesn't
+ *  have it so already (its entry is read at the page's start anyway): it was
+ *  written on every visit, a request each. A username already someone else's
+ *  there stays theirs. */
 let published = ''
 export function publishAccount(id: string, username: string, displayName: string | null): void {
   if (published === `${id}/${username}/${displayName}`) return
   published = `${id}/${username}/${displayName}`
-  void myEntry({ username, display_name: displayName }).catch(error => console.info('[atrium] the directory:', error instanceof Error ? error.message : error))
+  void (async () => {
+    const entry = await myEntry().catch(() => null)
+    if (entry && entry.username === username && (entry.display_name ?? null) === displayName) return
+    await myEntry({ username, display_name: displayName })
+  })().catch(error => console.info('[atrium] the directory:', error instanceof Error ? error.message : error))
 }
