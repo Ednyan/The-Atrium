@@ -1,4 +1,5 @@
 import type { Trace } from '../types/database'
+import { has } from './traceKinds.ts'
 
 // Builds a DB-ready insert row from a Trace snapshot. Shared by duplicate
 // (new id, offset position) and by undo/redo's delete<->reinsert round-trip
@@ -219,6 +220,10 @@ export function traceColumns(trace: Trace): Record<string, any> {
     if (trace.pathArrowStart !== undefined) columns.path_arrow_start = trace.pathArrowStart
     if (trace.pathArrowEnd !== undefined) columns.path_arrow_end = trace.pathArrowEnd
   }
+  // A sound's bars' colour, kept in the shape's colour (lib/traceKinds,
+  // 'bars'): it was written for a shape alone, so a sound's went back to its
+  // old colour once saved.
+  if (has(trace, 'bars') && trace.shapeColor !== undefined) columns.shape_color = trace.shapeColor
 
   return columns
 }
