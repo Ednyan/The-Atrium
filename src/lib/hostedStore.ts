@@ -25,9 +25,10 @@ const at = (path: string) => `${workerUrl()}/store/${path}`
 
 const failed = async (response: Response) => new Error(`Drive ${response.status}: ${(await response.json().catch(() => null))?.error ?? response.statusText}`)
 
-// A read: anyone's, by id.
+// A read: anyone's, by id -- a version or a list with the others asked about
+// then (lib/worker, viaBatch), a file's bytes alone.
 async function read(path: string): Promise<Response> {
-  const response = await fetch(at(path))
+  const response = (await viaBatch(`/store/${path}`, undefined, true)) ?? await fetch(at(path))
   if (!response.ok) throw new Error(`Drive ${response.status}: ${path}`)
   return response
 }

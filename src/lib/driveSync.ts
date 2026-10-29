@@ -45,6 +45,7 @@ import { useGameStore } from '../store/gameStore'
 import { isDesktop } from './supabase'
 import { workerAccount } from './signedIn'
 import { hostedSpace, hostedStore, isHostedId } from './hostedStore'
+import { inFront, onFront } from './appFront'
 import { mirrorList, mirrorPut, mirroredStore } from './mirror'
 import { t } from './i18n'
 import type { TranslationKey } from '../locales/en'
@@ -1134,10 +1135,13 @@ async function engine() {
 // missed (docs/SCALING.md: Drive's quota per minute at scale; each look at the
 // hosted store is the Atrium's own request) -- and at once when the room's
 // back after a gap. Without the room, a hosted atrium's looks are fewer too.
+// Never while the app is behind others or minimised: what's due is looked at
+// as it comes back to the front (lib/appFront) -- a tab left open all day was
+// a look every two minutes, all day.
 const QUIET_MS = 1500
 const LOOK_MS = 20_000
 const LOOK_HOSTED_MS = 60_000
-const LOOK_LIVE_MS = 2 * 60_000
+const LOOK_LIVE_MS = 10 * 60_000
 const lookEvery = (s: Session) => (roomStatus(s.lobbyId) === 'live' ? LOOK_LIVE_MS : isHostedId(s.kept.roster) ? LOOK_HOSTED_MS : LOOK_MS)
 // Saves read side by side.
 const AT_ONCE = 6
@@ -1278,7 +1282,11 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   // Left unkept by the last visit (closed before they went): now.
   keepNow()
   // Each tick a little early must still count: a second's grace.
-  s.looking = window.setInterval(() => { if (session === s && Date.now() - s.lookedAt >= lookEvery(s) - 1000) look() }, LOOK_MS)
+  const lookIfDue = () => { if (session === s && inFront() && Date.now() - s.lookedAt >= lookEvery(s) - 1000) look() }
+  s.looking = window.setInterval(lookIfDue, LOOK_MS)
+  const stopFront = onFront(lookIfDue)
+  const stopHearing = s.stopHearing
+  s.stopHearing = () => { stopHearing(); stopFront() }
 }
 
 /** Out of step: what was left to go up goes, then nothing more. Leaving an
@@ -1558,18 +1566,19 @@ async function listWriters(s: Session, roster: Roster): Promise<{ user: string; 
     for (const person of await peopleByIds(invitedHere.map(invite => invite.user))) writers.push({ user: person.id, root: rootIn(person, isHostedId(s.kept.roster)) })
   }
   for (const invite of invitedWritersOf(roster)) if (s.folders.has(invite.user)) writers.push({ user: invite.user, root: null })
-  const listed: { user: string; files: Listed[] }[] = []
-  for (const writer of writers) {
+  // Side by side, so a hosted atrium's lists go to the worker as one request
+  // (lib/worker, viaBatch).
+  const listed = await Promise.all(writers.map(async writer => {
     let folder = s.folders.get(writer.user)
     if (!folder) {
-      if (!writer.root) continue
+      if (!writer.root) return null
       folder = (await store.listByLink(writer.root)).find(file => file.name === s.lobbyId)?.id
-      if (!folder) continue
+      if (!folder) return null
       s.folders.set(writer.user, folder)
     }
-    listed.push({ user: writer.user, files: await store.listByLink(folder) })
-  }
-  return listed
+    return { user: writer.user, files: await store.listByLink(folder) }
+  }))
+  return listed.filter(writer => writer !== null)
 }
 
 /** A save read from Drive -- or null, gone: removed by its writer once a

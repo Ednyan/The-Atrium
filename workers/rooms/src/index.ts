@@ -48,6 +48,11 @@ const MOST_PER_SECOND = 40
 // whatever it holds, and this is how a visit's dozen became two or three.
 const BATCHABLE = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator',
   '/pinterest/status', '/store/usage', '/store/appdata', '/themes', '/contributions/wall'])
+// And, asked with GET, the hosted store's public reads by id: a file's
+// version, a folder's list -- an atrium browser's cards, a sync's look at its
+// writers, each was a request of its own.
+const BATCHABLE_UNDER = ['/store/meta/', '/store/list/']
+const batchable = (path: string, get: boolean) => BATCHABLE.has(path) || (get && BATCHABLE_UNDER.some(under => path.startsWith(under)))
 const MOST_IN_BATCH = 16
 
 async function batch(request: Request, env: Env): Promise<Response> {
@@ -56,10 +61,13 @@ async function batch(request: Request, env: Env): Promise<Response> {
   const asked = await request.json().catch(() => null) as { calls?: unknown } | null
   const calls = Array.isArray(asked?.calls) ? asked.calls as { path?: unknown; body?: unknown; get?: unknown }[] : null
   if (!calls || calls.length > MOST_IN_BATCH) return answer(400, { error: 'calls' })
+  // What a batch held, for `wrangler tail`: the requests a page makes are
+  // counted by these, and the dashboard sees only /batch.
+  console.log(JSON.stringify({ batch: calls.map(call => typeof call?.path === 'string' ? call.path.replace(/\/h\.[\w-]+$/, '/h.*') : '?') }))
   const origin = request.headers.get('Origin') ?? ''
   const answers = await Promise.all(calls.map(async call => {
     const path = typeof call?.path === 'string' ? call.path : ''
-    if (!BATCHABLE.has(path)) return { status: 400, body: { error: 'not batchable' } }
+    if (!batchable(path, call?.get === true)) return { status: 400, body: { error: 'not batchable' } }
     const inner = new Request(new URL(path, request.url), call.get
       ? { method: 'GET', headers: { Origin: origin } }
       : { method: 'POST', headers: { Origin: origin }, body: JSON.stringify(call.body ?? {}) })

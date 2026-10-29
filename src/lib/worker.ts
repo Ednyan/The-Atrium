@@ -45,6 +45,10 @@ const READS: Record<string, (body: Record<string, unknown>) => boolean> = {
   '/themes': () => true,
   '/contributions/wall': () => true,
 }
+// The hosted store's public reads by id, asked with GET (lib/hostedStore):
+// a file's version, a folder's list.
+const READ_UNDER = ['/store/meta/', '/store/list/']
+const readTest = (path: string, get: boolean) => READS[path] ?? (get && READ_UNDER.some(under => path.startsWith(under)) ? () => true : undefined)
 const BATCH_MS = 40
 // The worker takes this many in one.
 const MOST_IN_BATCH = 16
@@ -56,7 +60,7 @@ let noBatches = false
  *  `get`: asked with GET, as the public reads are. */
 export function viaBatch(path: string, body?: Record<string, unknown>, get = false): Promise<Response | null> {
   const url = workerUrl()
-  const read = READS[path]
+  const read = readTest(path, get)
   if (!url || noBatches || !read || !read(body ?? {})) return Promise.resolve(null)
   return new Promise(done => {
     waiting.push({ path, body, get, done })
@@ -76,7 +80,9 @@ async function sendBatch(url: string) {
       const { answers } = await response.json() as { answers: { status: number; body: unknown }[] }
       some.forEach((call, i) => {
         const answer = answers[i]
-        call.done(answer ? new Response(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body), { status: answer.status }) : null)
+        // One a worker older than this page doesn't take in a batch: alone.
+        const refused = answer?.status === 400 && (answer.body as { error?: string } | null)?.error === 'not batchable'
+        call.done(answer && !refused ? new Response(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body), { status: answer.status }) : null)
       })
     } catch {
       some.forEach(call => call.done(null))

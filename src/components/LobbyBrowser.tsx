@@ -827,10 +827,13 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     // The account, or this browser's guest (a public atrium's viewer).
     const me = sharedId()
     if (!me) return
-    for (const lobby of lobbies) {
-      if (Date.now() - (lookedAt.get(lobby.id) ?? 0) < LOOK_AGAIN_MS) continue
-      lookedAt.set(lobby.id, Date.now())
-      const standing = await lookAtDriveAtrium(lobby.id, me)
+    const due = lobbies.filter(lobby => Date.now() - (lookedAt.get(lobby.id) ?? 0) >= LOOK_AGAIN_MS)
+    for (const lobby of due) lookedAt.set(lobby.id, Date.now())
+    // Side by side: a hosted atrium's versions go to the worker together
+    // (lib/worker, viaBatch) -- each card's two, one after the other, were
+    // two requests a card.
+    const looked = await Promise.all(due.map(async lobby => ({ lobby, standing: await lookAtDriveAtrium(lobby.id, me).catch(() => null) })))
+    for (const { lobby, standing } of looked) {
       if (!standing || standing === 'in') continue
       await leaveDriveAtrium(lobby.id, standing === 'deleted').catch(error => console.warn('[drive] letting go of', lobby.id, error))
       setBrowserLobbies(shown => shown.filter(shownLobby => shownLobby.id !== lobby.id))
