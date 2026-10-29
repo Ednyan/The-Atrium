@@ -266,7 +266,7 @@ const ko: Catalogue = {
   'browser.drive.waitingAccount': '참여했을 때와 다른 Google 계정으로 로그인했어요. {owner} 님에게 초대를 다시 보내 달라고 하세요. 바로 들어갈 수 있어요.',
   'browser.drive.notAdded': '{owner} 님이 아직 추가하지 않았어요. 내 사용자 이름을 추가해 달라고 하세요: {username}',
   'browser.drive.ask': '입장 요청',
-  'browser.drive.asked': '요청했어요. {owner}님과 관리자가 Atrium 안에 있을 때 볼 수 있고, 허락하면 바로 들어가요. 이 페이지를 열어 두세요.',
+  'browser.drive.asked': '요청했어요. {owner}님과 관리자가 다음에 이 Atrium을 열 때 보게 돼요. 허락받으면 참여를 다시 눌러 주세요.',
   'browser.drive.blockedHere': '이 Atrium에 참여할 수 없어요.',
   'browser.drive.dbUpdate': 'Drive Atrium을 쓰려면 먼저 데이터베이스 업데이트가 필요해요(add_drive_identity.sql).',
   'browser.drive.needDrive': 'atrium 키는 Google 드라이브에 보관돼 있어요. 이 기기에서 Google 드라이브를 한 번 연결하면 여기서도 쓸 수 있어요.',

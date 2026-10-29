@@ -265,7 +265,7 @@ const zh: Catalogue = {
   'browser.drive.waitingAccount': '你登录的 Google 账号与加入时不同。请让 {owner} 重新发送你的邀请，之后你就能立即进入。',
   'browser.drive.notAdded': '{owner} 还没有添加你。请让对方添加你的用户名：{username}',
   'browser.drive.ask': '请求进入',
-  'browser.drive.asked': '已发送请求。{owner} 和管理员在 Atrium 中时会看到它，他们同意后你会立即进入。请保持此页面打开。',
+  'browser.drive.asked': '已发送请求。{owner} 和管理员下次打开这个 Atrium 时会看到。他们同意后，再点一次“加入”。',
   'browser.drive.blockedHere': '你无法加入这个 Atrium。',
   'browser.drive.dbUpdate': 'Drive 中的 Atrium 需要先更新数据库。',
   'browser.drive.needDrive': '你的 atrium 密钥保存在你的 Google 云端硬盘里。在这台设备上连接一次 Google 云端硬盘，就能在这里使用。',

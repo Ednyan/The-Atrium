@@ -32,7 +32,7 @@
 // downloaded again.
 
 import * as drive from './drive'
-import { clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, publishAtrium, sendInvitation, unpublishAtrium, withdrawInvitation, type Person } from './people'
+import { askersOf, askToBeLetIn, clearSecret, invitationsToMe, myEntry, peopleByIds, personNamed, publishAtrium, sendInvitation, unpublishAtrium, withdrawInvitation, type AskRow, type Person } from './people'
 import {
   admit, base64ToBytes, bytesToBase64, carried, changesSince, clockTime, clockWho, invitedWritersOf, KeyMissing, keyFromText, keyOf, keyringOf, keyToText, later, manages,
   memberOf, merge, newAtriumKey, newGeneration, newIdentity, newRoster, newSecret, openWithSecret, placeOf, removeMember, roomNameFrom, rowsOf, sameKey, seal, sealForSecret, sealJson, tick, unseal, writersOf,
@@ -40,7 +40,7 @@ import {
 } from './driveFormat'
 import { LOBBY_CHANGED_EVENT, tellHere, type LiveTable } from './liveChanges'
 import { trackVaultWrite, vaultWriteDone } from './vaultWrites'
-import { DOOR, listenAtDoor, nameRoomsBy, onRoomEvent, rejoinRoom, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
+import { nameRoomsBy, onRoomEvent, rejoinRoom, roomStatus, sayToRoom, sendThroughRoom, watchRooms } from './rooms'
 import { useGameStore } from '../store/gameStore'
 import { isDesktop } from './supabase'
 import { workerAccount } from './signedIn'
@@ -346,7 +346,7 @@ const newest = (kept: Kept) => Math.max(-1, ...Object.keys(kept.keys).map(Number
 /** Where an atrium's people meet (lib/rooms): a room named from the newest
  *  generation of its key, which only they hold -- not whoever knows the
  *  atrium's id, nor someone taken out of it (a generation is made without
- *  them). Its id alone names its door, where someone not in it asks to be.
+ *  them).
  *  One not kept here (a cloud atrium): its id. */
 export async function roomNameOf(lobbyId: string): Promise<string> {
   const kept = allKept()[lobbyId]
@@ -593,10 +593,6 @@ export function inviteLink(lobbyId: string): string | null {
 export function inviteIn(hash: string): string | null {
   return hash.startsWith(INVITE_PREFIX) && hash.length > INVITE_PREFIX.length ? hash.slice(INVITE_PREFIX.length) : null
 }
-/** The roster's version, without downloading it: what someone waiting to be
- *  let in watches -- a download every few seconds is what Google's robot
- *  check answers. */
-export const rosterVersion = (rosterId: string) => store.version(rosterId)
 
 /** What an invite is to: read by link, no one signed in. */
 export async function readInvite(rosterId: string): Promise<{ lobbyId: string; name: string; owner: string }> {
@@ -1217,8 +1213,6 @@ interface Session {
   // Whether it's been live at all this session: its first connection isn't a return.
   roomWasLive: boolean
   stopHearing: () => void
-  // Listening at the door (lib/rooms), while one may let people in.
-  door: (() => void) | null
   // Those who asked to be let in and were put off, this visit.
   putOff: Set<string>
   // When a save from someone the roster didn't have last made it look again.
@@ -1272,7 +1266,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(Object.entries(state.folders ?? {})), quiet: 0, looking: 0, unkept: state.unkept ?? [], keeping: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, roomWasLive: false, mirrorFilledAt: 0, door: null,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, roomWasLive: false, mirrorFilledAt: 0,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
@@ -1284,7 +1278,6 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   })
   // Saves as they're made, from whoever's in the room.
   const stopSaves = onRoomEvent(ROOM_EVENT, (payload, sender) => { if (session === s) void run(s, x => heard(x, payload, sender)) })
-  const stopAsks = onRoomEvent(ASK_EVENT, (_payload, sender) => { if (session === s) void run(s, x => asked(x, sender)) })
   const stopRoster = onRoomEvent(ROSTER_EVENT, (_payload, sender) => { if (session === s) void run(s, x => rosterTold(x, sender)) })
   const both = async (x: Session) => { await down(x); await up(x) }
   const look = () => { s.lookedAt = Date.now(); void run(s, both) }
@@ -1308,11 +1301,19 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   document.addEventListener('visibilitychange', hidden)
   window.addEventListener('beforeunload', closing)
   s.stopHearing = () => {
-    stopSaves(); stopAsks(); stopRoster(); stopWatching(); s.door?.(); s.door = null
+    stopSaves(); stopRoster(); stopWatching()
     document.removeEventListener('visibilitychange', hidden)
     window.removeEventListener('beforeunload', closing)
   }
   look()
+  // Who's asking to be let in, for one who may let them in -- as the roster
+  // last read here has it: read with the opening look, in its request.
+  const lastRoster = rostersKept()[kept.roster]?.roster
+  if (lastRoster && manages(memberOf(lastRoster, me)?.role)) {
+    void askersOf(lobbyId).then(askers => {
+      for (const asker of askers) if (session === s) void run(s, x => asked(x, asker))
+    }, error => console.warn('[drive] who asks:', error))
+  }
   // Left unkept by the last visit (closed before they went): now.
   keepNow()
   // Each tick a little early must still count: a second's grace.
@@ -1511,9 +1512,6 @@ async function lookAtRoster(s: Session): Promise<Roster | null> {
   const roster = s.roster.roster
   const managing = manages(memberOf(roster, s.me)?.role)
   if (managing && roster.invited.length) await letIn(s, roster)
-  // At the door, unseen, for one who may let people in: asked there (askToJoin).
-  if (managing && !s.door && session === s) s.door = listenAtDoor(s.lobbyId)
-  else if (!managing && s.door) { s.door(); s.door = null }
   // As it was read: those just let in are read this look too (by their
   // invitation's folder), and the next look reads the roster written.
   return roster
@@ -1871,26 +1869,28 @@ async function bringFiles(s: Session, urls: string[], merged = s.merged): Promis
 
 // ---------------------------------------------------------------- asking to be let in
 
-// Someone with the invite link, not added: asking through the atrium's room,
-// for an owner or admin in it to let them in (components/DriveStatus).
-const ASK_EVENT = 'drive-ask'
-const ASK_EVERY_MS = 15_000
+// Someone with the invite link, not added, asking an owner or admin to let
+// them in (components/DriveStatus): one request, kept by the directory (lib/
+// people), and read by an owner's or admin's app with the look it opens the
+// atrium with. It was a socket at the atrium's door, saying so every 15
+// seconds while the asker's page stayed open, heard live by a socket each
+// owner and admin inside kept there: a request each, every visit, for an ask
+// that comes now and then -- seen now as the atrium is next opened.
 
-/** From outside the atrium: asking, again every little while so whoever
- *  comes in later sees it too, until what this returns is called. */
-export const askToJoin = (lobbyId: string) => sayToRoom(lobbyId, ASK_EVENT, {}, ASK_EVERY_MS, DOOR)
+/** From outside the atrium: asking to be let in. */
+export const askToJoin = (lobbyId: string) => askToBeLetIn(lobbyId).then(() => {}, error => console.warn('[drive] asking to be let in:', error))
 
-/** An owner's or admin's app, inside: who asks, as the room knows them --
+/** An owner's or admin's app, inside: who asks, as the directory has them --
  *  not a member, not invited, not blocked, not put off -- shown until let in
  *  or put off. */
-async function asked(s: Session, sender: string): Promise<void> {
+async function asked(s: Session, asker: AskRow): Promise<void> {
   const roster = s.roster?.roster ?? await lookAtRoster(s)
   if (!roster || !manages(memberOf(roster, s.me)?.role)) return
+  const sender = asker.account
   if (memberOf(roster, sender) || roster.invited.some(invite => invite.user === sender) || roster.blocked.includes(sender)) return
-  if (s.putOff.has(sender) || status.asking.some(asker => asker.user === sender)) return
-  const [person] = await peopleByIds([sender])
-  if (!person?.username || session !== s) return
-  setStatus({ asking: [...status.asking, { user: sender, username: person.username, name: person.display_name || person.username }] })
+  if (s.putOff.has(sender) || status.asking.some(one => one.user === sender)) return
+  if (!asker.username || session !== s) return
+  setStatus({ asking: [...status.asking, { user: sender, username: asker.username, name: asker.display_name || asker.username }] })
 }
 
 /** Let in, as an editor: added, as from the members panel. */

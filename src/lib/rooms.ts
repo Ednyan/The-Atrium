@@ -81,12 +81,10 @@ const statusWatchers = new Set<() => void>()
 const roomListeners = new Map<string, Set<(payload: unknown, sender: string) => void>>()
 // What an atrium's room is called: its id, unless something names it
 // otherwise -- lib/driveSync, from the atrium's key, so that only its people
-// can find it. Its id alone then names its door (DOOR), where someone not in
-// it asks to be.
+// can find it. (Asking to be let in was said at a door named by its id
+// alone; it's kept by the directory now, lib/people askToBeLetIn.)
 let nameOf: (lobbyId: string) => Promise<string> = async lobbyId => lobbyId
 export const nameRoomsBy = (namer: typeof nameOf) => { nameOf = namer }
-/** A room asked for at its door: its id alone, whatever names it. */
-export const DOOR = true
 /** The atrium's room in use moved to what its name is now (a new generation
  *  of its key): those in the old one gone from here, the new one joined. */
 export const rejoinRoom = (lobbyId: string) => { if (inUse?.lobbyId === lobbyId) inUse.room.rejoin() }
@@ -123,11 +121,11 @@ export function onRoomEvent(event: string, listener: (payload: unknown, sender: 
 
 /** A word to an atrium's room from outside it -- not present in it, hearing
  *  nothing back -- said again every `everyMs`, so whoever comes in later
- *  hears it too, until what this returns is called. At its `door`, if so. */
-export function sayToRoom(lobbyId: string, event: string, payload: unknown, everyMs: number, door = false): () => void {
+ *  hears it too, until what this returns is called. */
+export function sayToRoom(lobbyId: string, event: string, payload: unknown, everyMs: number): () => void {
   const url = roomServer()
   if (!url || typeof WebSocket === 'undefined') return () => {}
-  const room = new RoomChannel(url, lobbyId, name => supabase!.channel(`lobby-${name}-presence`, {}), true, door)
+  const room = new RoomChannel(url, lobbyId, name => supabase!.channel(`lobby-${name}-presence`, {}), true)
   room.subscribe()
   const say = () => void room.send({ type: 'broadcast', event, payload })
   say()
@@ -136,16 +134,6 @@ export function sayToRoom(lobbyId: string, event: string, payload: unknown, ever
     window.clearInterval(again)
     void room.unsubscribe()
   }
-}
-
-/** At an atrium's door, unseen, while what this returns isn't called: what's
- *  said there reaches onRoomEvent's listeners, as the room's does. */
-export function listenAtDoor(lobbyId: string): () => void {
-  const url = roomServer()
-  if (!url || typeof WebSocket === 'undefined') return () => {}
-  const room = new RoomChannel(url, lobbyId, name => supabase!.channel(`lobby-${name}-presence`, {}), true, DOOR)
-  room.subscribe()
-  return () => void room.unsubscribe()
 }
 
 /** The atrium's presence channel: its room, or Supabase's channel by the name
@@ -185,15 +173,14 @@ class RoomChannel {
   private name = ''
 
   // `aside`: a connection of its own beside the room in use, if any (sayToRoom).
-  // `door`: the atrium's door, not its room.
-  constructor(url: string, lobbyId: string, viaSupabase: (name: string) => RealtimeChannel, readonly aside = false, private readonly door = false) {
+  constructor(url: string, lobbyId: string, viaSupabase: (name: string) => RealtimeChannel, readonly aside = false) {
     this.url = url.replace(/\/$/, '')
     this.lobbyId = lobbyId
     this.viaSupabase = viaSupabase
     setStatus(this, lobbyId, 'trying')
     roomLog('made', this.kind(), lobbyId.slice(0, 8), new Error().stack?.split('\n').slice(2, 5).map(line => line.trim()).join(' < '))
   }
-  private kind() { return this.door ? 'door' : this.aside ? 'aside' : 'room' }
+  private kind() { return this.aside ? 'aside' : 'room' }
 
   on(type: string, filter: { event: string }, callback: Callback) {
     this.listeners.push({ type, event: filter?.event, callback })
@@ -268,7 +255,7 @@ class RoomChannel {
 
   private async connect() {
     if (this.closed || this.fallback) return
-    this.name = this.door ? this.lobbyId : await nameOf(this.lobbyId)
+    this.name = await nameOf(this.lobbyId)
     // Whoever's signed in: an existing account's Supabase sign-in, or a
     // Google account's session from the worker (lib/signedIn).
     const who = await whoIsSignedIn()

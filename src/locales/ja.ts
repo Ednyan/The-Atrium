@@ -262,7 +262,7 @@ const ja: Catalogue = {
   'browser.drive.waitingAccount': '参加したときとは別の Google アカウントでログインしています。{owner} に招待の再送を頼んでください。すぐに入れます。',
   'browser.drive.notAdded': '{owner} はまだあなたを追加していません。あなたのユーザー名を追加するよう頼んでください：{username}',
   'browser.drive.ask': '入室をリクエスト',
-  'browser.drive.asked': 'リクエストしました。{owner} と管理者が Atrium にいる間に表示され、許可されるとすぐに入れます。このページは開いたままにしてください。',
+  'browser.drive.asked': 'リクエストしました。{owner} と管理者が次にこの Atrium を開いたときに表示されます。許可されたら、もう一度「参加」を押してください。',
   'browser.drive.blockedHere': 'この Atrium には参加できません。',
   'browser.drive.dbUpdate': 'Drive の Atrium には先にデータベースの更新が必要です。',
   'browser.drive.needDrive': 'atrium の鍵は Google ドライブに保管されています。この端末で一度 Google ドライブに接続すると、ここで使えます。',

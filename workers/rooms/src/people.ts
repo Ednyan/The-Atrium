@@ -104,6 +104,8 @@ const TABLES = [
   `create table if not exists special_themes (id text primary key, name text not null, mode text not null, theme_settings text not null,
     starts_on text, ends_on text, hidden integer not null default 0, preset text, updated_at integer not null)`,
   'create table if not exists visits (account text not null, lobby_id text not null, at integer not null, primary key (account, lobby_id))',
+  // Asks to be let into an atrium ('ask', 'asks'): one per person and atrium.
+  'create table if not exists asks (lobby_id text not null, account text not null, at integer not null, primary key (lobby_id, account))',
   'create index if not exists links_account on links (account)',
   'create index if not exists invites_to on invites (to_user)',
   'create index if not exists invites_from on invites (from_user)',
@@ -199,6 +201,8 @@ const MOST_IDS = 200
 const MOST_PUBLIC_EACH = 50
 const MOST_PUBLIC_LISTED = 500
 const MOST_PREVIEW_BYTES = 300 * 1024
+// An ask to be let in, kept this long.
+const ASK_KEEP_MS = 14 * DAY_MS
 // A roster's file: a Drive file's id, or the hosted store's (`h.` and its own, src/store.ts).
 const ROSTER_ID = /^(h\.)?[\w-]{10,128}$/
 
@@ -672,6 +676,31 @@ export async function people(request: Request, env: Env, what: string): Promise<
 
     // One's invitation's secret gone, once let in properly: the invitation
     // kept, to open the atrium again from another browser.
+    // Someone not in an atrium asking to be let in (lib/driveSync askToJoin):
+    // kept, one per person and atrium, a fortnight -- for its owner's or an
+    // admin's app to find as it next opens it ('asks'). It was a socket at
+    // the atrium's door, saying so every 15 seconds while their page was open,
+    // heard by a socket each of them kept there.
+    case 'ask': {
+      const lobby = text('lobby', 64)
+      if (!lobby) return answer(400, { error: 'body' })
+      await db.batch([
+        db.prepare('delete from asks where at < ?').bind(Date.now() - ASK_KEEP_MS),
+        db.prepare('insert into asks (lobby_id, account, at) values (?, ?, ?) on conflict (lobby_id, account) do update set at = excluded.at').bind(lobby, who.id, Date.now()),
+      ])
+      return answer(200, { ok: true })
+    }
+    // Who's asking to be let into an atrium: as the directory has them, never
+    // their email -- for whoever has its id, as its door was. Its app leaves
+    // out members, the invited and the blocked, as its roster has them.
+    case 'asks': {
+      const lobby = text('lobby', 64)
+      if (!lobby) return answer(400, { error: 'body' })
+      const { results } = await db.prepare(`select a.account, a.at, c.username, c.display_name from asks a join accounts c on c.id = a.account
+        where a.lobby_id = ? and a.at >= ? and a.account not in (select account from bans) order by a.at limit 50`).bind(lobby, Date.now() - ASK_KEEP_MS).all()
+      return answer(200, results)
+    }
+
     case 'clear': {
       const roster = text('roster', 128)
       if (!roster) return answer(400, { error: 'body' })

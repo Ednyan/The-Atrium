@@ -222,7 +222,7 @@ const de: Catalogue = {
   'browser.drive.waitingAccount': 'Du bist mit einem anderen Google-Konto angemeldet als beim Beitritt. Bitte {owner}, deine Einladung erneut zu senden: Danach kommst du sofort hinein.',
   'browser.drive.notAdded': '{owner} hat dich noch nicht hinzugefügt. Bitte darum, deinen Nutzernamen hinzuzufügen: {username}',
   'browser.drive.ask': 'Um Einlass bitten',
-  'browser.drive.asked': 'Angefragt. {owner} und die Admins des Atriums sehen es, solange sie darin sind, und du kommst hinein, sobald sie dich hereinlassen – lass diese Seite offen.',
+  'browser.drive.asked': 'Angefragt. {owner} und die Admins des Atriums sehen es, wenn sie es das nächste Mal öffnen. Sobald sie dich hereingelassen haben, drück noch einmal auf Beitreten.',
   'browser.drive.blockedHere': 'Du kannst diesem Atrium nicht beitreten.',
   'browser.drive.dbUpdate': 'Drive-Atrien brauchen zuerst ein Datenbank-Update.',
   'browser.drive.needDrive': 'Deine Atrium-Schlüssel liegen in deinem Google Drive. Verbinde Google Drive einmal auf diesem Gerät, um sie hier zu nutzen.',

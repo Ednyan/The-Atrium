@@ -219,7 +219,7 @@ const es: Catalogue = {
   'browser.drive.waitingAccount': 'Has iniciado sesión con otra cuenta de Google distinta a la de cuando te uniste. Pide a {owner} que reenvíe tu invitación: entrarás enseguida.',
   'browser.drive.notAdded': '{owner} aún no te ha añadido. Pídele que añada tu nombre de usuario: {username}',
   'browser.drive.ask': 'Pedir que te dejen entrar',
-  'browser.drive.asked': 'Pedido. {owner} y los administradores del atrium lo ven mientras están dentro, y entras en cuanto te dejen pasar: mantén esta página abierta.',
+  'browser.drive.asked': 'Pedido. {owner} y los administradores del atrium lo verán la próxima vez que lo abran. Cuando te hayan dejado pasar, pulsa Unirse otra vez.',
   'browser.drive.blockedHere': 'No puedes unirte a este atrium.',
   'browser.drive.dbUpdate': 'Los atriums de Drive necesitan antes una actualización de la base de datos.',
   'browser.drive.needDrive': 'Tus claves de atrium están en tu Google Drive. Conecta Google Drive una vez en este dispositivo para usarlas aquí.',

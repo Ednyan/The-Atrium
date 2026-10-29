@@ -53,6 +53,11 @@ export const sendInvitation = (invitation: { to: string; roster: string; lobby_i
 export const invitationsToMe = () => ask<InvitationRow[]>('invites')
 /** One's invitation's secret gone, the invitation kept. */
 export const clearSecret = (roster: string) => ask('clear', { roster })
+/** Asking to be let into an atrium, kept by the directory for its owner and admins. */
+export const askToBeLetIn = (lobby: string) => ask('ask', { lobby })
+export interface AskRow { account: string; at: number; username: string | null; display_name: string | null }
+/** Who's asking to be let into an atrium. */
+export const askersOf = (lobby: string) => ask<AskRow[]>('asks', { lobby })
 /** By whom it's to or from: by its id, or by whom and which atrium. */
 export const withdrawInvitation = (which: { id: string } | { to: string; roster: string }) => ask('uninvite', which)
 

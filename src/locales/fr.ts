@@ -221,7 +221,7 @@ const fr: Catalogue = {
   'browser.drive.waitingAccount': 'Vous êtes connecté à un autre compte Google que lorsque vous avez rejoint. Demandez à {owner} de renvoyer votre invitation : vous entrerez aussitôt.',
   'browser.drive.notAdded': '{owner} ne vous a pas encore ajouté. Demandez-lui d’ajouter votre nom d’utilisateur : {username}',
   'browser.drive.ask': 'Demander à entrer',
-  'browser.drive.asked': 'Demande envoyée. {owner} et les admins de l’atrium la voient tant qu’ils y sont, et vous entrez dès qu’ils vous laissent entrer : gardez cette page ouverte.',
+  'browser.drive.asked': 'Demande envoyée. {owner} et les admins de l’atrium la verront la prochaine fois qu’ils l’ouvriront. Une fois qu’ils vous auront laissé entrer, appuyez à nouveau sur Rejoindre.',
   'browser.drive.blockedHere': 'Vous ne pouvez pas rejoindre cet atrium.',
   'browser.drive.dbUpdate': 'Les atriums Drive demandent d’abord une mise à jour de la base de données.',
   'browser.drive.needDrive': 'Vos clés d’atrium sont dans votre Google Drive. Connectez Google Drive une fois sur cet appareil pour les utiliser ici.',

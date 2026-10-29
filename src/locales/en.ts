@@ -256,7 +256,7 @@ export const en = {
   'browser.drive.waitingAccount': 'You’re signed in to a different Google account than when you joined. Ask {owner} to resend your invitation: you’ll get in straight after, wherever they are.',
   'browser.drive.notAdded': "{owner} hasn't added you yet. Ask them to add your username: {username}",
   'browser.drive.ask': 'Ask to be let in',
-  'browser.drive.asked': 'Asked. {owner} and the atrium’s admins see it while they’re in it, and you go in as soon as they let you — keep this page open.',
+  'browser.drive.asked': 'Asked. {owner} and the atrium’s admins see it the next time they open it. Once they’ve let you in, press Join again.',
   'browser.drive.blockedHere': "You can't join this atrium.",
   'browser.drive.dbUpdate': 'Drive atriums need a database update first.',
   'browser.drive.needDrive': 'Your atrium keys are kept in your Google Drive. Connect Google Drive once on this device to use them here.',

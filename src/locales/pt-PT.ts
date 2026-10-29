@@ -226,7 +226,7 @@ const ptPT: Catalogue = {
   'browser.drive.waitingAccount': 'Iniciou sessão com uma conta Google diferente da que usou quando entrou. Peça a {owner} que reenvie o seu convite: entra logo a seguir.',
   'browser.drive.notAdded': '{owner} ainda não o adicionou. Peça para adicionar o seu nome de utilizador: {username}',
   'browser.drive.ask': 'Pedir para entrar',
-  'browser.drive.asked': 'Pedido enviado. {owner} e os admins do atrium veem-no enquanto lá estão, e entra assim que o deixarem: mantenha esta página aberta.',
+  'browser.drive.asked': 'Pedido enviado. {owner} e os admins do atrium vão vê-lo da próxima vez que o abrirem. Quando o deixarem entrar, carregue em Entrar outra vez.',
   'browser.drive.blockedHere': 'Não pode entrar neste atrium.',
   'browser.drive.dbUpdate': 'Os atriums no Drive precisam primeiro de uma atualização da base de dados.',
   'browser.drive.needDrive': 'As suas chaves de atrium estão no seu Google Drive. Ligue o Google Drive uma vez neste dispositivo para as usar aqui.',

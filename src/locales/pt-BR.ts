@@ -223,7 +223,7 @@ const ptBR: Catalogue = {
   'browser.drive.waitingAccount': 'Você entrou com outra conta Google, diferente da que usou ao entrar no atrium. Peça a {owner} que reenvie seu convite: você entra logo em seguida.',
   'browser.drive.notAdded': '{owner} ainda não adicionou você. Peça para adicionar seu nome de usuário: {username}',
   'browser.drive.ask': 'Pedir para entrar',
-  'browser.drive.asked': 'Pedido enviado. {owner} e os admins do atrium veem enquanto estão nele, e você entra assim que deixarem: mantenha esta página aberta.',
+  'browser.drive.asked': 'Pedido enviado. {owner} e os admins do atrium vão ver na próxima vez que o abrirem. Quando deixarem você entrar, aperte Entrar de novo.',
   'browser.drive.blockedHere': 'Você não pode entrar neste atrium.',
   'browser.drive.dbUpdate': 'Atriums no Drive precisam antes de uma atualização do banco de dados.',
   'browser.drive.needDrive': 'Suas chaves de atrium ficam no seu Google Drive. Conecte o Google Drive uma vez neste dispositivo para usá-las aqui.',

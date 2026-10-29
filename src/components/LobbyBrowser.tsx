@@ -15,7 +15,7 @@ import { driveSpace, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { formatSize } from '../lib/size'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
 import { askAhead, holdReads } from '../lib/worker'
-import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
+import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
@@ -404,8 +404,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // An invite to a Drive atrium, arrived in the address's # (lib/driveSync):
   // read by link, then offered -- or, already joined here, simply opened.
   const [invite, setInvite] = useState<{ rosterId: string; lobbyId: string; name: string; owner: string } | null>(null)
-  const inviteNow = useRef(invite)
-  inviteNow.current = invite
   const [joining, setJoining] = useState<JoinStep | 'opening' | 'waiting' | null>(null)
   const [joinNote, setJoinNote] = useState('')
   // Not added: they can ask an owner or admin in the atrium to let them in.
@@ -441,30 +439,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       const me = await sharedMe()
       let result = await joinDriveAtrium(asked.rosterId, me, setJoining)
       // Added, and let in by the next owner's or admin's app to look -- or
-      // not added, asking an owner or admin in the atrium (its room): the
-      // roster's version watched, while this stays open, and the join asked
-      // again only once it moves (a download every few seconds is what
-      // Google's robot check answers).
-      const outside = () => result.state === 'waiting' || (ask && result.state === 'notAdded')
-      if (outside()) {
-        setJoining('waiting')
+      // not added, asking an owner or admin (one request, kept by the
+      // directory, lib/driveSync askToJoin): said, and Join looks again. It
+      // watched the roster's version every ten seconds while this stayed
+      // open, a request each time for a hosted atrium.
+      if (result.state === 'waiting' || (ask && result.state === 'notAdded')) {
+        if (result.state === 'notAdded') await askToJoin(asked.lobbyId)
+        setAskable(false)
         setJoinNote(result.state === 'notAdded'
           ? t('browser.drive.asked', { owner: asked.owner })
           : t(result.why === 'otherAccount' ? 'browser.drive.waitingAccount' : 'browser.drive.waiting', { owner: asked.owner }))
-        const stopAsking = result.state === 'notAdded' ? askToJoin(asked.lobbyId) : () => {}
-        try {
-          let version = await rosterVersion(asked.rosterId)
-          while (outside() && inviteNow.current?.rosterId === asked.rosterId) {
-            await new Promise(wait => setTimeout(wait, 10_000))
-            const now = await rosterVersion(asked.rosterId)
-            if (now !== version) {
-              version = now
-              result = await joinDriveAtrium(asked.rosterId, me)
-            }
-          }
-        } finally {
-          stopAsking()
-        }
+        return
       }
       if (result.state === 'in') {
         setJoining('opening')

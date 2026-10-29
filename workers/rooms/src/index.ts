@@ -46,7 +46,7 @@ const MOST_PER_SECOND = 40
 // the same checks -- and the answers sent back in order. Only the reads a
 // visit makes, a few at once: a request is one of the free day's 100,000
 // whatever it holds, and this is how a visit's dozen became two or three.
-const BATCHABLE = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator',
+const BATCHABLE = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/people/asks', '/held/mine', '/ops/operator',
   '/pinterest/status', '/store/usage', '/store/appdata', '/themes', '/contributions/wall'])
 // And, asked with GET, the hosted store's public reads by id: a file's
 // version, a folder's list -- an atrium browser's cards, a sync's look at its

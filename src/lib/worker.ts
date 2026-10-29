@@ -38,6 +38,7 @@ const READS: Record<string, (body: Record<string, unknown>) => boolean> = {
   '/people/invites': () => true,
   '/people/visits': body => !('visits' in body),
   '/people/atriums': () => true,
+  '/people/asks': () => true,
   '/held/mine': () => true,
   '/ops/operator': () => true,
   '/pinterest/status': () => true,
@@ -89,6 +90,8 @@ const kindOf = (path: string) => path.split('/')[1] ?? ''
 // What a write changes, where that's narrower than its kind.
 const CHANGES: Record<string, string[]> = {
   '/people/clear': ['/people/invites'],
+  // One's own ask to be let in: nothing one reads.
+  '/people/ask': [],
   '/people/visits': ['/people/visits'],
   '/people/me': ['/people/me'],
   '/people/publish': ['/people/atriums'],
