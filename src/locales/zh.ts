@@ -771,11 +771,9 @@ const zh: Catalogue = {
   'atrium.toast.discardFailed': '无法放弃更改 — 请重试',
 
   // -------------------------------------------------------------- dialogs
-  'atrium.dialog.unsavedTitle': '有更改还没保存',
-  'atrium.dialog.unsavedBody': '你还有 {count} 处更改没有保存。确定要离开吗？',
+  'atrium.dialog.unsavedBody': '你还有 {count} 处更改没有保存。',
   'atrium.dialog.saveAndLeave': '保存并离开',
-  'atrium.dialog.leaveWithoutSaving': '是的，不保存就离开',
-  'atrium.dialog.returnToAtrium': '回到 Atrium',
+  'atrium.dialog.leaveWithoutSaving': '不保存就离开',
   'atrium.dialog.removedTitle': '已被移出 Atrium',
   'atrium.dialog.deletedTitle': 'Atrium 已删除',
   'atrium.dialog.privateTitle': '不再公开',

@@ -1144,17 +1144,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     mySpace!.reserve(bytes)
     return true
   }
-  // That space, as last looked at: when it's opened, each minute, and after
-  // files are sent or removed.
+  // That space, as last looked at: when it's opened, and after files are sent
+  // or removed (lib/driveSync). It was looked at each minute as well -- a
+  // request a minute, for as long as an atrium stayed open.
   const [driveSpace, setDriveSpace] = useState(() => mySpace?.known() ?? null)
   useEffect(() => {
     if (!mySpace) return
     const shown = () => setDriveSpace(mySpace.known())
-    const look = () => void mySpace.look().catch(error => console.warn('[drive] its space:', error))
     window.addEventListener(DRIVE_SPACE_EVENT, shown)
-    look()
-    const every = window.setInterval(look, 60_000)
-    return () => { window.removeEventListener(DRIVE_SPACE_EVENT, shown); window.clearInterval(every) }
+    void mySpace.look().catch(error => console.warn('[drive] its space:', error))
+    return () => window.removeEventListener(DRIVE_SPACE_EVENT, shown)
   }, [mySpace])
 
   const getWorldPositionFromScreen = (screenX: number, screenY: number) => {
@@ -6223,8 +6222,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onClick={() => setShowLeaveDialog(false)}
         >
           <div
-            className="bg-nier-black border border-nier-border/50 p-6 absolute right-4"
-            style={{ top: `${barBottom + 8}px`, maxWidth: '200px' }}
+            role="dialog"
+            aria-label={t('atrium.dialog.unsavedBody', { count: unsavedActions(useGameStore.getState()) })}
+            className="bg-nier-black border border-nier-border/50 p-5 absolute right-4 w-60"
+            style={{ top: `${barBottom + 8}px` }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Corner brackets */}
@@ -6233,14 +6234,12 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/50 pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/50 pointer-events-none" />
 
-            <h3 className="text-nier-strong font-mono text-sm tracking-[0.15em] uppercase mb-4 text-center">
-              <span className="text-nier-bg/70 mr-2">◇</span>{t('atrium.dialog.unsavedTitle')}
-            </h3>
-            <p className="text-nier-bg/70 text-xs font-mono tracking-wider text-center mb-6">
+            <p className="text-nier-strong text-xs font-mono tracking-[0.06em] leading-relaxed text-center mb-4">
               {t('atrium.dialog.unsavedBody', { count: unsavedActions(useGameStore.getState()) })}
             </p>
 
             <div className="flex flex-col gap-2">
+              {/* The safe way out, marked as such: green, in either theme. */}
               <button
                 onClick={async () => {
                   // Tried again. Still failing, it stays: leaving would lose
@@ -6249,9 +6248,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   setShowLeaveDialog(false)
                   leaveWithTransition()
                 }}
-                className="w-full bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all"
+                className="w-full h-9 border font-mono text-[11px] tracking-[0.15em] uppercase transition-colors bg-[rgb(var(--c-emerald)/0.16)] hover:bg-[rgb(var(--c-emerald)/0.28)] border-[rgb(var(--c-emerald)/0.75)] text-[rgb(var(--c-emerald))]"
               >
-                ◇ {t('atrium.dialog.saveAndLeave')}
+                {t('atrium.dialog.saveAndLeave')}
               </button>
               <button
                 onClick={() => {
@@ -6259,15 +6258,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                   setShowLeaveDialog(false)
                   leaveWithTransition()
                 }}
-                className="w-full danger-fill font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-red-600"
+                className="w-full h-9 bg-nier-bg hover:bg-nier-strong text-nier-black font-mono text-[11px] tracking-[0.15em] uppercase transition-colors"
               >
                 {t('atrium.dialog.leaveWithoutSaving')}
               </button>
               <button
                 onClick={() => setShowLeaveDialog(false)}
-                className="w-full bg-nier-blackLight hover:bg-nier-blackLight text-nier-bg/80 font-mono text-xs tracking-[0.15em] uppercase py-2.5 px-4 transition-all border border-nier-border/40"
+                className="w-full h-9 text-nier-bg/80 hover:text-nier-strong font-mono text-[11px] tracking-[0.15em] uppercase transition-colors border border-nier-border/40 hover:border-nier-border/70"
               >
-                {t('atrium.dialog.returnToAtrium')}
+                {t('common.cancel')}
               </button>
             </div>
           </div>

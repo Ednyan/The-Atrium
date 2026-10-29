@@ -9495,6 +9495,28 @@ return (
               </>
             }
           >
+            {/* Its name in the Layer panel, at the top -- a text trace's is
+                its own (Text 1, ...): its content is its text. */}
+            <div className="pt-4">
+              {editingTrace.type === 'text' ? (
+                <TraceNameField
+                  label={t('atrium.customize.layerName')}
+                  value={editingTrace.layerName ?? ''}
+                  placeholder={t('atrium.layers.untitled')}
+                  maxLength={60}
+                  onChange={(value) => setEditingTrace({ ...editingTrace, layerName: value })}
+                  onCommit={(value) => { if (value.trim()) change({ layerName: value.trim() }) }}
+                />
+              ) : (
+                <TraceNameField
+                  label={t('atrium.customize.layerName')}
+                  value={editingTrace.content ?? ''}
+                  placeholder={t('atrium.layers.untitled')}
+                  onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
+                  onCommit={(value) => change({ content: value })}
+                />
+              )}
+            </div>
             {/* The house styles, first: the quickest way to a look. A shape
                 takes one as its fill and outline -- a path, only a line, as
                 its colour -- and the next shape made looks like it. */}
@@ -9814,32 +9836,9 @@ return (
               </Section>
             )}
 
-            {/* Where it sits: its name in the Layer panel, its size, its
-                place in the drawing order, whether it can be moved. */}
-            <Section
-              id="arrange"
-              title={t('atrium.customize.sectionArrange')}
-              summary={locked ? t('atrium.customize.locked') : (editingTrace.type === 'text' ? editingTrace.layerName : editingTrace.content) || null}
-            >
-              {/* A text trace's name is its own (Text 1, ...): its content is its text. */}
-              {editingTrace.type === 'text' ? (
-                <TraceNameField
-                  label={t('atrium.customize.layerName')}
-                  value={editingTrace.layerName ?? ''}
-                  placeholder={t('atrium.layers.untitled')}
-                  maxLength={60}
-                  onChange={(value) => setEditingTrace({ ...editingTrace, layerName: value })}
-                  onCommit={(value) => { if (value.trim()) change({ layerName: value.trim() }) }}
-                />
-              ) : (
-                <TraceNameField
-                  label={t('atrium.customize.layerName')}
-                  value={editingTrace.content ?? ''}
-                  placeholder={t('atrium.layers.untitled')}
-                  onChange={(value) => setEditingTrace({ ...editingTrace, content: value })}
-                  onCommit={(value) => change({ content: value })}
-                />
-              )}
+            {/* Where it sits: its size, its place in the drawing order,
+                whether it can be moved. */}
+            <Section id="arrange" title={t('atrium.customize.sectionArrange')} summary={locked ? t('atrium.customize.locked') : null}>
               {shapeLike && !isPathTrace && <ShapeStyleControls {...shapeProps} part="size" />}
               {/* A picture, a video, an embed, a document... sized by its
                   scale, as its handles size it: typed here instead, one step

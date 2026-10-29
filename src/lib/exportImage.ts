@@ -10,8 +10,9 @@
 // are drawn, and the picture is just big enough to hold them: an export of a
 // selection is that selection alone, whatever else is near it.
 //
-// Embeds, audio, video and documents show as cards with their name: what
-// plays or loads inside them can't be pictured. Sheets and charts are drawn as
+// Embeds, video and documents show as cards with their name: what plays or
+// loads inside them can't be pictured. A sound shows as the canvas has it at
+// rest: its bars, over its controls. Sheets and charts are drawn as
 // the canvas draws them (lib/sheetDraw). Lights are drawn; usernames
 // and descriptions are left off, as labels rather than part of the picture.
 //
@@ -37,6 +38,8 @@ import { deckFile, deckSvg, isDeckFile, slidePictures } from './deckDraw'
 import { currentLanguage } from './i18n'
 import { gradePixels, isNeutral, takesLook, type TraceLook } from './traceLook'
 import { isDesktop } from './supabase'
+import { barCount, restHeights } from './soundBars'
+import { previewFrameColour } from './shapeStyle'
 
 export type ExportScale = 1 | 2 | 3
 export interface ImageExportOptions {
@@ -612,9 +615,31 @@ function drawText(p: Painter, trace: Trace, bw: number, bh: number, measure: Can
   p.pop()
 }
 
+// A sound, as the canvas has it at rest (components/AudioBars): as many bars
+// as its width has room for, each its own height, fainter than played -- and
+// under them its controls, a play mark and the line it plays along. In the
+// box's own units, as the canvas lays them out: 12 above, 10 at the sides,
+// the controls 26 high, 4 below.
+function drawSound(p: Painter, trace: Trace, w: number, h: number, ink: string) {
+  const side = 10, top = 12, controls = 26, bottom = 4
+  const width = w - side * 2, room = h - top - controls - bottom
+  if (width <= 0 || room <= 0) return
+  const count = barCount(width)
+  const bar = Math.min(10, (width - (count - 1) * 2) / count)
+  const start = side + (width - (count * bar + (count - 1) * 2)) / 2
+  restHeights(trace.id, count).forEach((share, i) => {
+    const height = Math.max(3, share * room)
+    p.rect(start + i * (bar + 2), top + room - height, bar, height, bar / 2, { fill: ink, fillOpacity: 0.32 })
+  })
+  const middle = h - bottom - controls / 2
+  p.poly([side + 6, middle - 5, side + 6, middle + 5, side + 14, middle], { fill: ink, fillOpacity: 0.8 })
+  p.rect(side + 26, middle - 1, width - 30, 2, 1, { fill: ink, fillOpacity: 0.3 })
+}
+
 // A trace in its box: background, border and shadow as the canvas draws
-// them, and what it shows inside, cut to the box.
-function drawBoxed(p: Painter, item: Prepared, measure: CanvasRenderingContext2D) {
+// them, and what it shows inside, cut to the box. `ground`: the atrium's
+// background, behind a trace that has none of its own.
+function drawBoxed(p: Painter, item: Prepared, measure: CanvasRenderingContext2D, ground: string | null) {
   const { trace, size, picture } = item
   const t = storedTransformOf(trace)
   const c = trace.type === 'text' ? { x: 0, y: 0, w: 1, h: 1 } : cropOf(trace)
@@ -638,6 +663,11 @@ function drawBoxed(p: Painter, item: Prepared, measure: CanvasRenderingContext2D
   p.push([1, 0, 0, 1, -bw / 2, -bh / 2], { x: 0, y: 0, w: bw, h: bh, r: Math.max(0, r - border) })
   if (trace.type === 'text') {
     drawText(p, trace, bw, bh, measure)
+  } else if (trace.type === 'audio') {
+    // Its bars' colour, else the ink that reads on what's behind them: its
+    // own background, or the atrium's -- dark ink on a light one.
+    const behind = showBackground ? (trace.fillColor || '#191919') : (ground ?? undefined)
+    drawSound(p, trace, bw, bh, trace.shapeColor || trace.borderColor || (previewFrameColour(behind) === 0x1a1a1a ? '#222222' : '#cbcbcb'))
   } else if (picture) {
     // The whole content box, scaled, moved so the crop's window shows, and
     // mirrored in its box -- as the canvas transforms it.
@@ -810,7 +840,7 @@ export async function exportImage(traces: Trace[], links: TraceLink[], layers: L
       }
       if (isPathTrace(trace)) drawPath(p, trace)
       else if (trace.type === 'shape') drawShape(p, trace)
-      else drawBoxed(p, prepared.get(trace.id)!, measure)
+      else drawBoxed(p, prepared.get(trace.id)!, measure, options.background)
     }
   }
 

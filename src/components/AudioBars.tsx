@@ -15,9 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyserOf } from '../lib/spatialSound'
-
-// A bar and its gap, in the canvas's units; and the fewest and most bands.
-const PITCH = 9, FEWEST = 12, MOST = 96
+import { barCount, restHeights } from '../lib/soundBars'
 // The bands, spaced as hearing is: 50 Hz to 14 kHz.
 const LOW = 50, HIGH = 14000
 // How far a bar may fall in a frame, of its whole height; and for how many
@@ -35,16 +33,13 @@ export default function AudioBars({ traceId, playing, color }: { traceId: string
     const el = box.current
     if (!el) return
     const watch = new ResizeObserver(([entry]) => {
-      setCount(Math.max(FEWEST, Math.min(MOST, Math.floor((entry.contentRect.width + 2) / PITCH))))
+      setCount(barCount(entry.contentRect.width))
     })
     watch.observe(el)
     return () => watch.disconnect()
   }, [])
   // Its shape at rest, the same every time for the same trace.
-  const rest = useMemo(() => Array.from({ length: count }, (_, i) => {
-    const hash = traceId.charCodeAt(i % traceId.length) + i * 7
-    return 0.18 + (((Math.sin(hash) * 43758.5453) % 1 + 1) % 1) * 0.82
-  }), [traceId, count])
+  const rest = useMemo(() => restHeights(traceId, count), [traceId, count])
   const bars = useRef<(HTMLDivElement | null)[]>([])
   const peaks = useRef<(HTMLDivElement | null)[]>([])
   // At rest until it first plays; then heard (the frame draws it) or pulsing,

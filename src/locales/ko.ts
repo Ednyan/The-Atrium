@@ -772,11 +772,9 @@ const ko: Catalogue = {
   'atrium.toast.discardFailed': '변경 사항을 취소하지 못했습니다 — 다시 시도하세요',
 
   // -------------------------------------------------------------- dialogs
-  'atrium.dialog.unsavedTitle': '저장하지 않은 변경이 있어요',
-  'atrium.dialog.unsavedBody': '저장하지 않은 변경이 {count}개 있어요. 이대로 나갈까요?',
+  'atrium.dialog.unsavedBody': '저장하지 않은 변경이 {count}개 있어요.',
   'atrium.dialog.saveAndLeave': '저장하고 나가기',
-  'atrium.dialog.leaveWithoutSaving': '네, 저장하지 않고 나갈게요',
-  'atrium.dialog.returnToAtrium': 'Atrium으로 돌아가기',
+  'atrium.dialog.leaveWithoutSaving': '저장하지 않고 나가기',
   'atrium.dialog.removedTitle': 'Atrium에서 내보내졌어요',
   'atrium.dialog.deletedTitle': 'Atrium 삭제됨',
   'atrium.dialog.privateTitle': '공개 종료',

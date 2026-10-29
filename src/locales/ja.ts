@@ -768,11 +768,9 @@ const ja: Catalogue = {
   'atrium.toast.discardFailed': '変更を破棄できませんでした — もう一度お試しください',
 
   // -------------------------------------------------------------- dialogs
-  'atrium.dialog.unsavedTitle': '保存していない変更があります',
-  'atrium.dialog.unsavedBody': '保存していない変更が {count} 件あります。このまま出てもよろしいですか？',
+  'atrium.dialog.unsavedBody': '保存していない変更が {count} 件あります。',
   'atrium.dialog.saveAndLeave': '保存して出る',
-  'atrium.dialog.leaveWithoutSaving': 'はい、保存せずに出ます',
-  'atrium.dialog.returnToAtrium': 'Atrium に戻る',
+  'atrium.dialog.leaveWithoutSaving': '保存せずに出る',
   'atrium.dialog.removedTitle': 'Atrium から退出させられました',
   'atrium.dialog.deletedTitle': 'Atrium が削除されました',
   'atrium.dialog.privateTitle': '公開終了',

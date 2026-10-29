@@ -1,4 +1,4 @@
-// A trace's name, in the customize panel's Arrange.
+// A trace's name, at the top of the customize panel, above its sections.
 //
 // A trace has one field for this -- `content` -- and the app called it three
 // things: a shape's "Label", an image's "Description / Caption", an embed's
@@ -10,7 +10,6 @@
 // raise the question of which one wins.
 
 import { useLayoutEffect, useRef } from 'react'
-import { Row } from './Customization'
 
 export default function TraceNameField({ label, value, placeholder, maxLength, readOnly, onChange, onCommit }: {
   label: string
@@ -32,9 +31,10 @@ export default function TraceNameField({ label, value, placeholder, maxLength, r
   }, [value])
 
   return (
-    <Row label={label}>
+    <div className="mb-6 -mt-2">
+      <span className="block text-[10px] text-nier-bg/55 tracking-[0.2em] uppercase mb-1">◇ {label}</span>
       {readOnly ? (
-        <p className="text-xs text-nier-strong tracking-[0.04em] leading-snug py-1.5 line-clamp-2 break-words">
+        <p className="text-base text-nier-strong tracking-[0.04em] leading-snug py-1 border-b border-nier-border/20 line-clamp-2 break-words">
           {value.trim() || <span className="text-nier-bg/35">{placeholder}</span>}
         </p>
       ) : (
@@ -54,9 +54,9 @@ export default function TraceNameField({ label, value, placeholder, maxLength, r
               e.currentTarget.blur()
             }
           }}
-          className="block w-full resize-none overflow-hidden bg-nier-black border border-nier-border/30 hover:border-nier-border/50 focus:border-nier-border/60 focus:outline-none px-2 py-[7px] text-xs text-nier-strong tracking-[0.04em] leading-snug placeholder-nier-bg/35 transition-colors"
+          className="w-full resize-none overflow-hidden bg-transparent border-0 border-b border-nier-border/25 hover:border-nier-border/50 focus:border-nier-border/70 focus:outline-none px-0 py-1 text-base text-nier-strong tracking-[0.04em] leading-snug placeholder-nier-bg/35 transition-colors"
         />
       )}
-    </Row>
+    </div>
   )
 }
