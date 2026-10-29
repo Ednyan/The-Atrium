@@ -7074,6 +7074,15 @@ return (
               height: '100%',
               transform: flipInBox(trace) || undefined,
               transformOrigin: 'top left',
+            } : embedPage ? {
+              // An embedded page laid out at the size it's seen, so it lays
+              // itself out for that size: YouTube's player was laid out at
+              // 480 x 270 and stretched, its controls blown up and soft on a
+              // big trace. The crop's window and a flip, as below.
+              transform: `translate(${-cropX * 100}%, ${-cropY * 100}%) ${flipInBox(trace)}`,
+              transformOrigin: 'top left',
+              width: `${width * (transform as any).scaleX * zoom}px`,
+              height: `${height * (transform as any).scaleY * zoom}px`,
             } : {
               transform: `scale(${(transform as any).scaleX * zoom}, ${(transform as any).scaleY * zoom}) translate(${-cropX * 100}%, ${-cropY * 100}%) ${flipInBox(trace)}`,
               transformOrigin: 'top left',
