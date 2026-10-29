@@ -61,7 +61,7 @@ const FOOT_BUTTON = 'flex-1 min-w-[10rem] py-3 border border-nier-border/30 text
 // Which way the lists are shown, kept for the next visit.
 const VIEW_KEY = 'atrium.browserView'
 // When each Drive or hosted atrium on the list was last looked at, this visit.
-const LOOK_AGAIN_MS = 10 * 60_000
+const LOOK_AGAIN_MS = 30 * 60_000
 const lookedAt = new Map<string, number>()
 
 // One of the browser's lists: numbered as it's shown, its name, how many,
@@ -855,9 +855,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }
   // While the browser's open: the list again each minute -- Drive and hosted
   // atriums looked at with it, each at most every LOOK_AGAIN_MS -- and every
-  // fifth, the public list and what's come for one meanwhile (invitations,
+  // fifteenth, the public list and what's come for one meanwhile (invitations,
   // one's own atriums put online elsewhere): that's the Atrium's own server,
-  // whose free day is 100,000 requests for everyone together. Only while the
+  // whose free day is 100,000 requests for everyone together -- every fifth
+  // was two requests each time, for a page only looked at. Only while the
   // app is in front (lib/appFront): a desktop window behind others, or
   // minimised, says it's visible.
   const lookAgain = useRef(lookForInvitations)
@@ -867,7 +868,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     const every = window.setInterval(() => {
       if (!inFront()) return
       void loadBrowserLobbies()
-      if (++minutes % 5 === 0) {
+      if (++minutes % 15 === 0) {
         void loadPublicDrive()
         lookAgain.current()
       }
