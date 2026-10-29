@@ -53,7 +53,9 @@ const BATCHABLE = new Set(['/people/me', '/people/invites', '/people/visits', '/
 // writers, each was a request of its own.
 const BATCHABLE_UNDER = ['/store/meta/', '/store/list/']
 const batchable = (path: string, get: boolean) => BATCHABLE.has(path) || (get && BATCHABLE_UNDER.some(under => path.startsWith(under)))
-const MOST_IN_BATCH = 16
+// A page's start goes in one: its directory reads, and two versions for each
+// of its atriums' cards.
+const MOST_IN_BATCH = 32
 
 async function batch(request: Request, env: Env): Promise<Response> {
   const { allowed, answer } = replies(request)

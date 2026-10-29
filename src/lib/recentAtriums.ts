@@ -101,17 +101,30 @@ export function sortByLastVisited<T>(items: T[], idOf: (item: T) => string): T[]
 // ---------------------------------------------------------------------------
 
 /**
- * Mirror one visit to the database.
+ * Mirror a visit to the database -- with the others of the sitting, as the
+ * page is hidden (switched away from, minimised, closed): one request for
+ * them all, where each atrium entered was one.
  *
  * Fire and forget, and silent on failure: the local copy has already been
  * written by the time this runs, so the sort is correct on this device whatever
  * happens here. Being unable to sync is not worth interrupting somebody
  * entering an atrium.
  */
-async function pushVisit(lobbyId: string) {
+let unsentVisits: Record<string, number> = {}
+let watchingHidden = false
+function pushVisit(lobbyId: string) {
   if (isLocalData) return
+  unsentVisits[lobbyId] = Date.now()
+  if (watchingHidden) return
+  watchingHidden = true
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void sendVisits() })
+}
+async function sendVisits() {
+  const visits = unsentVisits
+  if (!Object.keys(visits).length) return
+  unsentVisits = {}
   try {
-    await toWorker('/people/visits', { visits: { [lobbyId]: Date.now() } }, true)
+    await toWorker('/people/visits', { visits }, true, true)
   } catch {
     // Offline or signed out. The local order stands.
   }

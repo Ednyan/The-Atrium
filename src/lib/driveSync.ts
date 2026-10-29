@@ -609,14 +609,22 @@ export async function readInvite(rosterId: string): Promise<{ lobbyId: string; n
  *  atrium one's only in holds one's saves alone). In the Atrium's cloud; and
  *  in Drive, when Drive's at hand with no window. Joined as their owner
  *  (joinDriveAtrium) wherever one signs in. */
+// One's hosted folder's id, as the directory last said, kept here: its list
+// is asked for with everything else the browser asks as it opens, not once
+// the directory has answered -- a request of its own.
+const ROOT_HERE = 'atrium.hostedRoot'
 export async function ownElsewhere(me: string): Promise<{ lobbyId: string; roster: string }[]> {
+  const remembered = (() => { try { return localStorage.getItem(`${ROOT_HERE}.${me}`) } catch { return null } })()
+  const early = remembered ? hosted.listByLink(remembered).catch(() => null) : null
   const entry = await myEntry()
+  try { if (entry.hosted_root) localStorage.setItem(`${ROOT_HERE}.${me}`, entry.hosted_root) } catch { /* asked for after, next time */ }
   const kept = allKept(me)
   const found: { lobbyId: string; roster: string }[] = []
   const roots: [DriveStore, string | null | undefined][] = [[hosted, entry.hosted_root], [driveStore, drive.hasDriveToken() ? entry.drive_root : null]]
   for (const [where, root] of roots) {
     if (!root) continue
-    for (const folder of await where.listByLink(root)) {
+    const listed = where === hosted && root === remembered ? (await early) ?? await where.listByLink(root) : await where.listByLink(root)
+    for (const folder of listed) {
       if (folder.name in kept) continue
       const roster = (await where.listByLink(folder.id)).find(file => file.name === 'atrium.roster')
       if (roster) found.push({ lobbyId: folder.name, roster: roster.id })
@@ -1177,7 +1185,9 @@ const ROOM_MOST = 40_000
 // Sooner when the room drops, the page is hidden or closed, or the sync stops.
 const KEEP_MS = 30_000
 
-interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] }; unkept?: Change[] }
+// `folders`: each writer's folder for the atrium, as found -- listed at the
+// next look with the roster's version, in one round.
+interface State { merged: Change[]; seen: string[]; last: Clock | null; snapshot?: { version: string; folded: string[] }; unkept?: Change[]; folders?: Record<string, string> }
 interface Session {
   lobbyId: string
   me: string
@@ -1232,6 +1242,7 @@ const persist = (s: Session) => s.local.writeVaultJson(s.local.driveStatePath(s.
   merged: [...s.merged.values()], seen: [...s.seen], last: s.last,
   ...(s.snapshot ? { snapshot: { version: s.snapshot.version, folded: [...s.snapshot.folded] } } : {}),
   ...(s.unkept.length ? { unkept: s.unkept } : {}),
+  ...(s.folders.size ? { folders: Object.fromEntries(s.folders) } : {}),
 } satisfies State)
 // A session's tasks, one at a time: `inQueue` hands back its task's result
 // (or failure); `run` only says, as the sync's own looks need.
@@ -1256,7 +1267,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   merge(merged, state.merged)
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
-    queue: Promise.resolve(), roster: null, folders: new Map(), quiet: 0, looking: 0, unkept: state.unkept ?? [], keeping: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
+    queue: Promise.resolve(), roster: null, folders: new Map(Object.entries(state.folders ?? {})), quiet: 0, looking: 0, unkept: state.unkept ?? [], keeping: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
     filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0, door: null,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
@@ -1538,6 +1549,9 @@ async function letIn(s: Session, roster: Roster): Promise<void> {
 }
 
 async function down(s: Session): Promise<void> {
+  // The writers' folders already known, listed as the roster's version is
+  // asked: one round to the store, not two, while who writes hasn't changed.
+  const early = new Map([...s.folders].map(([user, folder]) => [user, { folder, files: store.listByLink(folder).catch(() => null) }]))
   const roster = await lookAtRoster(s)
   if (!roster) return
   // Files that didn't come yet: those of saves taken before (in a visit that
@@ -1545,7 +1559,7 @@ async function down(s: Session): Promise<void> {
   await bringFiles(s, rowsOf(s.merged, 'traces').flatMap(filesOf))
   // Downloads only for what's new: the roster when its version moves, saves
   // not read yet. A look at an atrium nobody has changed downloads nothing.
-  const listed = await listWriters(s, roster)
+  const listed = await listWriters(s, roster, early)
   // Public, kept in Drive: the owner's app fills its mirror in every so often.
   if (s.kept.owner && roster.public && !isHostedId(s.kept.roster) && Date.now() - s.mirrorFilledAt > MIRROR_FILL_MS) {
     s.mirrorFilledAt = Date.now()
@@ -1574,7 +1588,7 @@ async function down(s: Session): Promise<void> {
 
 /** Each writer's folder for the atrium, listed: their saves -- and, the
  *  owner's, the snapshot. */
-async function listWriters(s: Session, roster: Roster): Promise<{ user: string; files: Listed[] }[]> {
+async function listWriters(s: Session, roster: Roster, early = new Map<string, { folder: string; files: Promise<Listed[] | null> }>()): Promise<{ user: string; files: Listed[] }[]> {
   const writers: { user: string; root: string | null }[] = writersOf(roster)
   // Those in by their invitation aren't in the roster with their folder yet:
   // it's in their profile.
@@ -1595,7 +1609,8 @@ async function listWriters(s: Session, roster: Roster): Promise<{ user: string; 
       if (!folder) return null
       s.folders.set(writer.user, folder)
     }
-    return { user: writer.user, files: await store.listByLink(folder) }
+    const asked = early.get(writer.user)
+    return { user: writer.user, files: (asked?.folder === folder ? await asked.files : null) ?? await store.listByLink(folder) }
   }))
   return listed.filter(writer => writer !== null)
 }

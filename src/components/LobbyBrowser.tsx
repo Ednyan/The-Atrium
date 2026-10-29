@@ -14,7 +14,7 @@ import KeptWhere, { type Where } from './KeptWhere'
 import { driveSpace, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { formatSize } from '../lib/size'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
-import { askAhead } from '../lib/worker'
+import { askAhead, holdReads } from '../lib/worker'
 import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
@@ -64,6 +64,9 @@ const VIEW_KEY = 'atrium.browserView'
 // again, as the browser is opened, once it's LOOK_AGAIN_MS old.
 const LOOK_AGAIN_MS = 30 * 60_000
 const lookedAt = new Map<string, number>()
+// And one's own atriums made elsewhere (lib/driveSync ownElsewhere): looked for
+// as often, a request each time.
+let elsewhereAt = 0
 
 // One of the browser's lists: numbered as it's shown, its name, how many,
 // and what can be done to the list as a whole.
@@ -712,7 +715,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       const reachable = (roster: string) => isHostedId(roster) || hasDriveToken()
       const quietly = [
         ...found.filter(one => (one.auto || one.member) && !isLeftHere(one.lobbyId) && reachable(one.roster)).map(one => ({ roster: one.roster, name: one.name })),
-        ...(await ownElsewhere(myId).catch(() => [])).filter(one => !isLeftHere(one.lobbyId)).map(one => ({ roster: one.roster, name: null })),
+        ...(await (takeElsewhere() ?? lookElsewhere(myId) ?? Promise.resolve([]))).filter(one => !isLeftHere(one.lobbyId)).map(one => ({ roster: one.roster, name: null })),
       ]
       let joined = 0
       for (const one of quietly.filter(one => !triedJoining.current.has(one.roster))) {
@@ -729,8 +732,23 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }).catch(() => {})
   }
   useEffect(lookForInvitations, [myId])
-  // What its parts will ask the worker for, asked at once, in one request (lib/worker).
-  useEffect(() => { if (myId) void askAhead() }, [myId])
+  // Its start, in one request (lib/worker holdReads): what its parts will ask
+  // the directory (askAhead), its cards' atriums looked at, and one's own
+  // atriums made elsewhere, whose folder is asked for by the id it had last
+  // time (lib/driveSync ownElsewhere) -- taken by the look for invitations.
+  const elsewhere = useRef<ReturnType<typeof ownElsewhere> | null>(null)
+  const takeElsewhere = () => { const started = elsewhere.current; elsewhere.current = null; return started }
+  const lookElsewhere = (me: string) => {
+    if (Date.now() - elsewhereAt < LOOK_AGAIN_MS) return null
+    elsewhereAt = Date.now()
+    return ownElsewhere(me).catch(() => [])
+  }
+  useEffect(() => {
+    if (!myId) return
+    const release = holdReads()
+    if (canHost || canDrive || isDesktop) elsewhere.current = lookElsewhere(myId)
+    void Promise.all([askAhead(), loadBrowserLobbies()]).finally(release)
+  }, [myId])
   // Its shared atriums, as the desktop's account signs in or out.
   useEffect(() => { if (isDesktop) void loadBrowserLobbies() }, [deskAccount])
 

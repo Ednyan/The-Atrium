@@ -9,13 +9,14 @@ export interface WorkerAnswer<T> { ok: boolean; status: number; answer: T | null
 
 /** `body` to the worker's `path`. `signedIn`: someone must be (NOT_SIGNED_IN
  *  if not), and their token goes; otherwise it goes only if there is one. */
-export async function toWorker<T = any>(path: string, body: object = {}, signedIn = false): Promise<WorkerAnswer<T>> {
+/** `keepalive`: sent even as the page closes (a small body). */
+export async function toWorker<T = any>(path: string, body: object = {}, signedIn = false, keepalive = false): Promise<WorkerAnswer<T>> {
   const url = workerUrl()
   if (!url) throw new Error('The Atrium’s server isn’t set up in this build')
   const token = await accountToken().catch(() => null)
   if (signedIn && !token) throw new Error('NOT_SIGNED_IN')
   const sent = { ...body, ...(token ? { token } : {}) }
-  const response = (await viaBatch(path, sent)) ?? await fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(sent) })
+  const response = (await viaBatch(path, sent)) ?? await fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(sent), keepalive })
   return { ok: response.ok, status: response.status, answer: await response.json().catch(() => null) }
 }
 
@@ -56,20 +57,26 @@ const readTest = (path: string, get: boolean) => READS[path] ?? (get && READ_UND
 // gathered so, two.
 const QUIET_MS = 250
 const MOST_WAIT_MS = 700
-// The worker takes this many in one.
-const MOST_IN_BATCH = 16
+// The worker takes this many in one -- 16, one older than 2026-10-29, which
+// says so ('calls') and is sent them 16 at a time from then on.
+let mostInBatch = 32
 let waiting: { path: string; body?: object; get: boolean; done: (response: Response | null) => void }[] = []
 let firstAt = 0, timer = 0
 let noBatches = false
+// Held (holdReads): the reads gathered go once it's let go of.
+let holds = 0
 
 // The directory's answers -- one's profile, invitations, the atriums listed,
-// one's visits and held atriums, storage, the themes -- kept a few minutes:
+// one's visits and held atriums, storage, the themes -- kept for the visit:
 // a page asked for them again and again (the browser loaded twice on
 // opening, and again on coming back from an atrium), each time a request.
-// Anything written through the worker forgets them all (forgetReads), so
-// one's own change is never answered from before it. Not the store's
-// versions and lists: a roster changed, told through the room, is read anew.
-const KEEP_MS = 3 * 60_000
+// What's changed elsewhere meanwhile -- an invitation sent, an atrium made
+// public -- shows on a reload; half an hour at most, for a desktop app left
+// open for days. Anything written through the worker forgets them all
+// (forgetReads), so one's own change is never answered from before it. Not
+// the store's versions and lists: a roster changed, told through the room,
+// is read anew.
+const KEEP_MS = 30 * 60_000
 const KEPT_PATHS = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage', '/themes', '/contributions/wall'])
 type Answer = { status: number; body: string }
 const kept = new Map<string, Answer & { at: number }>()
@@ -105,7 +112,7 @@ export function viaBatch(path: string, body?: Record<string, unknown>, get = fal
     if (!waiting.length) firstAt = now
     waiting.push({ path, body, get, done })
     window.clearTimeout(timer)
-    timer = window.setTimeout(() => void sendBatch(url), Math.min(QUIET_MS, firstAt + MOST_WAIT_MS - now))
+    if (!holds) timer = window.setTimeout(() => void sendBatch(url), Math.min(QUIET_MS, firstAt + MOST_WAIT_MS - now))
   })
   if (key) {
     const askedIn = era
@@ -133,19 +140,47 @@ export async function askAhead(): Promise<void> {
   if (!url || !token || noBatches) return
   for (const path of AHEAD) void viaBatch(path, { token })
   void viaBatch('/themes', undefined, true)
-  // Gathered already: sent now.
+  // Gathered already: sent now -- unless held, for what else the screen asks.
+  if (!holds) sendNow()
+}
+
+const sendNow = () => {
   window.clearTimeout(timer)
-  if (waiting.length) void sendBatch(url)
+  const url = workerUrl()
+  if (url && waiting.length) void sendBatch(url)
+}
+
+// What a screen asks the worker for as it starts -- its parts each at their
+// own moment, the last once something of its own has loaded (the atrium
+// browser's cards, from this browser's store) -- held, and sent together, in
+// one request, once it's let go of; a moment at most, whatever happens.
+const HOLD_MOST_MS = 2000
+/** Reads asked from now on are held until the function given back is called. */
+export function holdReads(): () => void {
+  holds++
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    if (--holds === 0) sendNow()
+  }
+  window.setTimeout(release, HOLD_MOST_MS)
+  return release
 }
 
 async function sendBatch(url: string) {
   const calls = waiting
   waiting = []
-  for (let at = 0; at < calls.length; at += MOST_IN_BATCH) {
-    const some = calls.slice(at, at + MOST_IN_BATCH)
+  for (let at = 0; at < calls.length;) {
+    const some = calls.slice(at, at + mostInBatch)
     try {
       const response = await fetch(`${url}/batch`, { method: 'POST', body: JSON.stringify({ calls: some.map(({ path, body, get }) => ({ path, body, get })) }) })
       if (response.status === 404) noBatches = true
+      // A worker that takes 16 at most: these again, 16 at a time.
+      if (response.status === 400 && some.length > 16 && (await response.clone().json().catch(() => null))?.error === 'calls') {
+        mostInBatch = 16
+        continue
+      }
       if (!response.ok) throw new Error(`batch ${response.status}`)
       const { answers } = await response.json() as { answers: { status: number; body: unknown }[] }
       some.forEach((call, i) => {
@@ -157,5 +192,6 @@ async function sendBatch(url: string) {
     } catch {
       some.forEach(call => call.done(null))
     }
+    at += some.length
   }
 }
