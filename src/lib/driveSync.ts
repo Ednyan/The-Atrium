@@ -1148,15 +1148,15 @@ async function engine() {
 // back after a gap. Without the room, a hosted atrium's looks are fewer too.
 // Never while the app is behind others or minimised: what's due is looked at
 // as it comes back to the front (lib/appFront) -- a tab left open all day was
-// a look every two minutes, all day. With the room live, what it can miss is
-// rare: it holds what's sent while it's being reached again (lib/rooms,
-// MOST_HELD) and says it once it's back, so a look is left for a room that
-// gave up, or held more than it keeps -- every half hour, two requests each
-// to the hosted store, where every ten minutes was twelve an hour.
+// a look every two minutes, all day. With the room live, none on a clock:
+// every save written is told through it, and it holds what's sent while it's
+// being reached again (lib/rooms, MOST_HELD) and says it once it's back. The
+// rare miss -- a room that gave up, or held more than it keeps -- is caught
+// as the room comes back, or at the next opening.
 const QUIET_MS = 1500
 const LOOK_MS = 20_000
 const LOOK_HOSTED_MS = 60_000
-const LOOK_LIVE_MS = 30 * 60_000
+const LOOK_LIVE_MS = Infinity
 const lookEvery = (s: Session) => (roomStatus(s.lobbyId) === 'live' ? LOOK_LIVE_MS : isHostedId(s.kept.roster) ? LOOK_HOSTED_MS : LOOK_MS)
 // Saves read side by side.
 const AT_ONCE = 6

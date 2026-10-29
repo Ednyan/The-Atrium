@@ -19,7 +19,6 @@
 import { workerUrl } from './rooms'
 import { viaBatch } from './worker'
 
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // hourly while the app is open
 const CACHE_KEY = 'atrium_contributions_cache_v2'
 // The v1 shape stored every contributor as an object with full property names,
 // which at ten thousand rows was most of a megabyte of the word "displayName".
@@ -322,9 +321,10 @@ export function getCachedContributions(): ContributionsData {
   return readCache()
 }
 
-// Refreshes on open, then hourly, then whenever the machine says it is back
-// online -- the case that matters for a desktop app that was launched on a
-// train. Returns a teardown for the caller's effect.
+// Refreshes on open, then whenever the machine says it is back online -- the
+// case that matters for a desktop app that was launched on a train. Not on a
+// clock: hourly, it was a request an hour for as long as the app was open.
+// Returns a teardown for the caller's effect.
 export function startContributionsRefresh(onUpdate: (data: ContributionsData) => void): () => void {
   let stopped = false
 
@@ -334,12 +334,10 @@ export function startContributionsRefresh(onUpdate: (data: ContributionsData) =>
   }
 
   void run()
-  const interval = setInterval(run, REFRESH_INTERVAL_MS)
   window.addEventListener('online', run)
 
   return () => {
     stopped = true
-    clearInterval(interval)
     window.removeEventListener('online', run)
   }
 }

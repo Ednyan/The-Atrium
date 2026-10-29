@@ -64,13 +64,13 @@ const publish = (next: SpecialTheme[]) => {
   try { localStorage.setItem(COPY_KEY, JSON.stringify(next)) } catch { /* for this visit only */ }
   watchers.forEach(fn => fn())
 }
-// Asked again every hour for as long as the app is open (the desktop app
-// stays open for days), from the first time anything shows them.
-let hourly = 0
+// Asked the first time anything shows them, once a visit: each comes with its
+// window, so one whose day comes while the app stays open shows then. One
+// made since is seen at the next start. (Asked again every hour, it was a
+// request an hour for as long as the app stayed open.)
 const watch = (fn: () => void) => {
   watchers.add(fn)
   void loadSpecialThemes()
-  hourly ||= window.setInterval(() => { void loadSpecialThemes(true) }, REFRESH_MS)
   return () => { watchers.delete(fn) }
 }
 // The saved ones, all of them: the Developers list, and what the presets list
