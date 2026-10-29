@@ -3851,8 +3851,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     
     // Prevent text selection during drag
     document.body.classList.add('dragging')
-    holdPointer()
-    
+
     const transform = getTraceTransform(trace)
     startPosRef.current = { x: e.clientX, y: e.clientY, corner: corner || '' }
     // copy transform including scaleX/scaleY
@@ -4202,6 +4201,10 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     // If mouse has moved more than 3 pixels, consider it a drag
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
       justDraggedRef.current = true
+      // Held from here, not from the press: a held pointer's click lands on
+      // the holder, so a click or double-click (into a text, to edit it)
+      // never reached the trace.
+      if (!pressMovedRef.current) holdPointer()
       pressMovedRef.current = true
       // It's a drag, not a click: let the handles through and drop the
       // pressed styling, so moving a clickable trace looks like moving any
