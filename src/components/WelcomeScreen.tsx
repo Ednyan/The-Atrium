@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useGamePick } from '../store/gameStore'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import ProfileSettings from './ProfileSettings'
+import { useMenuGlide } from './MenuGlide'
 import PinterestConnectionPanel from './PinterestConnectionPanel'
 import PinterestMark from './PinterestMark'
 import SupportAppeal from './SupportAppeal'
@@ -56,16 +57,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   // Only ever down. Blowing the menu up to fill a large monitor would make it
   // enormous, and the clamps already grow it as far as it should go.
   const menuRef = useRef<HTMLDivElement | null>(null)
-  // The light that glides to the row pointed at or focused (index.css,
-  // menu-glide), by the row's place in the column: kept where it was as it
-  // fades, so it comes back from there.
-  const rowsRef = useRef<HTMLDivElement | null>(null)
-  const [glide, setGlide] = useState({ top: 0, height: 0, danger: false, on: false })
-  const glideTo = (target: EventTarget) => {
-    const row = (target as HTMLElement).closest?.('.menu-row') as HTMLElement | null
-    if (!row || row.parentElement !== rowsRef.current) return
-    setGlide({ top: row.offsetTop, height: row.offsetHeight, danger: row.classList.contains('menu-row-danger'), on: true })
-  }
+  // The light that glides to the row pointed at or focused (MenuGlide).
+  const glide = useMenuGlide('.menu-row')
   const [menuScale, setMenuScale] = useState(1)
 
   useEffect(() => {
@@ -360,13 +353,9 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
 
           {/* Welcome message */}
           <div
-            ref={rowsRef}
+            {...glide.host}
             className="enter-stagger menu-glide-host relative space-y-[clamp(0.4rem,1.2vh,0.6rem)]"
             style={{ '--base': '220ms' } as CSSProperties}
-            onMouseOver={event => glideTo(event.target)}
-            onFocus={event => glideTo(event.target)}
-            onMouseLeave={() => setGlide(was => ({ ...was, on: false }))}
-            onBlur={() => setGlide(was => ({ ...was, on: false }))}
           >
             {/* Editable in place on desktop. The name is the one thing here
                 someone actually wants to change, and sending them into Profile
@@ -582,14 +571,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
                 <span className="relative z-10">◇ {t('welcome.exit')}</span>
               </button>
             )}
-            <span
-              aria-hidden="true"
-              className="menu-glide"
-              data-danger={glide.danger || undefined}
-              // No margin: the column's spacing gives every child after the
-              // first one, this too, and it put the light a gap below its row.
-              style={{ transform: `translateY(${glide.top}px)`, height: glide.height, opacity: glide.on ? 1 : 0, margin: 0 }}
-            />
+            {glide.light}
           </div>
 
           {/* The hardcoded "v.1.0.0" that used to sit here would have gone

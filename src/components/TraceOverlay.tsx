@@ -54,6 +54,7 @@ import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeS
 import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelFooter, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel, type FooterAction } from './Customization'
 import { MenuIcon } from './AtriumMenu'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
+import { useMenuGlide } from './MenuGlide'
 import DeckSlide from './DeckSlide'
 import { isDeckFile } from '../lib/deckDraw'
 import { fileName, followed, stopFollowing, watchFollowing } from '../lib/liveFiles'
@@ -1009,6 +1010,8 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   const lastPointerRef = useRef<{ x: number; y: number; shiftKey: boolean } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuPos = useClampedMenuPosition(contextMenuRef, contextMenu?.x ?? 0, contextMenu?.y ?? 0)
+  // The light gliding between the menu's rows (MenuGlide).
+  const menuGlide = useMenuGlide('.ctx-item', contextMenuRef)
   // The trace menu's side flyouts -- Transformations, Reorganize, Move to
   // Group, Move Layer, Select -- opened on hover: one at a time, beside the
   // row it opened from. Left for nowhere, it closes after a moment, so a
@@ -1104,6 +1107,9 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   // New Group, Ungrouped, and three groups.
   const GROUP_FLYOUT_VISIBLE_ROWS = 5
   const groupFlyoutListRef = useRef<HTMLDivElement>(null)
+  // The light gliding between the open flyout's rows (MenuGlide): one, as one
+  // flyout is open at a time -- held by Move to Group's ref, measured below.
+  const flyoutGlide = useMenuGlide('.ctx-item', groupFlyoutListRef)
   const [groupFlyoutMaxHeight, setGroupFlyoutMaxHeight] = useState<number | undefined>(undefined)
 
   // Cap the flyout at the bottom of its fifth row.
@@ -8589,19 +8595,15 @@ return (
         <>
           {/* Menu */}
           <div
-            ref={contextMenuRef}
-            className="fixed bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
+            {...menuGlide.host}
+            className="ctx-menu fixed z-[10000100] pointer-events-auto max-h-[80vh] overflow-y-auto"
             style={{ left: `${contextMenuPos.x}px`, top: `${contextMenuPos.y}px` }}
           >
-            {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-gray-400 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-gray-400 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-gray-400 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-gray-400 pointer-events-none" />
+            {menuGlide.light}
             
             {!editingWholeSelection && (
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
                 onClick={() => {
                   const trace = traces.find(t => t.id === contextMenu.traceId)
                   if (trace) setEditingTrace(trace)
@@ -8609,42 +8611,42 @@ return (
                   setContextMenu(null)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.customize')}
+                {t('atrium.menu.customize')}
               </button>
             )}
             {/* This trace's look, to give to others; the look copied, given to
                 this trace -- or, right-clicked in a selection, to all of it. */}
             <button
-              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="ctx-item"
               onClick={() => {
                 copyTraceStyle(contextMenu.traceId)
                 setContextMenu(null)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyStyle')}
+              {t('atrium.menu.copyStyle')}
             </button>
             {copiedStyle() && (
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
                 onClick={() => {
                   pasteTraceStyle(editingWholeSelection ? [...multiSelectedIds] : [contextMenu.traceId])
                   setContextMenu(null)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.pasteStyle')}
+                {t('atrium.menu.pasteStyle')}
               </button>
             )}
             {/* This trace -- or, right-clicked in a selection, all of it -- out
                 as a picture or an .atrium file. */}
             {onExport && (
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
                 onClick={() => {
                   onExport(editingWholeSelection ? [...multiSelectedIds] : [contextMenu.traceId])
                   setContextMenu(null)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.export.open')}
+                {t('atrium.export.open')}
               </button>
             )}
             {/* Back into drawing mode on this drawing -- all its strokes (lib/brushes
@@ -8658,7 +8660,7 @@ return (
               if (editingWholeSelection && ![...multiSelectedIds].every(id => members.has(id))) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     // Their store copies are current; a leftover drag override
                     // would go on showing the old placement over the edited one.
@@ -8674,7 +8676,7 @@ return (
                     onEditDrawing(trace.id)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.editDrawing')}
+                  {t('atrium.menu.editDrawing')}
                 </button>
               )
             })()}
@@ -8687,7 +8689,7 @@ return (
               if (editingWholeSelection && !(multiSelectedIds.size === 1 && multiSelectedIds.has(trace.id))) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     setContextMenu(null)
                     setSelectedTraceId(null)
@@ -8698,7 +8700,7 @@ return (
                     })
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.splitStrokes')}
+                  {t('atrium.menu.splitStrokes')}
                 </button>
               )
             })()}
@@ -8711,10 +8713,10 @@ return (
               return (
                 <button
                   title={t('atrium.menu.rasterizeHint')}
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => { setContextMenu(null); rasterize(ids) }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {count > 1 ? t('atrium.menu.rasterizeAll', { count }) : t('atrium.menu.rasterize')}
+                  {count > 1 ? t('atrium.menu.rasterizeAll', { count }) : t('atrium.menu.rasterize')}
                 </button>
               )
             })()}
@@ -8726,7 +8728,7 @@ return (
               if (editingWholeSelection && !(multiSelectedIds.size === 1 && multiSelectedIds.has(trace.id))) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     setContextMenu(null)
                     setSelectedTraceId(null)
@@ -8738,7 +8740,7 @@ return (
                     })
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.extractPages')}
+                  {t('atrium.menu.extractPages')}
                 </button>
               )
             })()}
@@ -8746,7 +8748,7 @@ return (
                 the next trace clicked. */}
             {canEdit && (
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
                 onClick={() => {
                   const ids = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
                     ? Array.from(multiSelectedIds)
@@ -8755,7 +8757,7 @@ return (
                   setConnectFrom(ids)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.connectTo')}
+                {t('atrium.menu.connectTo')}
               </button>
             )}
             {/* The selection -- or this trace -- in a frame of its own. */}
@@ -8766,13 +8768,13 @@ return (
               if (!ids.some(id => traces.some(tr => tr.id === id && !isFrame(tr)))) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     setContextMenu(null)
                     wrapInFrame(ids)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">⬚</span> {t('atrium.menu.wrapInFrame')}
+                  {t('atrium.menu.wrapInFrame')}
                 </button>
               )
             })()}
@@ -8784,27 +8786,27 @@ return (
               return (
                 <button
                   data-arrange-frame={on ? 'on' : 'off'}
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     setContextMenu(null)
                     setFrameArrange(frame.id, !on)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">▦</span> {t('atrium.menu.arrangeFrame')}
-                  {on && <span className="ml-auto text-nier-bg/70">✓</span>}
+                  {t('atrium.menu.arrangeFrame')}
+                  {on && <span className="ctx-aside">✓</span>}
                 </button>
               )
             })()}
             {editingWholeSelection && (
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
                 onClick={() => {
                   setEditingTrace(null)
                   setShowBatchEditPanel(true)
                   setContextMenu(null)
                 }}
               >
-                <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.customize.batchEdit', { count: multiSelectedIds.size })}
+                {t('atrium.customize.batchEdit', { count: multiSelectedIds.size })}
               </button>
             )}
             {editingWholeSelection && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
@@ -8814,32 +8816,35 @@ return (
                 onMouseLeave={leaveFlyout}
               >
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   title={t('atrium.customize.repackHint')}
                 >
-                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.reorganizeSelected', { count: multiSelectedIds.size })}</span>
-                  <span className="text-nier-bg/70 text-[9px]">▶</span>
+                  <span>{t('atrium.menu.reorganizeSelected', { count: multiSelectedIds.size })}</span>
+                  <span className="ctx-chevron" aria-hidden="true">›</span>
                 </button>
                 {flyout === 'reorganize' && flyoutRect && (
                   <div
-                    className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
+                    {...flyoutGlide.host}
+                  data-side={contextMenuFlyoutOnLeft ? 'left' : undefined}
+                  className="ctx-flyout fixed w-max flex flex-col z-[10000101]"
                     style={
                       contextMenuFlyoutOnLeft
                         ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
                         : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                     }
                     onMouseEnter={keepFlyout}
-                    onMouseLeave={leaveFlyout}
+                    onMouseLeave={() => { flyoutGlide.host.onMouseLeave(); leaveFlyout() }}
                   >
+                    {flyoutGlide.light}
                     <button
-                      className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      className="ctx-item"
                       onClick={() => reorganizeSelectedTraces('square')}
                       title={t('atrium.menu.packRectangle')}
                     >
                       {t('atrium.customize.square')}
                     </button>
                     <button
-                      className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                      className="ctx-item"
                       onClick={() => reorganizeSelectedTraces('circle')}
                       title={t('atrium.menu.packCluster')}
                     >
@@ -8854,7 +8859,7 @@ return (
               if (!trace || trace.type !== 'text') return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(trace.content)
@@ -8864,7 +8869,7 @@ return (
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyText')}
+                  {t('atrium.menu.copyText')}
                 </button>
               )
             })()}
@@ -8879,7 +8884,7 @@ return (
               if (!link) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(link)
@@ -8889,12 +8894,12 @@ return (
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.copyEmbedLink')}
+                  {t('atrium.menu.copyEmbedLink')}
                 </button>
               )
             })()}
             <button
-              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="ctx-item"
               onClick={() => {
                 const trace = traces.find(t => t.id === contextMenu.traceId)
                 if (trace) {
@@ -8903,7 +8908,7 @@ return (
                 setContextMenu(null)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {isLockedTrace(traces.find(t => t.id === contextMenu.traceId) ?? {}) ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
+              {isLockedTrace(traces.find(t => t.id === contextMenu.traceId) ?? {}) ? t('atrium.menu.unlock') : t('atrium.menu.lock')}
             </button>
             {/* The same switch as the Customize checkbox, one right-click away:
                 an embed is where a video or page you can use lives. */}
@@ -8912,17 +8917,17 @@ return (
               if (!trace || trace.type !== 'embed') return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     updateTraceCustomization(trace.id, { enableInteraction: !trace.enableInteraction })
                     setContextMenu(null)
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {trace.enableInteraction ? t('atrium.menu.disableInteraction') : t('atrium.menu.enableInteraction')}
+                  {trace.enableInteraction ? t('atrium.menu.disableInteraction') : t('atrium.menu.enableInteraction')}
                 </button>
               )
             })()}
-            <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+            <div className="ctx-sep" />
             {/* Transformations submenu -- opens as a side flyout on hover,
                 grouping the crop/rotate/flip resets that used to each take
                 their own row in this menu. */}
@@ -8933,24 +8938,27 @@ return (
               onMouseLeave={leaveFlyout}
             >
               <button
-                className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                className="ctx-item"
               >
-                <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.transformations')}</span>
-                <span className="text-nier-bg/70 text-[9px]">▶</span>
+                <span>{t('atrium.menu.transformations')}</span>
+                <span className="ctx-chevron" aria-hidden="true">›</span>
               </button>
               {flyout === 'transform' && flyoutRect && (
                 <div
-                  className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
+                  {...flyoutGlide.host}
+                  data-side={contextMenuFlyoutOnLeft ? 'left' : undefined}
+                  className="ctx-flyout fixed w-max flex flex-col z-[10000101]"
                   style={
                     contextMenuFlyoutOnLeft
                       ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
                       : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                   }
                   onMouseEnter={keepFlyout}
-                  onMouseLeave={leaveFlyout}
+                  onMouseLeave={() => { flyoutGlide.host.onMouseLeave(); leaveFlyout() }}
                 >
+                  {flyoutGlide.light}
                   <button
-                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="ctx-item"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -8967,7 +8975,7 @@ return (
                     {t('atrium.menu.resetCropping')}
                   </button>
                   <button
-                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="ctx-item"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -8985,7 +8993,7 @@ return (
                     {t('atrium.menu.resetAspect')}
                   </button>
                   <button
-                    className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                    className="ctx-item"
                     onClick={async () => {
                       const trace = traces.find(t => t.id === contextMenu.traceId)
                       if (trace) {
@@ -9002,7 +9010,7 @@ return (
                     return (
                       <>
                         <button
-                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                          className="ctx-item"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipHorizontal: !trace.flipHorizontal })
                             setContextMenu(null)
@@ -9011,7 +9019,7 @@ return (
                           {t('atrium.menu.flipHorizontal')}
                         </button>
                         <button
-                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                          className="ctx-item"
                           onClick={() => {
                             updateTraceCustomization(trace.id, { flipVertical: !trace.flipVertical })
                             setContextMenu(null)
@@ -9031,7 +9039,7 @@ return (
               if (!isDesktop || !trace || trace.type !== 'embed' || !confirmedImageIds.has(trace.id)) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={async () => {
                     setContextMenu(null)
                     const result = await convertEmbedToInternalImage(trace.id)
@@ -9040,7 +9048,7 @@ return (
                     }
                   }}
                 >
-                  <span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.convertToImage')}
+                  {t('atrium.menu.convertToImage')}
                 </button>
               )
             })()}
@@ -9065,21 +9073,22 @@ return (
                   onMouseLeave={leaveFlyout}
                 >
                   <button
-                    className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                    className="ctx-item"
                   >
-                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveToGroup')}</span>
-                    <span className="text-nier-bg/70 text-[9px]">▶</span>
+                    <span>{t('atrium.menu.moveToGroup')}</span>
+                    <span className="ctx-chevron" aria-hidden="true">›</span>
                   </button>
                   {flyout === 'group' && flyoutRect && (
                     <div
-                      ref={groupFlyoutListRef}
                       // Marks this as UI for the canvas wheel handler, which
                       // reads a scroll anywhere else as "zoom the atrium". It
                       // already matched `button`, so a wheel over a row
                       // scrolled while one over the gap between rows zoomed
                       // the canvas behind the open menu.
                       data-ui-element="true"
-                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
+                      {...flyoutGlide.host}
+                  data-side={contextMenuFlyoutOnLeft ? 'left' : undefined}
+                  className="ctx-flyout fixed w-max flex flex-col z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
                       style={{
                         ...(contextMenuFlyoutOnLeft
                           ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
@@ -9087,8 +9096,9 @@ return (
                         maxHeight: groupFlyoutMaxHeight,
                       }}
                       onMouseEnter={keepFlyout}
-                      onMouseLeave={leaveFlyout}
+                      onMouseLeave={() => { flyoutGlide.host.onMouseLeave(); leaveFlyout() }}
                     >
+                      {flyoutGlide.light}
                       {/* New Group leads, where it used to sit at the bottom
                           behind a rule. It is the one row whose place does not
                           depend on how many groups exist, and from the top it
@@ -9098,36 +9108,36 @@ return (
                           trace somewhere that already exists. */}
                       <button
                         data-group-row
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center gap-2"
+                        className="ctx-item"
                         onClick={() => {
                           setNewGroupDialog({ traceIds: targetIds, name: '' })
                           setContextMenu(null)
                         }}
                       >
-                        <span className="text-nier-bg/60 text-[10px]">+</span> {t('atrium.menu.newGroup')}
+                        {t('atrium.menu.newGroup')}
                       </button>
-                      <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+                      <div className="ctx-sep" />
                       <button
                         data-group-row
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="ctx-item"
                         disabled={currentLayerId === null}
                         onClick={() => { moveTracesToGroup(targetIds, null); setContextMenu(null) }}
                       >
-                        {currentLayerId === null && <span className="text-emerald-400 text-[9px]">✓</span>}
+                        {currentLayerId === null && <span className="ctx-check">✓</span>}
                         {t('atrium.layers.ungrouped')}
                       </button>
                       {groupLayers.length === 0 && (
-                        <span className="px-4 py-2 text-nier-bg/70 text-[10px] tracking-wider uppercase whitespace-nowrap">{t('atrium.layers.noGroups')}</span>
+                        <span className="ctx-label">{t('atrium.layers.noGroups')}</span>
                       )}
                       {groupLayers.map(layer => (
                         <button
                           key={layer.id}
                           data-group-row
-                          className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="ctx-item"
                           disabled={currentLayerId === layer.id}
                           onClick={() => { moveTracesToGroup(targetIds, layer.id); setContextMenu(null) }}
                         >
-                          {currentLayerId === layer.id && <span className="text-emerald-400 text-[9px]">✓</span>}
+                          {currentLayerId === layer.id && <span className="ctx-check">✓</span>}
                           {layer.name}
                         </button>
                       ))}
@@ -9144,14 +9154,14 @@ return (
               if (groupsOf(targets).length === 0) return null
               return (
                 <button
-                  className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-6 text-[11px] tracking-wider uppercase"
+                  className="ctx-item"
                   onClick={() => {
                     setContextMenu(null)
                     void ungroupSelection(targets)
                   }}
                 >
-                  <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.ungroup')}</span>
-                  <span className="text-nier-bg/50 text-[10px] tracking-normal">Ctrl+Shift+G</span>
+                  <span>{t('atrium.menu.ungroup')}</span>
+                  <span className="ctx-aside">Ctrl+Shift+G</span>
                 </button>
               )
             })()}
@@ -9169,42 +9179,45 @@ return (
                   onMouseLeave={leaveFlyout}
                 >
                   <button
-                    className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
+                    className="ctx-item"
                   >
-                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveLayer')}</span>
-                    <span className="text-nier-bg/70 text-[9px]">▶</span>
+                    <span>{t('atrium.menu.moveLayer')}</span>
+                    <span className="ctx-chevron" aria-hidden="true">›</span>
                   </button>
                   {flyout === 'move' && flyoutRect && (
                     <div
-                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
+                      {...flyoutGlide.host}
+                  data-side={contextMenuFlyoutOnLeft ? 'left' : undefined}
+                  className="ctx-flyout fixed w-max flex flex-col z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
                           : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                       }
                       onMouseEnter={keepFlyout}
-                      onMouseLeave={leaveFlyout}
+                      onMouseLeave={() => { flyoutGlide.host.onMouseLeave(); leaveFlyout() }}
                     >
+                      {flyoutGlide.light}
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="ctx-item"
                         onClick={() => moveInOrder([trace.id], 'up')}
                       >
                         {t('atrium.menu.moveUp')}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="ctx-item"
                         onClick={() => moveInOrder([trace.id], 'down')}
                       >
                         {t('atrium.menu.moveDown')}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="ctx-item"
                         onClick={() => moveInOrder([trace.id], 'top')}
                       >
                         {orderLabels(!!groupIdOf(trace, layers)).top}
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="ctx-item"
                         onClick={() => moveInOrder([trace.id], 'bottom')}
                       >
                         {orderLabels(!!groupIdOf(trace, layers)).bottom}
@@ -9231,23 +9244,26 @@ return (
                   onMouseEnter={openFlyout('select')}
                   onMouseLeave={leaveFlyout}
                 >
-                  <button className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
-                    <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('common.select')}</span>
-                    <span className="text-nier-bg/70 text-[9px]">▶</span>
+                  <button className="ctx-item">
+                    <span>{t('common.select')}</span>
+                    <span className="ctx-chevron" aria-hidden="true">›</span>
                   </button>
                   {flyout === 'select' && flyoutRect && (
                     <div
-                      className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
+                      {...flyoutGlide.host}
+                  data-side={contextMenuFlyoutOnLeft ? 'left' : undefined}
+                  className="ctx-flyout fixed w-max flex flex-col z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
                           ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
                           : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                       }
                       onMouseEnter={keepFlyout}
-                      onMouseLeave={leaveFlyout}
+                      onMouseLeave={() => { flyoutGlide.host.onMouseLeave(); leaveFlyout() }}
                     >
+                      {flyoutGlide.light}
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center justify-between gap-6 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="ctx-item"
                         disabled={inGroup.length === 0}
                         onClick={() => {
                           setMultiSelectedIds(new Set(inGroup.map(t => t.id)))
@@ -9258,10 +9274,10 @@ return (
                         <span>{t('atrium.menu.selectGroup', { count: inGroup.length })}</span>
                         {/* The key, shown where the action is -- there is no shortcut
                             list anywhere else to find it in. */}
-                        <span className="text-nier-bg/50 text-[10px] tracking-normal">G</span>
+                        <span className="ctx-aside">G</span>
                       </button>
                       <button
-                        className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
+                        className="ctx-item"
                         onClick={() => {
                           setMultiSelectedIds(new Set(traces.map(t => t.id)))
                           setSelectedTraceId(trace.id)
@@ -9275,24 +9291,23 @@ return (
                 </div>
               )
             })()}
-            <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-600 to-transparent my-1" />
+            <div className="ctx-sep" />
             <button
-              className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="ctx-item"
               onClick={() => {
                 duplicateTrace(contextMenu.traceId)
               }}
             >
-              <span className="text-nier-bg/60 text-[10px]">◇</span> {t('common.duplicate')}
+              {t('common.duplicate')}
             </button>
             <button
-              className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-3 text-[11px] tracking-wider uppercase"
+              className="ctx-item" data-danger=""
               onClick={() => {
                 const inMultiSelect = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
                 deleteTraces(inMultiSelect ? Array.from(multiSelectedIds) : [contextMenu.traceId], inMultiSelect ? [...selectedLinksRef.current] : [])
               }}
             >
-              <span className="text-red-500 text-[10px]">◇</span>
-              {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
+                            {multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.traceId)
                 ? t('atrium.menu.deleteSelected', { count: multiSelectedIds.size })
                 : t('common.delete')}
             </button>

@@ -93,6 +93,7 @@ import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
 import type { View } from '../lib/worldCamera'
+import { useMenuGlide } from './MenuGlide'
 // pathSimplify no longer needed - drawings saved as raster images
 import type { Lobby, Trace } from '../types/database'
 
@@ -712,6 +713,8 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const mapContextMenuRef = useRef<HTMLDivElement>(null)
   const mapContextMenuPos = useClampedMenuPosition(mapContextMenuRef, mapContextMenu?.x ?? 0, mapContextMenu?.y ?? 0)
+  // The light gliding between its rows (MenuGlide).
+  const mapMenuGlide = useMenuGlide('.ctx-item', mapContextMenuRef)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [showLocationsPanel, setShowLocationsPanel] = useState(false)
 
@@ -5822,19 +5825,15 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           onContextMenu={(e) => { e.preventDefault(); setMapContextMenu(null) }}
         >
           <div
-            ref={mapContextMenuRef}
-            className="absolute bg-nier-blackLight border border-nier-border/40 py-1 min-w-[160px] max-h-[90vh] overflow-y-auto"
+            {...mapMenuGlide.host}
+            className="ctx-menu absolute max-h-[90vh] overflow-y-auto"
             // Measured rather than estimated -- the old numbers (180 wide, and
             // a height of 220 on desktop or 195 on web) were guesses that had
             // to be kept in step by hand every time an entry was added.
             style={{ left: mapContextMenuPos.x, top: mapContextMenuPos.y }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Corner brackets */}
-            <div className="absolute top-0 left-0 w-3 h-3 border-l border-t border-nier-border/60" />
-            <div className="absolute top-0 right-0 w-3 h-3 border-r border-t border-nier-border/60" />
-            <div className="absolute bottom-0 left-0 w-3 h-3 border-l border-b border-nier-border/60" />
-            <div className="absolute bottom-0 right-0 w-3 h-3 border-r border-b border-nier-border/60" />
+            {mapMenuGlide.light}
             
             {/* Above "Place Trace", because these act on something the user is
                 already holding rather than starting a new thing -- and because
@@ -5856,10 +5855,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
               const canPasteEmbed = true
 
               const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
-              const entryClass = 'w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2'
+              const entryClass = 'ctx-item'
 
               return (
-                <div className="border-b border-nier-border/20 mb-1 pb-1">
+                <div className="border-b border-nier-border/25 mb-1 pb-1">
                   {canPasteImage && (
                     <button
                       className={entryClass}
@@ -5868,7 +5867,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                         void handlePasteImageAt(anchor.x, anchor.y)
                       }}
                     >
-                      ◇ {t('atrium.canvas.pasteImage')}
+                      {t('atrium.canvas.pasteImage')}
                     </button>
                   )}
                   {canPasteEmbed && (
@@ -5879,33 +5878,33 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
                         void handlePasteEmbedAt(anchor.x, anchor.y)
                       }}
                     >
-                      ◇ {t('atrium.canvas.pasteEmbed')}
+                      {t('atrium.canvas.pasteEmbed')}
                     </button>
                   )}
                 </div>
               )
             })()}
 
-            <div className="px-3 py-1.5 text-nier-bg/70 text-[11px] tracking-[0.2em] uppercase select-none">
+            <div className="ctx-label">
               {t('atrium.canvas.placeTrace')}
             </div>
             {([
-              { label: `◇ ${t('atrium.trace.type.text')}`, type: 'text' as const, shape: undefined },
-              { label: `◇ ${t('atrium.trace.type.embed')}`, type: 'embed' as const, shape: undefined },
-              { label: `◇ ${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
-              { label: `~ ${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
-              { label: `⬚ ${t('atrium.trace.type.frame')}`, type: 'frame' as const, shape: undefined },
+              { label: `${t('atrium.trace.type.text')}`, type: 'text' as const, shape: undefined },
+              { label: `${t('atrium.trace.type.embed')}`, type: 'embed' as const, shape: undefined },
+              { label: `${t('atrium.trace.type.shape')}`, type: 'shape' as const, shape: 'rectangle' as const },
+              { label: `${t('atrium.trace.shape.path')}`, type: 'shape' as const, shape: 'path' as const },
+              { label: `${t('atrium.trace.type.frame')}`, type: 'frame' as const, shape: undefined },
               ...(isLocalData ? [
-                { label: `◇ ${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
-                { label: `◇ ${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
-                { label: `◇ ${t('atrium.trace.type.video')}`, type: 'video' as const, shape: undefined },
-                { label: `◇ ${t('atrium.trace.type.document')}`, type: 'document' as const, shape: undefined },
-                { label: `◇ ${t('atrium.trace.type.spreadsheet')}`, type: 'sheet' as const, shape: undefined },
+                { label: `${t('atrium.trace.type.image')}`, type: 'image' as const, shape: undefined },
+                { label: `${t('atrium.trace.type.sound')}`, type: 'audio' as const, shape: undefined },
+                { label: `${t('atrium.trace.type.video')}`, type: 'video' as const, shape: undefined },
+                { label: `${t('atrium.trace.type.document')}`, type: 'document' as const, shape: undefined },
+                { label: `${t('atrium.trace.type.spreadsheet')}`, type: 'sheet' as const, shape: undefined },
               ] : []),
             ]).map((item) => (
               <button
                 key={item.label}
-                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                className="ctx-item"
                 onClick={async () => {
                   const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
                   const screen = { x: mapContextMenu.x, y: mapContextMenu.y }
@@ -5972,38 +5971,38 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             {/* Desktop reaches Pinterest through a linked web account rather
                 than its own OAuth, but once linked it imports exactly the
                 same way -- so the entry belongs on both. */}
-            <div className="border-t border-nier-border/20 mt-1 pt-1">
+            <div className="border-t border-nier-border/25 mt-1 pt-1">
               <button
-                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                className="ctx-item"
                 onClick={() => {
                   const anchor = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
                   setMapContextMenu(null)
                   openPinterestImport(anchor)
                 }}
               >
-                ◇ {t('atrium.canvas.pinterestBoards')}
+                {t('atrium.canvas.pinterestBoards')}
               </button>
             </div>
             {/* What's here, out; another atrium's traces, in, where the menu was opened. */}
-            <div className="border-t border-nier-border/20 mt-1 pt-1">
+            <div className="border-t border-nier-border/25 mt-1 pt-1">
               <button
-                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                className="ctx-item"
                 onClick={() => {
                   setMapContextMenu(null)
                   setExportOf({ ids: selectionRef.current })
                 }}
               >
-                ◇ {t('atrium.export.open')}
+                {t('atrium.export.open')}
               </button>
               <button
-                className="w-full px-3 py-1.5 text-left text-nier-bg text-xs tracking-[0.15em] uppercase hover:bg-nier-bg/10 transition-colors flex items-center gap-2"
+                className="ctx-item"
                 onClick={() => {
                   importAnchorRef.current = { x: mapContextMenu.worldX, y: mapContextMenu.worldY }
                   setMapContextMenu(null)
                   atriumFileInputRef.current?.click()
                 }}
               >
-                ◇ {t('atrium.import.here')}
+                {t('atrium.import.here')}
               </button>
             </div>
           </div>
