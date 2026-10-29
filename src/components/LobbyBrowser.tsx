@@ -14,6 +14,7 @@ import KeptWhere, { type Where } from './KeptWhere'
 import { driveSpace, hasDriveToken, loadGoogleSignIn } from '../lib/drive'
 import { formatSize } from '../lib/size'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
+import { askAhead } from '../lib/worker'
 import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rosterVersion, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
 import { publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
@@ -727,6 +728,8 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }).catch(() => {})
   }
   useEffect(lookForInvitations, [myId])
+  // What its parts will ask the worker for, asked at once, in one request (lib/worker).
+  useEffect(() => { if (myId) void askAhead() }, [myId])
   // Its shared atriums, as the desktop's account signs in or out.
   useEffect(() => { if (isDesktop) void loadBrowserLobbies() }, [deskAccount])
 

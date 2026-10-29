@@ -71,9 +71,15 @@ let noBatches = false
 // versions and lists: a roster changed, told through the room, is read anew.
 const KEEP_MS = 3 * 60_000
 const KEPT_PATHS = new Set(['/people/me', '/people/invites', '/people/visits', '/people/atriums', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage', '/themes', '/contributions/wall'])
-const kept = new Map<string, { at: number; status: number; body: string }>()
+type Answer = { status: number; body: string }
+const kept = new Map<string, Answer & { at: number }>()
+// Those on their way: asked again meanwhile, the same answer, not a second ask.
+const coming = new Map<string, Promise<Answer | null>>()
+// Moved on by each forgetting: an answer to a read asked before a write isn't kept.
+let era = 0
 /** Every directory answer kept is let go of: something was just written. */
-export const forgetReads = () => kept.clear()
+export const forgetReads = () => { kept.clear(); coming.clear(); era++ }
+const asResponse = (answer: Answer) => new Response(answer.body, { status: answer.status })
 
 /** `path`'s answer, asked together with the other reads made about now --
  *  or null, for the caller to ask alone: not a read, or the batch failed.
@@ -88,21 +94,48 @@ export function viaBatch(path: string, body?: Record<string, unknown>, get = fal
   }
   if (!url || noBatches) return Promise.resolve(null)
   const key = KEPT_PATHS.has(path) ? `${path} ${JSON.stringify(body ?? {})}` : null
-  const had = key ? kept.get(key) : undefined
-  if (had && Date.now() - had.at < KEEP_MS) return Promise.resolve(new Response(had.body, { status: had.status }))
-  return new Promise(done => {
+  if (key) {
+    const had = kept.get(key)
+    if (had && Date.now() - had.at < KEEP_MS) return Promise.resolve(asResponse(had))
+    const on = coming.get(key)
+    if (on) return on.then(answer => answer && asResponse(answer))
+  }
+  const asked = new Promise<Response | null>(done => {
     const now = Date.now()
     if (!waiting.length) firstAt = now
-    waiting.push({
-      path, body, get,
-      done: response => {
-        if (key && response?.ok) void response.clone().text().then(text => kept.set(key, { at: Date.now(), status: response.status, body: text }))
-        done(response)
-      },
-    })
+    waiting.push({ path, body, get, done })
     window.clearTimeout(timer)
     timer = window.setTimeout(() => void sendBatch(url), Math.min(QUIET_MS, firstAt + MOST_WAIT_MS - now))
   })
+  if (key) {
+    const askedIn = era
+    const answer = asked.then(async response => (response?.ok ? { status: response.status, body: await response.clone().text() } : null))
+    coming.set(key, answer)
+    void answer.then(got => {
+      if (coming.get(key) === answer) coming.delete(key)
+      if (got && askedIn === era) kept.set(key, { ...got, at: Date.now() })
+    })
+  }
+  return asked
+}
+
+// The directory's reads a page of the atrium browser makes as it opens --
+// one's profile, invitations, the atriums listed, visits, held atriums,
+// whether one's the operator, Pinterest, storage, the themes -- asked all at
+// once, in one request, and kept (KEPT_PATHS): each of its parts, asking as
+// it mounts, is answered from them, or from the answer on its way. Asked by
+// its parts alone, they went in four or five requests, one after another.
+// Each as its part asks it: the body {} and one's token (toWorker, hostedStore).
+const AHEAD = ['/people/me', '/people/invites', '/people/atriums', '/people/visits', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage']
+export async function askAhead(): Promise<void> {
+  const url = workerUrl()
+  const token = await accountToken().catch(() => null)
+  if (!url || !token || noBatches) return
+  for (const path of AHEAD) void viaBatch(path, { token })
+  void viaBatch('/themes', undefined, true)
+  // Gathered already: sent now.
+  window.clearTimeout(timer)
+  if (waiting.length) void sendBatch(url)
 }
 
 async function sendBatch(url: string) {

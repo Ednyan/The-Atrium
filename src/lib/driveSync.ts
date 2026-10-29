@@ -411,6 +411,10 @@ export async function lookAtDriveAtrium(lobbyId: string, me: string): Promise<'i
   if (known) return known
   const kept = allKept(me)[lobbyId]
   if (!kept) return null
+  // The picture's version asked with the roster's, by the id the roster as
+  // last read here has: one round, not two, while it hasn't changed.
+  const knownPreview = rostersKept()[kept.roster]?.roster.preview
+  const previewVersion = knownPreview ? store.version(knownPreview).catch(() => null) : null
   let roster: Roster
   try {
     roster = await readRoster(kept.roster)
@@ -419,7 +423,7 @@ export async function lookAtDriveAtrium(lobbyId: string, me: string): Promise<'i
   }
   const out = outOf(roster, me, kept.viewer)
   if (out) return out
-  await takePreview(lobbyId, kept, roster, me).catch(error => console.warn('[drive] the atrium’s picture:', error))
+  await takePreview(lobbyId, kept, roster, me, roster.preview === knownPreview ? previewVersion : null).catch(error => console.warn('[drive] the atrium’s picture:', error))
   return 'in'
 }
 
@@ -452,9 +456,10 @@ export async function sharePreview(lobbyId: string, picture: Blob): Promise<void
 // The owner's picture, if it's moved since this copy took it -- without going
 // in: opened with the keys this account holds, and a generation made since
 // (someone removed) taken from the roster, as a look inside would.
-async function takePreview(lobbyId: string, kept: Kept, roster: Roster, me: string): Promise<void> {
+// `asked`: its version, asked already.
+async function takePreview(lobbyId: string, kept: Kept, roster: Roster, me: string, asked: Promise<string | null> | null = null): Promise<void> {
   if (!roster.preview) return
-  const version = await store.version(roster.preview)
+  const version = (asked && await asked) ?? await store.version(roster.preview)
   if (version === kept.previewVersion) return
   const keys = await newKeys(roster, me, !!kept.viewer, kept.keys)
   if (keys) kept = { ...kept, keys }
