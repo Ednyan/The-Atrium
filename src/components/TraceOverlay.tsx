@@ -2763,7 +2763,13 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
       if (!spring || dragShiftRef.current) {
         if (spring) feelRest(spring, gx, gy)
         trail = { ox: 0, oy: 0, lean: 0, moving: false }
-      } else if (dt > 0) {
+      } else {
+        // Between frames (dt 0: the move went on) the spring isn't stepped,
+        // but its offset is measured again from where the move is now, so it's
+        // drawn where the spring is. The offset kept from the frame before,
+        // the move arriving after the frame's step drew the spring plus that
+        // frame's own step of the pointer, and nothing on frames without one:
+        // a trace that jerked back and forth.
         trail = feelStep(spring, gx, gy, dt)
       }
       const { ox, oy, lean } = trail
