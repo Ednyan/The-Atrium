@@ -1,6 +1,6 @@
 // The whole atrium in miniature, in a corner, while the view moves -- the
-// view drawn on it as a frame. A preference, on unless turned off
-// (ProfileCustomization, showMinimap).
+// view drawn on it as a frame. On unless turned off by its button in the
+// top bar (LobbyScene, showMinimap).
 //
 // Cheap by construction. The traces are drawn into its canvas only when they
 // change, at most four times a second. While the view moves, only the frame

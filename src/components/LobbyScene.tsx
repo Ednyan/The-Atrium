@@ -733,7 +733,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   // a step of undo (lib/locations). Presentation mode is here, not in
   // LocationsPanel, so it keeps running after the panel is closed.
   const { locations } = useGamePick('locations')
-  const { showMinimap } = useGamePick('showMinimap')
+  const { showMinimap, setShowMinimap } = useGamePick('showMinimap', 'setShowMinimap')
   const [presentationMode, setPresentationMode] = useState(false)
   const [presentationIndex, setPresentationIndex] = useState(0)
   const presentationModeRef = useRef(false)
@@ -4818,7 +4818,9 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
     { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
     { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
-    { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: true, onSelect: recenter },
+    // The minimap, on unless turned off here; lit while it's on.
+    ...(narrow ? [] : [{ id: 'minimap', icon: MENU_ICONS.minimap, label: t('atrium.hud.minimap'), apart: true, lit: showMinimap, onSelect: () => setShowMinimap(!showMinimap) }]),
+    { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: narrow, onSelect: recenter },
     { id: 'fullscreen', icon: isFullscreen ? MENU_ICONS.minimize : MENU_ICONS.maximize, label: isFullscreen ? t('atrium.hud.leaveFullscreen') : t('atrium.hud.fullscreen'), hint: 'F11', onSelect: toggleFullscreen },
     { id: 'hide-ui', icon: MENU_ICONS.hide, label: t('atrium.hud.hideUi'), onSelect: () => setUiHidden(true) },
     // Lit while any of it is in effect, closed too: a window on top or seen
