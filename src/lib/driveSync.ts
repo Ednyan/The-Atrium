@@ -1184,6 +1184,8 @@ const ROOM_MOST = 40_000
 // pause (docs/SCALING.md: each is a write to Drive or R2, and rows in D1).
 // Sooner when the room drops, the page is hidden or closed, or the sync stops.
 const KEEP_MS = 30_000
+// The room's first connection, this soon after the opening look: nothing to look for again.
+const ROOM_AFTER_LOOK_MS = 10_000
 
 // `folders`: each writer's folder for the atrium, as found -- listed at the
 // next look with the roster's version, in one round.
@@ -1212,6 +1214,8 @@ interface Session {
   // When the owner's app last filled a public atrium's mirror in.
   mirrorFilledAt: number
   roomLive: boolean
+  // Whether it's been live at all this session: its first connection isn't a return.
+  roomWasLive: boolean
   stopHearing: () => void
   // Listening at the door (lib/rooms), while one may let people in.
   door: (() => void) | null
@@ -1268,7 +1272,7 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   const s: Session = {
     lobbyId, me, kept, keyring: await keyringFrom(kept), merged, seen: new Set(state.seen), last: state.last,
     queue: Promise.resolve(), roster: null, folders: new Map(Object.entries(state.folders ?? {})), quiet: 0, looking: 0, unkept: state.unkept ?? [], keeping: 0, stopHearing: () => {}, putOff: new Set(), rosterAskedAt: 0, rosterToldAt: 0, inviteCleared: false,
-    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, mirrorFilledAt: 0, door: null,
+    filesFolder: null, present: new Set(), fetching: new Set(), retry: new Map(), local, compactedAt: 0, lookedAt: 0, roomLive: false, roomWasLive: false, mirrorFilledAt: 0, door: null,
     snapshot: state.snapshot ? { version: state.snapshot.version, folded: new Set(state.snapshot.folded) } : null,
   }
   session = s
@@ -1289,8 +1293,12 @@ export async function startDriveSync(lobbyId: string, me: string): Promise<void>
   // went only through it, into the store now.
   const stopWatching = watchRooms(() => {
     const live = roomStatus(s.lobbyId) === 'live'
-    if (session === s && live && !s.roomLive && s.lookedAt) look()
+    // Back after a gap -- not its first connection, just after the look the
+    // atrium opened with, which read it all a moment before: on every
+    // entry that was a second look, a request to the hosted store.
+    if (session === s && live && !s.roomLive && s.lookedAt && (s.roomWasLive || Date.now() - s.lookedAt > ROOM_AFTER_LOOK_MS)) look()
     if (!live && s.roomLive) keepNow()
+    if (live) s.roomWasLive = true
     s.roomLive = live
   })
   // The page hidden -- most often, on its way to being closed -- or closed:
@@ -1559,7 +1567,11 @@ async function down(s: Session): Promise<void> {
   await bringFiles(s, rowsOf(s.merged, 'traces').flatMap(filesOf))
   // Downloads only for what's new: the roster when its version moves, saves
   // not read yet. A look at an atrium nobody has changed downloads nothing.
+  const known = s.folders.size
   const listed = await listWriters(s, roster, early)
+  // Folders found: kept with the state now, for the next opening's look to
+  // list them with the roster's version -- not only once something's saved.
+  if (s.folders.size !== known) await persist(s)
   // Public, kept in Drive: the owner's app fills its mirror in every so often.
   if (s.kept.owner && roster.public && !isHostedId(s.kept.roster) && Date.now() - s.mirrorFilledAt > MIRROR_FILL_MS) {
     s.mirrorFilledAt = Date.now()
