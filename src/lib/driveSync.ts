@@ -256,16 +256,24 @@ export async function myIdentity(me: { id: string }, hostedOnly = false): Promis
 }
 
 // One's folder for atriums in the hosted store: made the first time it's
-// needed, and published, as one's Drive folder is (drive_root).
+// needed, and published, as one's Drive folder is (drive_root) -- written to
+// the directory only if it hasn't it already. Its id kept here too: for this,
+// and for the atrium browser to ask for its list as it opens (ownElsewhere).
 const HOSTED_ROOT_HERE = 'atrium.hostedRoot'
-export async function myHostedRoot(me: { id: string }): Promise<string> {
+function hostedRootHere(user: string): string | null {
   try {
     const here = JSON.parse(localStorage.getItem(HOSTED_ROOT_HERE) || 'null') as { user: string; root: string } | null
-    if (here?.user === me.id) return here.root
-  } catch { /* none kept */ }
-  const root = (await myEntry()).hosted_root ?? (await hosted.createFolder('Digital Atrium')).id
-  await myEntry({ hosted_root: root })
-  try { localStorage.setItem(HOSTED_ROOT_HERE, JSON.stringify({ user: me.id, root })) } catch { /* asked again next time */ }
+    return here?.user === user ? here.root : null
+  } catch { return null }
+}
+const keepHostedRoot = (user: string, root: string) => { try { localStorage.setItem(HOSTED_ROOT_HERE, JSON.stringify({ user, root })) } catch { /* asked again next time */ } }
+export async function myHostedRoot(me: { id: string }): Promise<string> {
+  const here = hostedRootHere(me.id)
+  if (here) return here
+  const entry = await myEntry()
+  const root = entry.hosted_root ?? (await hosted.createFolder('Digital Atrium')).id
+  if (entry.hosted_root !== root) await myEntry({ hosted_root: root })
+  keepHostedRoot(me.id, root)
   return root
 }
 /** Someone's folder for atriums in the store an atrium is in. */
@@ -605,15 +613,14 @@ export async function readInvite(rosterId: string): Promise<{ lobbyId: string; n
  *  atrium one's only in holds one's saves alone). In the Atrium's cloud; and
  *  in Drive, when Drive's at hand with no window. Joined as their owner
  *  (joinDriveAtrium) wherever one signs in. */
-// One's hosted folder's id, as the directory last said, kept here: its list
-// is asked for with everything else the browser asks as it opens, not once
-// the directory has answered -- a request of its own.
-const ROOT_HERE = 'atrium.hostedRoot'
+// One's hosted folder's id, as kept here (myHostedRoot): its list is asked
+// for with everything else the browser asks as it opens, not once the
+// directory has answered -- a request of its own.
 export async function ownElsewhere(me: string): Promise<{ lobbyId: string; roster: string }[]> {
-  const remembered = (() => { try { return localStorage.getItem(`${ROOT_HERE}.${me}`) } catch { return null } })()
+  const remembered = hostedRootHere(me)
   const early = remembered ? hosted.listByLink(remembered).catch(() => null) : null
   const entry = await myEntry()
-  try { if (entry.hosted_root) localStorage.setItem(`${ROOT_HERE}.${me}`, entry.hosted_root) } catch { /* asked for after, next time */ }
+  if (entry.hosted_root && entry.hosted_root !== remembered) keepHostedRoot(me, entry.hosted_root)
   const kept = allKept(me)
   const found: { lobbyId: string; roster: string }[] = []
   const roots: [DriveStore, string | null | undefined][] = [[hosted, entry.hosted_root], [driveStore, drive.hasDriveToken() ? entry.drive_root : null]]
