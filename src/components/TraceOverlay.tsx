@@ -316,6 +316,13 @@ function holdPointer() {
   try { document.querySelector('.lobby-scene')?.setPointerCapture(1) } catch { /* a touch, or no pointer down: nothing to hold */ }
 }
 
+// An embed's link to a picture, by its extension: drawn as an <img>, not a page.
+const PICTURE_LINK = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i
+
+// How long the pointer rests on another row of the trace menu before its flyout
+// takes the open one's place (openFlyout).
+const FLYOUT_SWAP_MS = 120
+
 const EDGE_PAN_ZONE_PX = 64
 const EDGE_PAN_MAX_SPEED_PX = 14
 
@@ -1002,91 +1009,31 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   const lastPointerRef = useRef<{ x: number; y: number; shiftKey: boolean } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuPos = useClampedMenuPosition(contextMenuRef, contextMenu?.x ?? 0, contextMenu?.y ?? 0)
-  // Side-flyout submenus inside the trace context menu (Move Layer,
-  // Transformations) -- opened/closed on hover rather than click, with a
-  // short close delay so moving the mouse diagonally from the trigger row
-  // to the flyout doesn't close it prematurely.
-  const [contextMenuMoveOpen, setContextMenuMoveOpen] = useState(false)
-  const [contextMenuTransformOpen, setContextMenuTransformOpen] = useState(false)
-  // Flyouts are positioned via `position: fixed` computed from the
-  // trigger's own bounding rect (captured here) rather than `position:
-  // absolute` inside the menu -- the menu has `overflow-y-auto`, and per
-  // the CSS overflow spec, setting only overflow-y to a non-visible value
-  // forces overflow-x to compute as auto too, which clipped an absolutely
-  // positioned flyout into a scrollbar instead of letting it render outside
-  // the menu's box.
-  const [moveFlyoutRect, setMoveFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
-  const [transformFlyoutRect, setTransformFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
-  const moveFlyoutCloseTimer = useRef<number | null>(null)
-  const transformFlyoutCloseTimer = useRef<number | null>(null)
-  const openMoveFlyout = (e: React.MouseEvent<HTMLElement>) => {
-    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
-    const rect = e.currentTarget.getBoundingClientRect()
-    setMoveFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
-    setContextMenuMoveOpen(true)
-  }
-  const keepMoveFlyoutOpen = () => {
-    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
-  }
-  const scheduleCloseMoveFlyout = () => {
-    if (moveFlyoutCloseTimer.current) window.clearTimeout(moveFlyoutCloseTimer.current)
-    moveFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuMoveOpen(false), 200)
-  }
-  const openTransformFlyout = (e: React.MouseEvent<HTMLElement>) => {
-    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
-    const rect = e.currentTarget.getBoundingClientRect()
-    setTransformFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
-    setContextMenuTransformOpen(true)
-  }
-  const keepTransformFlyoutOpen = () => {
-    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
-  }
-  const scheduleCloseTransformFlyout = () => {
-    if (transformFlyoutCloseTimer.current) window.clearTimeout(transformFlyoutCloseTimer.current)
-    transformFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuTransformOpen(false), 200)
-  }
-  // "Reorganize Selected" side flyout -- the packing shape used to be a
-  // persisted preference set in the Profile panel, which meant choosing it
-  // was separated from the one action that uses it. It's now picked at the
-  // moment of use, like the other flyouts here.
-  const [contextMenuReorganizeOpen, setContextMenuReorganizeOpen] = useState(false)
-  const [reorganizeFlyoutRect, setReorganizeFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
-  const reorganizeFlyoutCloseTimer = useRef<number | null>(null)
-  const openReorganizeFlyout = (e: React.MouseEvent<HTMLElement>) => {
-    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
-    const rect = e.currentTarget.getBoundingClientRect()
-    setReorganizeFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
-    setContextMenuReorganizeOpen(true)
-  }
-  const keepReorganizeFlyoutOpen = () => {
-    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
-  }
-  const scheduleCloseReorganizeFlyout = () => {
-    if (reorganizeFlyoutCloseTimer.current) window.clearTimeout(reorganizeFlyoutCloseTimer.current)
-    reorganizeFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuReorganizeOpen(false), 200)
-  }
-
-  useEffect(() => {
-    setContextMenuMoveOpen(false)
-    setContextMenuTransformOpen(false)
-    setContextMenuGroupOpen(false)
-    setContextMenuReorganizeOpen(false)
-  }, [contextMenu?.traceId])
-  // "Move to Group" side flyout -- lets the user reassign the selected
-  // trace(s) to a layer group (or Ungrouped) straight from the canvas
-  // context menu, without opening the Layer panel. The groups are the store's
-  // (hooks/useLayers).
-  const [contextMenuGroupOpen, setContextMenuGroupOpen] = useState(false)
-  const [groupFlyoutRect, setGroupFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
-  const groupFlyoutCloseTimer = useRef<number | null>(null)
-  const openGroupFlyout = (e: React.MouseEvent<HTMLElement>) => {
-    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
-    const rect = e.currentTarget.getBoundingClientRect()
-    setGroupFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
-    setContextMenuGroupOpen(true)
-    // Re-read the groups every time the flyout opens.
+  // The trace menu's side flyouts -- Transformations, Reorganize, Move to
+  // Group, Move Layer, Select -- opened on hover: one at a time, beside the
+  // row it opened from. Left for nowhere, it closes after a moment, so a
+  // diagonal move from the row to the flyout doesn't close it; moved onto
+  // another row, it's swapped for that one's after a moment too, in one step,
+  // so passing over a row on the way into the open flyout leaves it open.
+  // Each was a state of its own, and the one being left lingered over the next
+  // for its close delay: two flyouts at once.
+  //
+  // Placed with `position: fixed` from the row's rect rather than `position:
+  // absolute` inside the menu -- the menu has `overflow-y-auto`, and per the
+  // CSS overflow spec, setting only overflow-y to a non-visible value forces
+  // overflow-x to compute as auto too, which clipped an absolutely positioned
+  // flyout into a scrollbar instead of letting it render outside the menu.
+  type Flyout = 'transform' | 'reorganize' | 'group' | 'move' | 'select'
+  const [flyout, setFlyout] = useState<Flyout | null>(null)
+  const [flyoutRect, setFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const flyoutRowRef = useRef<HTMLElement | null>(null)
+  const flyoutTimer = useRef<number | null>(null)
+  const showFlyout = (which: Flyout, row: HTMLElement) => {
+    flyoutRowRef.current = row
+    setFlyout(which)
+    // Move to Group: the groups read again every time it opens.
     //
-    // The list below is otherwise loaded once on mount and kept current by a
+    // The list is otherwise loaded once on mount and kept current by a
     // postgres_changes subscription -- which does nothing at all on desktop,
     // where `supabase` is the local shim and `channel()` hands back a mock. So
     // a group made in the Layer panel never reached this menu, and the only
@@ -1096,18 +1043,22 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     // Asking on open fixes it on both platforms without depending on realtime:
     // it is one small query, at the moment somebody is about to read the
     // answer, and it cannot be stale by the time the flyout paints.
-    if (lobbyId) void reloadLayers(lobbyId)
+    if (which === 'group' && lobbyId) void reloadLayers(lobbyId)
   }
-  const keepGroupFlyoutOpen = () => {
-    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
+  const keepFlyout = () => {
+    if (flyoutTimer.current) window.clearTimeout(flyoutTimer.current)
   }
-  const scheduleCloseGroupFlyout = () => {
-    if (groupFlyoutCloseTimer.current) window.clearTimeout(groupFlyoutCloseTimer.current)
-    groupFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuGroupOpen(false), 200)
+  const openFlyout = (which: Flyout) => (e: React.MouseEvent<HTMLElement>) => {
+    keepFlyout()
+    const row = e.currentTarget
+    if (flyout && flyout !== which) flyoutTimer.current = window.setTimeout(() => showFlyout(which, row), FLYOUT_SWAP_MS)
+    else showFlyout(which, row)
   }
-  // "Select" side flyout. Same open/keep/close trio as the flyouts above it;
-  // they are separate pieces of state so hovering one closes the others rather
-  // than leaving two open side by side.
+  const leaveFlyout = () => {
+    keepFlyout()
+    flyoutTimer.current = window.setTimeout(() => setFlyout(null), 200)
+  }
+  useEffect(() => { setFlyout(null) }, [contextMenu?.traceId])
   // The alignment guides currently being shown, in world coordinates. Set
   // while a trace is being Shift-dragged and cleared when the drag ends.
   const [alignGuides, setAlignGuides] = useState<{
@@ -1120,16 +1071,8 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   const alignGuidesRef = useRef<typeof alignGuides>(null)
   useEffect(() => { alignGuidesRef.current = alignGuides }, [alignGuides])
 
-  const [contextMenuSelectOpen, setContextMenuSelectOpen] = useState(false)
-  const [selectFlyoutRect, setSelectFlyoutRect] = useState<{ top: number; left: number; right: number } | null>(null)
-  const selectFlyoutCloseTimer = useRef<number | null>(null)
-  const selectTriggerRef = useRef<HTMLDivElement>(null)
-  const openSelectFlyout = () => {
-    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
-    setContextMenuSelectOpen(true)
-  }
-
-  // Measured after layout, not during the mouseenter that opened it.
+  // Where the open flyout's row is, measured after layout, not during the
+  // mouseenter that opened it.
   //
   // Reading getBoundingClientRect() inside the event handler takes the row's
   // position as it is at that instant -- but the context menu places itself
@@ -1142,19 +1085,11 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   // A layout effect keyed on the menu's own position reads the row where it
   // actually ended up, and re-reads it if the menu ever moves underneath.
   useLayoutEffect(() => {
-    if (!contextMenuSelectOpen) return
-    const el = selectTriggerRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    setSelectFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
-  }, [contextMenuSelectOpen, contextMenuPos.x, contextMenuPos.y])
-  const keepSelectFlyoutOpen = () => {
-    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
-  }
-  const scheduleCloseSelectFlyout = () => {
-    if (selectFlyoutCloseTimer.current) window.clearTimeout(selectFlyoutCloseTimer.current)
-    selectFlyoutCloseTimer.current = window.setTimeout(() => setContextMenuSelectOpen(false), 200)
-  }
+    const row = flyoutRowRef.current
+    if (!flyout || !row) return
+    const rect = row.getBoundingClientRect()
+    setFlyoutRect({ top: rect.top, left: rect.left, right: rect.right })
+  }, [flyout, contextMenuPos.x, contextMenuPos.y])
 
   const groupLayers = React.useMemo(() => inOrder(layers).reverse(), [layers])
   // Each trace's place in the drawing order (lib/order) -- the stack from the
@@ -1180,7 +1115,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   // the divider above it without having to know it is there.
   useLayoutEffect(() => {
     const el = groupFlyoutListRef.current
-    if (!contextMenuGroupOpen || !el) {
+    if (flyout !== 'group' || !el) {
       setGroupFlyoutMaxHeight(undefined)
       return
     }
@@ -1198,7 +1133,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     const padBottom = parseFloat(style.paddingBottom) || 0
     const borders = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0)
     setGroupFlyoutMaxHeight(last.offsetTop + last.offsetHeight + padBottom + borders)
-  }, [contextMenuGroupOpen, groupLayers.length])
+  }, [flyout === 'group', groupLayers.length])
   // One trace's new group (null: none) and key: shown, then written.
   const writeTraceGroupKey = async (trace: Trace, layerId: string | null, orderKey: string) => {
     const { error } = await (supabase!.from('traces') as any)
@@ -6520,6 +6455,8 @@ const shownCrop = isCropping ? { ...trace, cropX, cropY, cropWidth, cropHeight }
 // background as they are.
 const lookId = `look-${trace.id}`
 const lookFilter = takesLook(trace) && !isNeutral(trace.look) ? `url(#${lookId})` : undefined
+// An embedded page (an <iframe>, below), not an embed that's a picture.
+const embedPage = trace.type === 'embed' && !!trace.mediaUrl && !PICTURE_LINK.test(trace.mediaUrl) && !confirmedImageIds.has(trace.id)
 
 // A picture -- an image trace's, or an embed's that turned out to be one --
 // through the server's proxy if it won't load as itself, three tries, then
@@ -7352,9 +7289,7 @@ return (
       {/* Embed Content */}
       {trace.type === 'embed' && trace.mediaUrl && (() => {
         // Check if the embed URL is actually an image (by extension OR confirmed via preflight)
-        const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(trace.mediaUrl)
-        const isConfirmedImage = confirmedImageIds.has(trace.id)
-        const isDirectImage = hasImageExtension || isConfirmedImage
+        const isDirectImage = PICTURE_LINK.test(trace.mediaUrl) || confirmedImageIds.has(trace.id)
         
         if (isDirectImage && !failedImages.has(trace.id)) {
           const isLocal = trace.mediaUrl.startsWith('local://')
@@ -7676,6 +7611,23 @@ return (
               )}
             </div>
           )}
+          {/* An embedded page's edge, under a ring of the border's colour.
+              Another site's frame is drawn by the GPU, apart from the trace,
+              and the trace is seldom on whole pixels: between the page's edge
+              and the border's, the trace's own fill showed -- a thin dark
+              line, at some zooms, flickering as it was dragged. The ring
+              covers that seam: from inside the border (at most its width) to
+              1px over the page. */}
+          {embedPage && showBorder && !dashed && (trace.borderOpacity ?? 1) >= 1 && (() => {
+            const under = Math.min(line, 1)
+            return (
+              <div
+                aria-hidden="true"
+                className="absolute pointer-events-none"
+                style={{ inset: -under, border: `${under + 1}px solid ${lineColour}`, borderRadius: radius }}
+              />
+            )
+          })()}
         </div>
         {dashed && (
           <svg
@@ -8858,8 +8810,8 @@ return (
             {editingWholeSelection && multiSelectedIds.size <= MAX_REORGANIZE_TRACES && (
               <div
                 className="relative"
-                onMouseEnter={openReorganizeFlyout}
-                onMouseLeave={scheduleCloseReorganizeFlyout}
+                onMouseEnter={openFlyout('reorganize')}
+                onMouseLeave={leaveFlyout}
               >
                 <button
                   className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
@@ -8868,16 +8820,16 @@ return (
                   <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.reorganizeSelected', { count: multiSelectedIds.size })}</span>
                   <span className="text-nier-bg/70 text-[9px]">▶</span>
                 </button>
-                {contextMenuReorganizeOpen && reorganizeFlyoutRect && (
+                {flyout === 'reorganize' && flyoutRect && (
                   <div
                     className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                     style={
                       contextMenuFlyoutOnLeft
-                        ? { top: reorganizeFlyoutRect.top, right: window.innerWidth - reorganizeFlyoutRect.left + 1 }
-                        : { top: reorganizeFlyoutRect.top, left: reorganizeFlyoutRect.right + 1 }
+                        ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
+                        : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                     }
-                    onMouseEnter={keepReorganizeFlyoutOpen}
-                    onMouseLeave={scheduleCloseReorganizeFlyout}
+                    onMouseEnter={keepFlyout}
+                    onMouseLeave={leaveFlyout}
                   >
                     <button
                       className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -8977,8 +8929,8 @@ return (
             {!isFrame(traces.find(tr => tr.id === contextMenu.traceId) ?? { type: '' }) && (
             <div
               className="relative"
-              onMouseEnter={openTransformFlyout}
-              onMouseLeave={scheduleCloseTransformFlyout}
+              onMouseEnter={openFlyout('transform')}
+              onMouseLeave={leaveFlyout}
             >
               <button
                 className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
@@ -8986,16 +8938,16 @@ return (
                 <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.transformations')}</span>
                 <span className="text-nier-bg/70 text-[9px]">▶</span>
               </button>
-              {contextMenuTransformOpen && transformFlyoutRect && (
+              {flyout === 'transform' && flyoutRect && (
                 <div
                   className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                   style={
                     contextMenuFlyoutOnLeft
-                      ? { top: transformFlyoutRect.top, right: window.innerWidth - transformFlyoutRect.left + 1 }
-                      : { top: transformFlyoutRect.top, left: transformFlyoutRect.right + 1 }
+                      ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
+                      : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                   }
-                  onMouseEnter={keepTransformFlyoutOpen}
-                  onMouseLeave={scheduleCloseTransformFlyout}
+                  onMouseEnter={keepFlyout}
+                  onMouseLeave={leaveFlyout}
                 >
                   <button
                     className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -9109,8 +9061,8 @@ return (
               return (
                 <div
                   className="relative"
-                  onMouseEnter={openGroupFlyout}
-                  onMouseLeave={scheduleCloseGroupFlyout}
+                  onMouseEnter={openFlyout('group')}
+                  onMouseLeave={leaveFlyout}
                 >
                   <button
                     className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
@@ -9118,7 +9070,7 @@ return (
                     <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveToGroup')}</span>
                     <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
-                  {contextMenuGroupOpen && groupFlyoutRect && (
+                  {flyout === 'group' && flyoutRect && (
                     <div
                       ref={groupFlyoutListRef}
                       // Marks this as UI for the canvas wheel handler, which
@@ -9130,12 +9082,12 @@ return (
                       className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101] max-h-[60vh] overflow-y-auto overflow-x-hidden overscroll-contain"
                       style={{
                         ...(contextMenuFlyoutOnLeft
-                          ? { top: groupFlyoutRect.top, right: window.innerWidth - groupFlyoutRect.left + 1 }
-                          : { top: groupFlyoutRect.top, left: groupFlyoutRect.right + 1 }),
+                          ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
+                          : { top: flyoutRect.top, left: flyoutRect.right + 1 }),
                         maxHeight: groupFlyoutMaxHeight,
                       }}
-                      onMouseEnter={keepGroupFlyoutOpen}
-                      onMouseLeave={scheduleCloseGroupFlyout}
+                      onMouseEnter={keepFlyout}
+                      onMouseLeave={leaveFlyout}
                     >
                       {/* New Group leads, where it used to sit at the bottom
                           behind a rule. It is the one row whose place does not
@@ -9213,8 +9165,8 @@ return (
               return (
                 <div
                   className="relative"
-                  onMouseEnter={openMoveFlyout}
-                  onMouseLeave={scheduleCloseMoveFlyout}
+                  onMouseEnter={openFlyout('move')}
+                  onMouseLeave={leaveFlyout}
                 >
                   <button
                     className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase"
@@ -9222,16 +9174,16 @@ return (
                     <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('atrium.menu.moveLayer')}</span>
                     <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
-                  {contextMenuMoveOpen && moveFlyoutRect && (
+                  {flyout === 'move' && flyoutRect && (
                     <div
                       className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
-                          ? { top: moveFlyoutRect.top, right: window.innerWidth - moveFlyoutRect.left + 1 }
-                          : { top: moveFlyoutRect.top, left: moveFlyoutRect.right + 1 }
+                          ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
+                          : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                       }
-                      onMouseEnter={keepMoveFlyoutOpen}
-                      onMouseLeave={scheduleCloseMoveFlyout}
+                      onMouseEnter={keepFlyout}
+                      onMouseLeave={leaveFlyout}
                     >
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap"
@@ -9275,25 +9227,24 @@ return (
               const inGroup = groupId ? traces.filter(t => t.layerId === groupId) : []
               return (
                 <div
-                  ref={selectTriggerRef}
                   className="relative"
-                  onMouseEnter={openSelectFlyout}
-                  onMouseLeave={scheduleCloseSelectFlyout}
+                  onMouseEnter={openFlyout('select')}
+                  onMouseLeave={leaveFlyout}
                 >
                   <button className="w-full px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors flex items-center justify-between gap-3 text-[11px] tracking-wider uppercase">
                     <span className="flex items-center gap-3"><span className="text-nier-bg/60 text-[10px]">◇</span> {t('common.select')}</span>
                     <span className="text-nier-bg/70 text-[9px]">▶</span>
                   </button>
-                  {contextMenuSelectOpen && selectFlyoutRect && (
+                  {flyout === 'select' && flyoutRect && (
                     <div
                       className="fixed w-max flex flex-col bg-nier-black border border-nier-border/60 shadow-2xl py-1 z-[10000101]"
                       style={
                         contextMenuFlyoutOnLeft
-                          ? { top: selectFlyoutRect.top, right: window.innerWidth - selectFlyoutRect.left + 1 }
-                          : { top: selectFlyoutRect.top, left: selectFlyoutRect.right + 1 }
+                          ? { top: flyoutRect.top, right: window.innerWidth - flyoutRect.left + 1 }
+                          : { top: flyoutRect.top, left: flyoutRect.right + 1 }
                       }
-                      onMouseEnter={keepSelectFlyoutOpen}
-                      onMouseLeave={scheduleCloseSelectFlyout}
+                      onMouseEnter={keepFlyout}
+                      onMouseLeave={leaveFlyout}
                     >
                       <button
                         className="px-4 py-2 text-left text-nier-strong hover:bg-nier-bg/10 transition-colors text-[11px] tracking-wider uppercase whitespace-nowrap flex items-center justify-between gap-6 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -10127,8 +10078,7 @@ return (
                 // which persisted after the earlier border/overflow fix
                 // because that fix couldn't do anything about scrolling
                 // that's internal to the iframe's own embedded document.
-                const hasImageExtension = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(modalTrace.mediaUrl)
-                const isDirectImage = hasImageExtension || confirmedImageIds.has(modalTrace.id)
+                const isDirectImage = PICTURE_LINK.test(modalTrace.mediaUrl) || confirmedImageIds.has(modalTrace.id)
 
                 if (isDirectImage) {
                   const dims = imageDimensions[modalTrace.id]
