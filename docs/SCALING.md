@@ -1,13 +1,16 @@
 # Scaling the web app: tiers and costs
 
 Rewritten 2026-10-23, now that the web app runs on Cloudflare
-(docs/DECENTRALIZING.md, phase 10). A plan to read when usage grows, or
-before spending money on the web app.
+(docs/DECENTRALIZING.md, phase 10). Updated 2026-10-29: worker requests per
+person measured on the live site and cut about sixfold, the tiers redone
+from them. A plan to read when usage grows, or before spending money on the
+web app.
 
-**Recheck before buying.** Prices are list prices as known in late 2025
-(Cloudflare, Resend, Brevo). Usage per person is an estimate (below). The
-app's Developers → Health shows every free-plan meter, today and over 30
-days: redo these tables from it once there's real traffic.
+**Recheck before buying.** Cloudflare's prices were checked on 2026-10-29
+and are unchanged since late 2025; Resend's and Brevo's are as known then.
+Usage per person is part measured, part estimate (below). The app's
+Developers → Health shows every free-plan meter, today and over 30 days:
+redo these tables from it once there's real traffic.
 
 ## What runs where
 
@@ -53,13 +56,27 @@ days: redo these tables from it once there's real traffic.
   daily peak, ≈ 8% of daily actives.
 - About 20% of people keep online (hosted) atriums, using about 10 MB each
   on average. The rest use Drive, the browser or the desktop.
-- **About 40 worker requests a day** from each daily active person:
-  - signing in and staying signed in, the directory, entering a room, the
-    relay pass, the public list, and the image proxy;
-  - for online atriums, a look every 1–2 minutes, plus reading the files
-    not yet in the browser.
-- **About 20 Durable Object requests a day** each: entering rooms and
-  incoming room messages (20 messages bill as one request).
+- **About 15 worker requests a day** from each daily active person.
+  Measured on the live site on 2026-10-29 with `wrangler tail`, one visit
+  at a time, after that day's changes:
+  - opening the atrium browser: 2 (signing in, with the directory's reads;
+    then the cards' versions and one's own folder);
+  - entering an atrium: 2 (its room, and one look at what changed while
+    away), or 1 and the occasional Google renewal for a Drive atrium, whose
+    files are Google's;
+  - saving through the room, staying in an atrium with its room live, and
+    coming back to the browser: nothing. Nothing is asked on a timer.
+  - Besides: the Google sign-in renewed about hourly while Drive is used,
+    saves stored every 30 s while someone edits an online atrium (below),
+    files read the first time on a device, and the image proxy.
+
+  A visit (open the browser, two atriums, a change, back) was 10 requests,
+  where that morning it was about 30, and an atrium left open spent about
+  150 an hour doing nothing.
+- **About 12 Durable Object requests a day** each: a room for each atrium
+  entered, and incoming messages (20 bill as one request). Owners and
+  admins no longer keep a second connection at the atrium's door: asks to
+  be let in are kept by the directory.
 - **Saves to online atriums** are the big unknown.
   - A save goes out after each 1.5 s pause (`QUIET_MS` in `lib/driveSync`).
     With the room live, which is whenever someone's inside, it goes
@@ -71,49 +88,66 @@ days: redo these tables from it once there's real traffic.
   - Assumed: one person in ten edits an online atrium on a given day, for
     about 15 stored saves (about 150 before the 30 s batching).
   - Per daily active person, with uploads, sessions and throttles: about
-    2.5 R2 writes and 20 D1 rows written a day.
+    2.5 R2 writes and 15 D1 rows written a day. (20 before 2026-10-29:
+    visits are now sent once a sitting, nothing is written to one's profile
+    unchanged, and an invitation's secret is cleared once.)
 - About 20 R2 reads a day each: files opened, and the mirror.
 - About 15% of people can't connect directly and go through the relay, at
   about 15 MB an hour of cursors and laser.
 - Mail ≈ 15% of monthly actives a month: sign-up codes, welcomes, resets
   and reports.
 
-## Tiers at a glance
+## Tiers and costs
 
-Workers Paid from Tier 1. Updated 2026-10-23 for the two changes made that
-day: saves batched while the room is live, and relay cursors every 50 ms.
-Before them, Tier 4 was about $1,750–3,200.
+Per month, at list prices. Workers Paid ($5) from Tier 1. Redone 2026-10-29
+from about 15 worker requests, 15 D1 rows and 12 DO requests a day per daily
+active person (above); R2, mail and the relay are as on 2026-10-23.
 
-| Tier | Daily active | Monthly active | At once | Per month |
-|---|---|---|---|---|
-| 0, free plans | up to ~2,500 | ~7,500 | ~200 | $0 |
-| 1 | 10,000 | 30,000 | ~800 | ~$8 |
-| 2 | 50,000 | 150,000 | ~4,000 | ~$75–135 |
-| 3 | 150,000 | 450,000 | ~12,000 | ~$350–550 |
-| 4 | 300,000 | 900,000 | ~25,000 | ~$750–1,200 |
+| Tier | Daily active | Monthly active | At once | Workers (requests, CPU) | Durable Objects (rooms) | D1 (database) | R2 (files) | Mail | Relay (TURN) | Monitoring | **Total a month** |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0, free plans | up to ~6,000 | ~18,000 | ~500 | $0 | $0 | $0 | <$1 | $0 | $0 | — | **<$1** |
+| 1 | 10,000 | 30,000 | ~800 | $5 | ~$1 | $0 | ~$1 | $0 | $0 | — | **~$7** |
+| 2 | 50,000 | 150,000 | ~4,000 | ~$10 | ~$4 | $0 | ~$24 | $20 | $0–35 | $0–26 | **~$60–120** |
+| 3 | 150,000 | 450,000 | ~12,000 | ~$26 | ~$25 | ~$22 | ~$91 | $90 | $0–200 | $26 | **~$280–480** |
+| 4 | 300,000 | 900,000 | ~25,000 | ~$50 | ~$54 | ~$90 | ~$188 | ~$150 | $0–450 | ~$80 | **~$610–1,060** |
 
-The ranges are mostly the relay:
-- capped at today's 800 GB, which costs nothing (past the cap, the people
-  it would carry get a slower cursor through the room);
-- or the cap raised, at its cost with cursors every 50 ms (about a third of
-  the bytes of every frame).
+Before 2026-10-29 (about 40 worker requests and 20 D1 rows a person) the
+free plans ended near 2,500 daily actives, and the totals were about $8,
+$75–135, $350–550 and $750–1,200.
+
+- **Workers** is the $5 plan itself up to Tier 1; past 10M requests a month
+  (about 22,000 daily actives) it's $0.30 a million, and CPU (about 3 ms a
+  request) past 30M ms.
+- **Durable Objects**: requests past 1M a month, and duration. Rooms use
+  the WebSocket Hibernation API, so a room is billed only while it handles
+  a message.
+- **D1** is rows written past 50M a month, and storage past 5 GB.
+- **R2** bills from the first unit past its free allowance, on any plan:
+  storage past 10 GB (Tier 0's few cents), writes past 1M a month, reads
+  past 10M.
+- **The ranges** are the relay and monitoring. The relay is capped at
+  800 GB a month, which costs nothing; past the cap, the people it would
+  carry get a slower cursor through the room. Raised, it's about 5, 15 and
+  30 TB a month at Tiers 2–4 at full quality, a third of that with cursors
+  every 50 ms (the figure above). Monitoring is optional at Tier 2.
 
 ## The walls on the free plans
 
 Daily limits reset at 00:00 UTC.
 
 1. **Workers, 100,000 requests a day** (the worker and the image proxy
-   together). At about 40 a person, that's about 2,500 daily actives, the
-   first wall. Past it the worker answers nothing: no sign-in, no rooms,
-   no online atriums, no public list. Browser and desktop atriums don't
-   notice.
-2. **D1, 100,000 rows written a day.** At about 20 a person, that's about
-   5,000 daily actives. Past it, until midnight UTC, nothing that writes
-   works:
+   together). At about 15 a person, that's about 6,500 daily actives.
+   Past it the worker answers nothing: no sign-in, no rooms, no online
+   atriums, no public list. Browser and desktop atriums don't notice.
+   Visitors to the landing page count too: each view reads the
+   contribution wall (see Changes still to make).
+2. **D1, 100,000 rows written a day.** At about 15 a person, that's about
+   6,500 daily actives too: the two walls now come together. Past it,
+   until midnight UTC, nothing that writes works:
    - signing in and staying signed in;
    - saves to online atriums;
    - invitations and settings.
-3. **Durable Objects, 100,000 requests a day**, about 5,000 daily actives.
+3. **Durable Objects, 100,000 requests a day**, about 8,000 daily actives.
    Rooms fail, and saves are then stored at once, as without a room.
 4. **CPU, 10 ms a request.** This isn't a daily wall: any request that runs
    past it fails. Typical use is well under it (Health shows p50 and p99).
@@ -140,16 +174,37 @@ Daily limits reset at 00:00 UTC.
 ## Changes made for scale
 
 - **Looking less.** How often an atrium checks for changes:
-  - every 2 minutes when its room is live;
+  - with its room live, never on a clock: as it opens, and as the room
+    comes back after a gap (every save is told through the room, which
+    holds what's sent while it reconnects);
   - otherwise every minute for an online atrium, and every 20 s for a
-    Drive atrium (`lookEvery` in `lib/driveSync`).
-
-  This cuts Drive use about 6×, and our requests for online atriums.
+    Drive atrium (`lookEvery` in `lib/driveSync`);
+  - never while the app is behind other windows or minimised.
 - **The R2 mirror of public atriums.** Visitors read from us, so there's no
   Google robot check and no file locked for being read too often.
-- **The atrium browser polls frugally**: the public list every 5 minutes,
-  and Drive looks each minute while it's visible. Keep anything new that
-  polls the worker this frugal.
+- **Nothing on a clock for what a reload shows** (2026-10-29). The atrium
+  browser's cards, invitations and public list, the cards' player counts,
+  the special themes and the contribution wall are asked as their screen
+  opens, or on a reload, not on a timer. Keep anything new this way: a
+  timer that reaches the worker is kept only where correctness needs it
+  (an atrium's looks without its room, sign-in renewals).
+- **A screen's reads in one request** (2026-10-29, `lib/worker`):
+  - reads wait for a 250 ms pause (700 ms at most) and go together in one
+    `/batch`, up to 32 at once;
+  - a screen's start is held and sent together (`holdReads`): signing in
+    brings the first screen's directory reads (`askAhead`), and the atrium
+    browser's cards, versions and one's own folder go in one more;
+  - the directory's answers are kept for the visit (30 minutes at most),
+    and a write forgets only what it changes;
+  - an atrium's opening look asks its roster's version and its writers'
+    folders, known from before, in one round.
+- **Asking to be let in is one request, kept** (2026-10-29). It was a
+  socket at the atrium's door saying so every 15 s, and every owner and
+  admin inside kept a socket there to hear it. Now the directory keeps the
+  ask a fortnight, and an owner's or admin's app reads it as it opens the
+  atrium.
+- **Writes only when something changed**: one's name and Drive key, one's
+  hosted folder, an invitation's secret, the visits (once a sitting).
 - **Mail through two free providers, codes first.**
 - **Throttles where one person could spend everyone's day:**
   - store writes: 3,000 an hour an account;
@@ -184,16 +239,40 @@ Daily limits reset at 00:00 UTC.
 
 ## Changes still to make
 
-None in the code for now: what's left is spending, below, as the meters
-call for it.
+Each would lower the requests further; none is needed below Tier 1.
 
-## Costs per tier
+1. **Public, same-for-everyone reads as files.** The contribution wall on
+   the landing page, the special themes and the public atrium list are the
+   same for every visitor, and each view is a worker request. The worker
+   could write each as a file in R2 when it changes, served from the
+   bucket's own domain: R2 reads (10M a month free, then $0.36 a million)
+   instead of Workers requests. Landing visitors would then cost nothing,
+   which matters at a launch, when visitors far outnumber users.
+2. **Files straight from R2.** An online atrium's files and saves, and
+   public atriums' mirrored files, are read "by anyone, by id" through the
+   worker: a request each, the first time on each device. Served from the
+   bucket's own domain by the same unguessable ids, they'd cost R2 reads
+   instead. Same trust as now: the files are sealed, and only an id finds
+   them.
+3. **Saves stored less often while the room is live.** `KEEP_MS` stores
+   what went through the room every 30 s while someone edits. At 2
+   minutes, a quarter of the store writes: Workers requests, R2 writes and
+   D1 rows, the biggest costs at Tiers 3–4. What's not stored yet is kept
+   in the editor's vault, so nothing is lost; someone opening the atrium
+   without the room live would see edits up to 2 minutes late.
+
+Items 1 and 2 need the R2 bucket given a domain in the Cloudflare
+dashboard first.
+
+## The prices behind the table
+
+List prices, checked 2026-10-29.
 
 **Workers Paid ($5 a month) includes:**
 - Requests: 10M a month, then $0.30 a million. CPU: 30M ms, then $0.02 a
   million.
 - Durable Objects: 1M requests, then $0.15 a million. 400,000 GB-s, then
-  $12.50 a million.
+  $12.50 a million. Incoming WebSocket messages bill 20 to a request.
 - D1: 25 billion rows read and 50 million written a month, then $0.001
   and $1 a million. 5 GB stored, then $0.75 a GB.
 
@@ -202,27 +281,19 @@ $4.50 a million. 10M reads, then $0.36 a million. Downloads are free.
 
 **Relay (TURN):** 1,000 GB a month free, then $0.05 a GB.
 
-| Tier | Workers | DOs | D1 writes | R2 | Mail | Relay | Monitoring | Total |
-|---|---|---|---|---|---|---|---|---|
-| 1 | ~$6 | ~$1 | $0 | ~$1 | $0 | $0 | — | **~$8** |
-| 2 | ~$23 | ~$6 | $0 | ~$24 | $20 | $0–35 | $26 opt. | **~$75–135** |
-| 3 | ~$66 | ~$30 | ~$44 | ~$91 | $90 | $0–200 | $26 | **~$350–550** |
-| 4 | ~$131 | ~$65 | ~$140 | ~$188 | ~$150 | $0–450 | ~$80 | **~$750–1,200** |
+**Mail**, volume and plan at each tier:
+- Tier 1, about 4,500 a month: fits the two free days.
+- Tier 2, about 22,500: Resend Pro ($20, 50,000 a month, no daily limit),
+  with Brevo's free day as overflow.
+- Tier 3: Resend Scale ($90, 100,000).
+- Tier 4: about $150. Recheck both providers' paid plans then.
+- A third free provider (Mailjet, 200 a day) would add to the free days if
+  wanted. It's one more entry in `PROVIDERS`.
 
-- **Relay**: about 5, 15 and 30 TB a month at Tiers 2–4 at full quality,
-  about a third of that with cursors every 50 ms. The cap keeps it at $0;
-  raised, it's the batched figure above.
-- **Mail** volume and plan at each tier:
-  - Tier 1, about 4,500 a month: fits the two free days.
-  - Tier 2, about 22,500: Resend Pro ($20, 50,000 a month, no daily
-    limit), with Brevo's free day as overflow.
-  - Tier 3: Resend Scale ($90, 100,000).
-  - Tier 4: about $150. Recheck both providers' paid plans then.
-  - A third free provider (Mailjet, 200 a day) would add to the free days
-    if wanted. It's one more entry in `PROVIDERS`.
-- **Monitoring**: error tracking (Sentry Team at $26, Business at about
-  $80). It's optional at Tier 2.
-- **Password hashing** costs nothing: the page does it.
+**Monitoring**: error tracking (Sentry Team at $26, Business at about $80).
+It's optional at Tier 2.
+
+**Password hashing** costs nothing: the page does it.
 
 ## When to upgrade: what to watch
 
