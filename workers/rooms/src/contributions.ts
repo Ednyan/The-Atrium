@@ -16,7 +16,7 @@ import { nameProblem as problemOf, MAX_NAME_LENGTH } from '../../../supabase/fun
 import { BASE_CURRENCY, currencyByCode, isAllowedStep, isCurrencyCode, minorPerUnit } from '../../../supabase/functions/_shared/currencies'
 import { SITE, mailReady, toContributor } from './mail'
 import { allowedNow, isOperator, keep, setting, tablesIn } from './people'
-import { outbound, replies, whoIs, type Env } from './who'
+import { dropPublic, outbound, replies, samePublic, whoIs, type Env } from './who'
 
 const STRIPE_VERSION = '2026-07-29.dahlia'
 const SIGNATURE_TOLERANCE_S = 300
@@ -29,7 +29,9 @@ const SEARCH_MOST = 40
 const CHECKOUTS_AN_HOUR = 30
 // Stripe's events are a few KB; anything far bigger isn't one, and isn't read.
 const MOST_EVENT_BYTES = 512 * 1024
-// How long the wall is kept at the edge before it's worked out again.
+// How long the wall is kept before it's worked out again: who's active, and
+// the month, change with time as well as with the record. The app's own
+// reading of it says the same (lib/contributions, WALL_FRESH_MS).
 const WALL_FRESH_S = 300
 // Supabase's monthly_goal_cents default, until one is set or moved.
 export const DEFAULT_GOAL_CENTS = 5000
@@ -71,10 +73,10 @@ const isMoved = async (db: D1Database) => (moved ||= !!(await setting(db, MOVED)
 const open = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', ...headers } })
 
-// The wall as the edge keeps it, dropped as the record changes (in this
-// data centre; elsewhere it's at most WALL_FRESH_S old).
-const WALL_KEY = `${SITE}/contributions/wall`
-const fresh = () => caches.default.delete(WALL_KEY).catch(() => false)
+// The wall as a public file (src/who.ts), the landing page's to read: dropped
+// as the record changes, and at most WALL_FRESH_S old.
+const WALL = 'd/wall.json'
+const fresh = (env: Env) => dropPublic(env, [WALL])
 
 export const monthStart = (now = new Date()) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
 
@@ -86,7 +88,7 @@ export async function contributions(request: Request, env: Env, what: string): P
   await tablesIn(db)
   if (what === 'ops') return operate(request, env, db)
   if (!(await isMoved(db))) return open(409, { error: 'not moved' })
-  if (what === 'wall' && request.method === 'GET') return wall(db)
+  if (what === 'wall' && request.method === 'GET') return open(200, await samePublic(env, WALL, () => wall(db), WALL_FRESH_S * 1000))
   if (what === 'search' && request.method === 'GET') return search(db, new URL(request.url).searchParams.get('q') ?? '')
   if (what === 'checkout' && request.method === 'POST') {
     // So many Checkout pages an hour from a network: past any honest giver.
@@ -99,7 +101,7 @@ export async function contributions(request: Request, env: Env, what: string): P
 
 // The wall: every approved contributor, as contributors_searchable worked it
 // out (contributors_subscription_state.sql), and the month's gauge.
-// ponytail: worked out per request and kept at the edge for WALL_FRESH_S; past a few thousand contributors, keep it
+// ponytail: worked out when its public file is older than WALL_FRESH_S; past a few thousand contributors, keep it
 // worked out on each change (R2) so a request stays inside the free plan's 10 ms of CPU.
 const CONTRIBUTORS = `
   with live as (
@@ -136,9 +138,7 @@ const contributorsAsked = (db: D1Database, rest: string, ...more: unknown[]) => 
   return db.prepare(CONTRIBUTORS + rest).bind(ACTIVE_MS, now - ACTIVE_MS, now - 7 * DAY_MS, now - 30 * DAY_MS, now - 365 * DAY_MS, ...more)
 }
 
-async function wall(db: D1Database): Promise<Response> {
-  const kept = await caches.default.match(WALL_KEY).catch(() => undefined)
-  if (kept) return kept
+async function wall(db: D1Database) {
   const [people, month, goal] = await db.batch([
     contributorsAsked(db, ' order by amount_eur desc, since desc limit ?6', WALL_MOST),
     db.prepare(`select coalesce(sum(settled_eur_cents), 0) as total_cents, count(*) as contribution_count from contributions
@@ -146,9 +146,7 @@ async function wall(db: D1Database): Promise<Response> {
     db.prepare('select value from settings where key = ?').bind(GOAL),
   ])
   const goalCents = Number((goal.results[0] as { value?: string } | undefined)?.value ?? DEFAULT_GOAL_CENTS)
-  const answer = open(200, { contributors: people.results, month: { ...(month.results[0] as object), goal_cents: goalCents } }, { 'Cache-Control': `s-maxage=${WALL_FRESH_S}` })
-  await caches.default.put(WALL_KEY, answer.clone()).catch(() => {})
-  return answer
+  return { contributors: people.results, month: { ...(month.results[0] as object), goal_cents: goalCents } }
 }
 
 // Someone looked up past the wall, by part of their name.
@@ -327,7 +325,7 @@ export async function stripeWebhook(request: Request, env: Env): Promise<Respons
       if (payment) writes.push(db.prepare('update contributions set refunded = 1 where stripe_payment_id = ?').bind(payment))
     }
     await db.batch(writes)
-    if (writes.length > 1) await fresh()
+    if (writes.length > 1) await fresh(env)
     return ok()
   } catch (error) {
     // A real failure: Stripe tries again, and the payment isn't lost.
@@ -360,7 +358,7 @@ async function operate(request: Request, env: Env, db: D1Database): Promise<Resp
   if (!(await isMoved(db))) return answer(409, { error: 'not moved' })
 
   const row = async () => (id ? await db.prepare('select * from contributions where id = ?').bind(id).first<Row>() : null)
-  const changed = async (statements: D1PreparedStatement[], body: object = { ok: true }) => { await db.batch(statements); await fresh(); return answer(200, body) }
+  const changed = async (statements: D1PreparedStatement[], body: object = { ok: true }) => { await db.batch(statements); await fresh(env); return answer(200, body) }
   const cents = (euros: unknown, least: number) => { const value = Math.round(Number(euros) * 100); return Number.isFinite(value) && value >= least && value <= 100_000_000 ? value : null }
   const when = (value: unknown) => { const date = typeof value === 'string' && value.trim() ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date.getTime() : null }
 
@@ -492,7 +490,7 @@ async function operate(request: Request, env: Env, db: D1Database): Promise<Resp
           }
         }
       }
-      await fresh()
+      await fresh(env)
       if (target.contact_email && mailReady(env)) {
         await toContributor(env, target.contact_email, 'About the name on your contribution', {
           heading: 'About your name',
@@ -544,6 +542,6 @@ async function move(env: Env, db: D1Database, supabaseToken: string | null, answ
     await db.batch([keep(db, GOAL, Number(exported.monthlyGoalCents) || DEFAULT_GOAL_CENTS), keep(db, MOVED, Date.now())])
     moved = true
   }
-  await fresh()
+  await fresh(env)
   return answer(200, { ok: true, copied: exported.entries.length, added, first })
 }

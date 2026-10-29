@@ -14,7 +14,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { workerUrl } from './rooms'
-import { toWorker, viaBatch } from './worker'
+import { fromFiles, toWorker, viaBatch } from './worker'
 import type { ThemeSettings } from '../types/database'
 import type { ThemeMode } from './customThemes'
 import { isMonthDay, seasonalTheme, shownOn } from './season'
@@ -134,8 +134,8 @@ export function loadSpecialThemes(again = false): Promise<void> {
   if (!url) return Promise.resolve()
   if (loading && !again && Date.now() - loadedAt < REFRESH_MS) return loading
   loadedAt = Date.now()
-  loading = viaBatch('/themes', undefined, true)
-    .then(batched => batched ?? fetch(`${url}/themes`))
+  loading = fromFiles('d/themes.json')
+    .then(async kept => kept ?? await viaBatch('/themes', undefined, true) ?? fetch(`${url}/themes`))
     .then(async response => {
       if (!response.ok) return
       const next = asSpecialThemes(await response.json())

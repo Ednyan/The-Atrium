@@ -8,18 +8,16 @@
 // copy is made, the list isn't given (503): the app keeps the one it has,
 // rather than taking an empty one for the truth.
 
-import { SITE } from './mail'
 import { isOperator, keep, setting, tablesIn } from './people'
-import { replies, whoIs, type Env } from './who'
+import { dropPublic, replies, samePublic, whoIs, type Env } from './who'
 
 const COPIED = 'themes.from_supabase'
 const COLUMNS = 'id, name, mode, theme_settings, starts_on, ends_on, hidden, preset'
 const BUILT_IN = ['sepia', 'abyss', 'markerboard']
 const MONTH_DAY = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 const MOST_SETTINGS = 64 * 1024
-// Kept at the edge a while, dropped as one changes (here; elsewhere, at most this old).
-const FRESH_S = 300
-const LIST_KEY = `${SITE}/themes`
+// Kept as a public file (src/who.ts) till one changes: the app reads that.
+const LIST = 'd/themes.json'
 
 interface Row { id: string; name: string; mode: string; theme_settings: string; starts_on: string | null; ends_on: string | null; hidden: number; preset: string | null }
 const shown = (row: Row) => ({ ...row, theme_settings: JSON.parse(row.theme_settings), hidden: !!row.hidden })
@@ -32,13 +30,8 @@ export async function themes(request: Request, env: Env, what: string): Promise<
   await tablesIn(db)
 
   if (request.method === 'GET' && what === '') {
-    const kept = await caches.default.match(LIST_KEY).catch(() => undefined)
-    if (kept) return kept
     if (!(await setting(db, COPIED)) && !(await copyFromSupabase(env, db))) return open(503, { error: 'not copied yet' })
-    const { results } = await db.prepare(`select ${COLUMNS} from special_themes order by starts_on`).all<Row>()
-    const answer = open(200, results.map(shown), { 'Cache-Control': `s-maxage=${FRESH_S}` })
-    await caches.default.put(LIST_KEY, answer.clone()).catch(() => {})
-    return answer
+    return open(200, await samePublic(env, LIST, async () => (await db.prepare(`select ${COLUMNS} from special_themes order by starts_on`).all<Row>()).results.map(shown)))
   }
 
   const { allowed, answer } = replies(request)
@@ -70,7 +63,7 @@ export async function themes(request: Request, env: Env, what: string): Promise<
   } else {
     return answer(404, { error: 'what' })
   }
-  await caches.default.delete(LIST_KEY).catch(() => false)
+  await dropPublic(env, [LIST])
   return answer(200, { ok: true })
 }
 

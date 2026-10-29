@@ -13,7 +13,7 @@
 // Drive says them ("Drive 404", "Drive 403"), which the sync knows.
 import { accountToken } from './signedIn'
 import { workerUrl } from './rooms'
-import { forgetReads, viaBatch } from './worker'
+import { forgetReads, fromFiles, viaBatch } from './worker'
 import { base64ToBytes, bytesToBase64 } from './driveFormat'
 import { keptSpace } from './drive'
 import type { DriveStore } from './driveSync'
@@ -70,7 +70,8 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
       if (!response.ok) throw await failed(response)
       return response.json()
     },
-    readByLink: async id => new Uint8Array(await (await read(`file/${id}`)).arrayBuffer()),
+    // Its bytes from the public bucket (lib/worker fromFiles), or the worker.
+    readByLink: async id => new Uint8Array(await ((await fromFiles(`f/${id}`)) ?? await read(`file/${id}`)).arrayBuffer()),
     version: async id => (await (await read(`meta/${id}`)).json()).version,
     listByLink: async folder => (await read(`list/${folder}`)).json(),
     readAppData: async name => {

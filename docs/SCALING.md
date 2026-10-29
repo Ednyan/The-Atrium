@@ -68,7 +68,8 @@ redo these tables from it once there's real traffic.
     coming back to the browser: nothing. Nothing is asked on a timer.
   - Besides: the Google sign-in renewed about hourly while Drive is used,
     saves stored every 2 minutes while someone edits an online atrium (below),
-    files read the first time on a device, and the image proxy.
+    and the image proxy. Files are read from the public bucket (below),
+    not the worker.
 
   A visit (open the browser, two atriums, a change, back) was 10 requests,
   where that morning it was about 30, and an atrium left open spent about
@@ -140,9 +141,10 @@ Daily limits reset at 00:00 UTC.
 1. **Workers, 100,000 requests a day** (the worker and the image proxy
    together). At about 15 a person, that's about 6,500 daily actives.
    Past it the worker answers nothing: no sign-in, no rooms, no online
-   atriums, no public list. Browser and desktop atriums don't notice.
-   Visitors to the landing page count too: each view reads the
-   contribution wall (see Changes still to make).
+   atriums. Browser and desktop atriums don't notice. What's read from
+   the public bucket goes on without it (below): the landing page's
+   contribution wall, the public list and its pictures, an online
+   atrium's files.
 2. **D1, 100,000 rows written a day.** At about 15 a person, that's about
    6,500 daily actives too: the two walls now come together. Past it,
    until midnight UTC, nothing that writes works:
@@ -243,26 +245,32 @@ Daily limits reset at 00:00 UTC.
 - **Health** (Developers → Health) shows every meter here, today and over
   30 days, and whether each secret is set.
 
-## Changes still to make
+## Public files (2026-10-29)
 
-Each would lower the requests further; none is needed below Tier 1.
+What anyone may read by its address is kept in a second R2 bucket,
+`atrium-public`, and read by the app from its domain,
+files.digitalatrium.org: R2 reads (10M a month free, then $0.36 a million)
+instead of Workers requests.
 
-1. **Public, same-for-everyone reads as files.** The contribution wall on
-   the landing page, the special themes and the public atrium list are the
-   same for every visitor, and each view is a worker request. The worker
-   could write each as a file in R2 when it changes, served from the
-   bucket's own domain: R2 reads (10M a month free, then $0.36 a million)
-   instead of Workers requests. Landing visitors would then cost nothing,
-   which matters at a launch, when visitors far outnumber users.
-2. **Files straight from R2.** An online atrium's files and saves, and
-   public atriums' mirrored files, are read "by anyone, by id" through the
-   worker: a request each, the first time on each device. Served from the
-   bucket's own domain by the same unguessable ids, they'd cost R2 reads
-   instead. Same trust as now: the files are sealed, and only an id finds
-   them.
-Both need a second R2 bucket, public, with a domain of its own: the files
-bucket also holds the cloud atriums held for their owners (`held/`),
-unsealed, which must never be readable by id.
+- **The same for everyone** (`d/`): the contribution wall, the special
+  themes and the public atrium list, each a JSON file. The worker writes
+  one as it answers for it, and drops it as it changes; the wall is also
+  worked out again every 5 minutes, since who's active and the month change
+  with time. Landing-page visitors cost the worker nothing, which matters at
+  a launch, when visitors far outnumber users.
+- **Files by id** (`f/`, `m/`): an online atrium's files and saves, and
+  public atriums' mirrored files. Same trust as before: they're sealed, and
+  only an id finds them. The bucket can't be listed.
+- **Public atriums' pictures** (`p/<lobby>-<time>.webp`): a new address with
+  each new picture, cached for good at the edge.
+- **What was kept before** is in the private bucket: the worker answers for
+  it when the bucket lacks it, and moves it across as it does (`publicFile`,
+  never over anything newer).
+- **Never public:** `held/`, the cloud atriums held for their owners,
+  unsealed. It stays in `atrium-files`.
+
+Another worker chosen (`atrium.rooms`) reads everything from the worker, as
+before.
 
 ## The prices behind the table
 

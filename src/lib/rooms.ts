@@ -50,6 +50,13 @@ export function roomServer(): string {
  *  even with the rooms turned off. */
 export const workerUrl = () => workerAt().replace(/^ws/, 'http')
 
+// What anyone may read by its address -- the hosted store's files, public
+// atriums' mirrored files and pictures, the lists the same for everyone --
+// from the Atrium's public bucket (workers/rooms, who.ts putPublic): R2
+// reads, not the worker's requests. None with another worker chosen.
+const FILES_URL = 'https://files.digitalatrium.org'
+export const filesUrl = () => (workerAt() === ROOM_URL ? FILES_URL : '')
+
 const roomsChosen = () => { try { return localStorage.getItem('atrium.rooms') } catch { return null } }
 function workerAt(): string {
   const chosen = roomsChosen()

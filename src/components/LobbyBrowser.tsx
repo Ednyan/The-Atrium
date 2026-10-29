@@ -16,7 +16,7 @@ import { formatSize } from '../lib/size'
 import { HOSTED_MARK, hostedStore, isHostedId } from '../lib/hostedStore'
 import { askAhead, holdReads } from '../lib/worker'
 import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replaceContents, watchSending, driveHasEverything, lookAtDriveAtrium, leaveDriveAtrium, makeWorkingCopy, createDriveAtrium, declineInvitation, deleteDriveAtrium, driveProblem, ensureSignedIn, inviteIn, driveCard, isDriveAtrium, isDriveOwner, isDriveViewer, isHostedAtrium, joinDriveAtrium, keepInDrive, moveHostedToDrive, myInvitations, readInvite, rowFromRoster, viewPublicAtrium, type Invitation, type JoinStep } from '../lib/driveSync'
-import { publicAtriums, publicPreviewUrl } from '../lib/people'
+import { previewFromWorker, publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
@@ -125,7 +125,7 @@ function AtriumPreview({ url, small = false, name }: { url?: string | null; smal
   return (
     <div className={`morph relative aspect-[16/10] overflow-hidden bg-nier-blackLight ${small ? 'w-24 sm:w-28 shrink-0 border border-nier-border/20' : '-mx-4 -mt-4 mb-3 border-b border-nier-border/20'}`} style={morphed(name)}>
       {src ? (
-        <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(null)} />
+        <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-cover" onError={() => setSrc(previewFromWorker(src))} />
       ) : (
         <div
           aria-hidden="true"

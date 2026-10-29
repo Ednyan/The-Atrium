@@ -43,6 +43,9 @@ export interface Env {
   // MB (50 if unset).
   FILES?: R2Bucket
   STORE_QUOTA_MB?: string
+  // What anyone may read by its address, read from the bucket's own domain
+  // (putPublic, below).
+  PUBLIC_FILES?: R2Bucket
   // Contributions (src/contributions.ts): Stripe's restricted key, and the
   // webhook endpoint's signing secret (secrets).
   STRIPE_SECRET_KEY?: string
@@ -172,6 +175,50 @@ export async function sentFile(request: Request): Promise<{ head: Record<string,
     joined.set(part.value, held.length)
     held = joined
   }
+}
+
+// ---------------------------------------------------------------- files anyone reads
+
+// What anyone may read by its address -- the hosted store's files (f/<id>),
+// public atriums' mirrored files (m/<lobby>/<id>) and pictures (p/), the
+// lists the same for everyone (d/) -- kept in a bucket of their own and read
+// by the app from its domain (files.digitalatrium.org, lib/rooms filesUrl):
+// R2 reads, not this worker's requests, the free plan's narrowest meter. The
+// worker answers for what isn't there yet, and puts it there. Never what's
+// held (src/held.ts): that isn't sealed.
+const NOT_KEPT: R2HTTPMetadata = { cacheControl: 'no-store' }
+const publicBucket = (env: Env) => env.PUBLIC_FILES ?? env.FILES
+
+/** Put where anyone may read it. */
+export const putPublic = (env: Env, key: string, body: ReadableStream | ArrayBuffer | ArrayBufferView | string, httpMetadata = NOT_KEPT) =>
+  publicBucket(env)?.put(key, body, { httpMetadata })
+
+/** A file anyone may read: from the public bucket -- or, one kept before
+ *  there was one, from the private bucket, and moved across as it's read.
+ *  Never over anything newer: a file written meanwhile stands. */
+export async function publicFile(env: Env, key: string): Promise<Response | null> {
+  const there = await env.PUBLIC_FILES?.get(key)
+  if (there) return new Response(there.body)
+  const kept = await env.FILES?.get(key)
+  if (!kept || !env.PUBLIC_FILES) return kept ? new Response(kept.body) : null
+  const bytes = await kept.arrayBuffer()
+  const moved = await env.PUBLIC_FILES.put(key, bytes, { httpMetadata: NOT_KEPT, onlyIf: { uploadedBefore: kept.uploaded } }).catch(() => null)
+  if (moved) await env.FILES!.delete(key)
+  return new Response(bytes)
+}
+
+/** Gone, from both buckets (1,000 keys at most). */
+export const dropPublic = (env: Env, keys: string[]) => Promise.all([env.FILES?.delete(keys), env.PUBLIC_FILES?.delete(keys)])
+
+/** What's the same for everyone (d/), as JSON: as it's kept, or -- not
+ *  there, or older than `freshMs` -- made, and kept. Dropped as it changes. */
+// ponytail: made as a change drops it, the older answer can be kept till the next change; a version check if that's ever seen.
+export async function samePublic(env: Env, key: string, make: () => Promise<unknown>, freshMs = Infinity): Promise<unknown> {
+  const kept = await publicBucket(env)?.get(key)
+  if (kept && Date.now() - kept.uploaded.getTime() < freshMs) return kept.json()
+  const value = await make()
+  await putPublic(env, key, JSON.stringify(value), { ...NOT_KEPT, contentType: 'application/json' })
+  return value
 }
 
 // ---------------------------------------------------------------- keys

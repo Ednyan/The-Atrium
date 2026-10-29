@@ -15,7 +15,7 @@
 // Errors are said as Drive says them (404, 403), which the page's sync knows.
 
 import { tablesIn, allowedWrite } from './people'
-import { FILE_NAME as NAME, fromBase64, MOST_FILE_BYTES, replies, sentFile, toBase64, whoIs, type Env } from './who'
+import { dropPublic, FILE_NAME as NAME, fromBase64, MOST_FILE_BYTES, publicFile, putPublic, replies, sentFile, toBase64, whoIs, type Env } from './who'
 
 // An account's bytes, everything it owns together, unless the worker says
 // otherwise (STORE_QUOTA_MB); one file's, at most.
@@ -35,8 +35,8 @@ const newId = () => 'h.' + toBase64(crypto.getRandomValues(new Uint8Array(18))).
 const quotaOf = (env: Env) => Math.max(1, Number(env.STORE_QUOTA_MB) || QUOTA_MB) * 1024 * 1024
 
 export async function store(request: Request, env: Env, what: string): Promise<Response> {
-  const db = env.PEOPLE, files = env.FILES
-  if (!db || !files) return new Response('Not set up', { status: 503 })
+  const db = env.PEOPLE
+  if (!db || !env.FILES) return new Response('Not set up', { status: 503 })
   await tablesIn(db)
 
   // Reading, for anyone: a file's bytes, a file's version, a folder's listing.
@@ -45,7 +45,8 @@ export async function store(request: Request, env: Env, what: string): Promise<R
     const open = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
     if (!id || !ID.test(id)) return new Response('Drive 404', { status: 404, headers: open })
     if (kind === 'file') {
-      const object = await files.get(`f/${id}`)
+      // The app reads it from the public bucket (who.ts); here, what isn't there yet.
+      const object = await publicFile(env, `f/${id}`)
       if (!object) return new Response('Drive 404', { status: 404, headers: open })
       return new Response(object.body, { headers: { ...open, 'Content-Type': 'application/octet-stream' } })
     }
@@ -95,7 +96,7 @@ export async function store(request: Request, env: Env, what: string): Promise<R
     const used = (await db.prepare('select coalesce(sum(size), 0) as used from store_files where owner = ?').bind(owner).first<{ used: number }>())?.used ?? 0
     if (used - (row?.size ?? 0) + size > quotaOf(env)) return answer(507, { error: 'quota' })
     const fileId = row?.id ?? newId()
-    await files.put(`f/${fileId}`, body)
+    await putPublic(env, `f/${fileId}`, body)
     const now = Date.now()
     const written = row
       ? db.prepare('update store_files set version = version + 1, size = ?, name = ?, updated_at = ? where id = ? returning version').bind(size, name, now, fileId)
@@ -137,7 +138,7 @@ export async function store(request: Request, env: Env, what: string): Promise<R
       if (!row) return answer(404, { error: 'Drive 404' })
       if (row.owner !== who.id) return answer(403, { error: 'Drive 403: not yours' })
       const gone = await descendants(db, id)
-      await dropFiles(db, files, gone)
+      await dropFiles(env, db, gone)
       return answer(200, { removed: gone.length })
     }
 
@@ -188,21 +189,21 @@ const sharedWith = async (db: D1Database, file: string, account: string) =>
  *  it -- and the one it's to is in that roster, a member or invited (a hosted
  *  atrium moved into its owner's Drive, lib/driveSync moveHostedToDrive). */
 export async function hostedMember(env: Env, from: string, lobby: string, to: string): Promise<boolean> {
-  const db = env.PEOPLE, files = env.FILES
-  if (!db || !files) return false
+  const db = env.PEOPLE
+  if (!db || !env.FILES) return false
   const row = await db.prepare(`select r.id from store_files f join store_files r on r.parent = f.id
     where f.name = ? and f.owner = ? and f.folder = 1 and r.name = ? and r.folder = 0`).bind(lobby, from, ROSTER).first<{ id: string }>()
-  const object = row && await files.get(`f/${row.id}`)
+  const object = row && await publicFile(env, `f/${row.id}`)
   if (!object) return false
   const roster = await object.json<{ lobbyId?: string; members?: { user: string; role: string }[]; invited?: { user: string }[] }>().catch(() => null)
   return !!roster && roster.lobbyId === lobby && (!!roster.members?.some(member => member.user === to && member.role !== 'owner') || !!roster.invited?.some(invited => invited.user === to))
 }
 
 /** Files gone for good: their bytes, their rows, whom they were shared with. */
-async function dropFiles(db: D1Database, files: R2Bucket, ids: string[]): Promise<void> {
+async function dropFiles(env: Env, db: D1Database, ids: string[]): Promise<void> {
   for (let at = 0; at < ids.length; at += 100) {
     const some = ids.slice(at, at + 100)
-    await files.delete(some.map(each => `f/${each}`))
+    await dropPublic(env, some.map(each => `f/${each}`))
     const marks = some.map(() => '?').join(',')
     await db.batch([
       db.prepare(`delete from store_files where id in (${marks})`).bind(...some),
@@ -218,7 +219,7 @@ export async function dropOwnFiles(env: Env, account: string): Promise<void> {
   if (!db) return
   await tablesIn(db)
   const { results } = await db.prepare('select id from store_files where owner = ?').bind(account).all<{ id: string }>()
-  if (env.FILES) await dropFiles(db, env.FILES, results.map(row => row.id))
+  if (env.FILES) await dropFiles(env, db, results.map(row => row.id))
   await db.batch([
     db.prepare('delete from store_appdata where account = ?').bind(account),
     db.prepare('delete from store_shares where account = ?').bind(account),

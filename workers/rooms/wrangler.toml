@@ -29,6 +29,12 @@ custom_domain = true
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "atrium-files"
+# What anyone may read by its address (src/who.ts, putPublic), served from
+# files.digitalatrium.org -- the bucket's custom domain, with CORS for the
+# site and the desktop app.
+[[r2_buckets]]
+binding = "PUBLIC_FILES"
+bucket_name = "atrium-public"
 
 [[d1_databases]]
 binding = "PEOPLE"

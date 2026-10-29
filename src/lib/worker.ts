@@ -2,7 +2,7 @@
 // on -- the directory, its relay pass, the report form, a Google account's
 // Pinterest: a plain request (a text body, no headers of its own, so no
 // preflight), with the account's token when someone's signed in.
-import { workerUrl } from './rooms'
+import { filesUrl, workerUrl } from './rooms'
 import { accountToken } from './signedIn'
 
 export interface WorkerAnswer<T> { ok: boolean; status: number; answer: T | null }
@@ -18,6 +18,17 @@ export async function toWorker<T = any>(path: string, body: object = {}, signedI
   const sent = { ...body, ...(token ? { token } : {}) }
   const response = (await viaBatch(path, sent)) ?? await fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(sent), keepalive })
   return { ok: response.ok, status: response.status, answer: await response.json().catch(() => null) }
+}
+
+/** A public file (lib/rooms filesUrl): its answer, or null for the caller to
+ *  ask the worker -- not there yet (the worker puts it there as it answers),
+ *  older than `freshMs`, or not reachable. */
+export async function fromFiles(path: string, freshMs = Infinity, signal?: AbortSignal): Promise<Response | null> {
+  const url = filesUrl()
+  if (!url) return null
+  const response = await fetch(`${url}/${path}`, { cache: 'no-store', signal }).catch(() => null)
+  if (!response?.ok) return null
+  return freshMs === Infinity || Date.now() - Date.parse(response.headers.get('Last-Modified') ?? '') < freshMs ? response : null
 }
 
 // ---------------------------------------------------------------- reads, together
@@ -150,19 +161,19 @@ export function viaBatch(path: string, body?: Record<string, unknown>, get = fal
 }
 
 // The directory's reads a page of the atrium browser makes as it opens --
-// one's profile, invitations, the atriums listed, visits, held atriums,
-// whether one's the operator, Pinterest, storage, the themes -- asked all at
+// one's profile, invitations, visits, held atriums, whether one's the
+// operator, Pinterest, storage -- asked all at
 // once, in one request, and kept (KEPT_PATHS): each of its parts, asking as
 // it mounts, is answered from them, or from the answer on its way. Asked by
 // its parts alone, they went in four or five requests, one after another.
 // Each as its part asks it: the body {} and one's token (toWorker, hostedStore).
-const AHEAD = ['/people/me', '/people/invites', '/people/atriums', '/people/visits', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage']
+// Not the atriums listed nor the themes: public files (fromFiles).
+const AHEAD = ['/people/me', '/people/invites', '/people/visits', '/held/mine', '/ops/operator', '/pinterest/status', '/store/usage']
 export async function askAhead(): Promise<void> {
   const url = workerUrl()
   const token = await accountToken().catch(() => null)
   if (!url || !token || noBatches) return
   for (const path of AHEAD) void viaBatch(path, { token })
-  void viaBatch('/themes', undefined, true)
   // Gathered already: sent now -- unless held, for what else the screen asks.
   if (!holds) sendNow()
 }

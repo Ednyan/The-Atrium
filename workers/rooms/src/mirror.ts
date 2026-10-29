@@ -10,7 +10,7 @@
 // Gone when it's no longer listed (dropMirror).
 
 import { tablesIn, allowedWrite } from './people'
-import { FILE_NAME as NAME, MOST_FILE_BYTES, replies, sentFile, whoIs, type Env } from './who'
+import { dropPublic, FILE_NAME as NAME, MOST_FILE_BYTES, publicFile, putPublic, replies, sentFile, whoIs, type Env } from './who'
 
 // One mirrored atrium's bytes, at most.
 const MOST_MB = 200
@@ -20,8 +20,8 @@ const LOBBY = /^[\w-]{1,64}$/
 interface Entry { id: string; parent: string | null; name: string; folder: number; version: string; size: number }
 
 export async function mirror(request: Request, env: Env, what: string): Promise<Response> {
-  const db = env.PEOPLE, files = env.FILES
-  if (!db || !files) return new Response('Not set up', { status: 503 })
+  const db = env.PEOPLE
+  if (!db || !env.FILES) return new Response('Not set up', { status: 503 })
   await tablesIn(db)
 
   // Reading, for anyone: a file, its version, a folder's listing -- of one
@@ -31,7 +31,8 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
     const open = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
     if (!lobby || !LOBBY.test(lobby) || !id || !DRIVE_ID.test(id)) return new Response('Drive 404', { status: 404, headers: open })
     if (kind === 'file') {
-      const object = await files.get(`m/${lobby}/${id}`)
+      // The app reads it from the public bucket (who.ts); here, what isn't there yet.
+      const object = await publicFile(env, `m/${lobby}/${id}`)
       return object ? new Response(object.body, { headers: { ...open, 'Content-Type': 'application/octet-stream' } }) : new Response('Drive 404', { status: 404, headers: open })
     }
     if (kind === 'meta') {
@@ -68,7 +69,7 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
   // mirrored roster has them. Its roster itself: its owner's, or an admin's.
   const listed = await db.prepare('select roster, owner from public_atriums where lobby_id = ?').bind(lobby).first<{ roster: string; owner: string }>()
   if (!listed) return answer(404, { error: 'not public' })
-  const roster = await mirroredRoster(files, lobby, listed.roster)
+  const roster = await mirroredRoster(env, lobby, listed.roster)
   const role = roster?.members?.find(member => member.user === who.id)?.role
   const isOwner = who.id === listed.owner
   if (id === listed.roster) {
@@ -91,23 +92,23 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
   const size = folder ? 0 : sent.size
   const used = (await db.prepare('select coalesce(sum(size), 0) as used from mirror_files where lobby = ?').bind(lobby).first<{ used: number }>())?.used ?? 0
   if (used - (had?.size ?? 0) + size > MOST_MB * 1024 * 1024) return answer(507, { error: 'quota' })
-  if (body) await files.put(`m/${lobby}/${id}`, body)
+  if (body) await putPublic(env, `m/${lobby}/${id}`, body)
   await db.prepare(`insert into mirror_files (lobby, id, parent, name, folder, version, size, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)
     on conflict (lobby, id) do update set parent = coalesce(excluded.parent, mirror_files.parent), name = excluded.name, version = excluded.version, size = excluded.size, updated_at = excluded.updated_at`)
     .bind(lobby, id, parent, name, folder ? 1 : 0, version, size, Date.now()).run()
   return answer(200, { ok: true })
 }
 
-async function mirroredRoster(files: R2Bucket, lobby: string, rosterId: string): Promise<{ members?: { user: string; role: string }[] } | null> {
-  const object = await files.get(`m/${lobby}/${rosterId}`)
+async function mirroredRoster(env: Env, lobby: string, rosterId: string): Promise<{ members?: { user: string; role: string }[] } | null> {
+  const object = await publicFile(env, `m/${lobby}/${rosterId}`)
   try { return object ? await object.json() : null } catch { return null }
 }
 
 /** An atrium's mirror, gone: no longer public, or deleted. */
 export async function dropMirror(env: Env, lobby: string): Promise<void> {
-  const db = env.PEOPLE, files = env.FILES
-  if (!db || !files) return
+  const db = env.PEOPLE
+  if (!db || !env.FILES) return
   const { results } = await db.prepare('select id from mirror_files where lobby = ? and folder = 0').bind(lobby).all<{ id: string }>()
-  for (let at = 0; at < results.length; at += 1000) await files.delete(results.slice(at, at + 1000).map(row => `m/${lobby}/${row.id}`))
+  for (let at = 0; at < results.length; at += 1000) await dropPublic(env, results.slice(at, at + 1000).map(row => `m/${lobby}/${row.id}`))
   await db.prepare('delete from mirror_files where lobby = ?').bind(lobby).run()
 }

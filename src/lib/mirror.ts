@@ -7,6 +7,7 @@
 // missing.
 import { accountToken } from './signedIn'
 import { workerUrl } from './rooms'
+import { fromFiles } from './worker'
 import type { DriveStore } from './driveSync'
 
 const at = (path: string) => `${workerUrl()}/mirror/${path}`
@@ -40,7 +41,7 @@ export function mirroredStore(lobbyId: string, drive: DriveStore): DriveStore {
   return {
     ...drive,
     version: async id => { const response = await get('meta', id); return response?.ok ? (await response.json()).version : drive.version(id) },
-    readByLink: async id => { const response = await get('file', id); return response?.ok ? new Uint8Array(await response.arrayBuffer()) : drive.readByLink(id) },
+    readByLink: async id => { const response = await fromFiles(`m/${lobbyId}/${id}`) ?? await get('file', id); return response?.ok ? new Uint8Array(await response.arrayBuffer()) : drive.readByLink(id) },
     listByLink: async folder => { const listed = await mirrorList(lobbyId, folder); return listed.length ? listed : drive.listByLink(folder) },
   }
 }

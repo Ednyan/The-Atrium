@@ -14,7 +14,7 @@ import { heldMember } from './held'
 import { hostedMember } from './store'
 import { welcome } from './mail'
 import { dropMirror } from './mirror'
-import { fromBase64, replies, whoIs, type Env, type Who } from './who'
+import { dropPublic, fromBase64, putPublic, replies, samePublic, whoIs, type Env, type Who } from './who'
 
 const TABLES = [
   `create table if not exists accounts (
@@ -200,6 +200,13 @@ const MOST_IDS = 200
 // how big a picture may be (a card's, WebP).
 const MOST_PUBLIC_EACH = 50
 const MOST_PUBLIC_LISTED = 500
+// The public atriums' list as a public file (src/who.ts), dropped as it
+// changes: an atrium listed, changed or taken off, a ban, an owner's name.
+const LISTED = 'd/atriums.json'
+// A public atrium's picture as a public file: by its time, so each new one
+// is a new address, cached for good.
+const pictureKey = (lobby: string, at: number) => `p/${lobby}-${at}.webp`
+const PICTURE = { contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' }
 const MOST_PREVIEW_BYTES = 300 * 1024
 // An ask to be let in, kept this long.
 const ASK_KEEP_MS = 14 * DAY_MS
@@ -429,13 +436,13 @@ export async function people(request: Request, env: Env, what: string): Promise<
     return answer(200, { available: !elsewhere })
   }
   // The public atriums, for anyone -- a guest too: the newest first, but
-  // those of banned accounts.
+  // those of banned accounts. Kept as a public file (who.ts) till it changes
+  // (LISTED): the app reads that.
   if (what === 'atriums') {
     await tablesIn(db)
-    const { results } = await db.prepare(`select p.lobby_id, p.roster, p.name, p.owner, coalesce(a.display_name, a.username) as owner_name,
-      p.preview_at, p.updated_at from public_atriums p left join accounts a on a.id = p.owner
-      where p.owner not in (select account from bans) order by p.updated_at desc limit ?`).bind(MOST_PUBLIC_LISTED).all()
-    return answer(200, results)
+    return answer(200, await samePublic(env, LISTED, async () => (await db.prepare(`select p.lobby_id, p.roster, p.name, p.owner,
+      coalesce(a.display_name, a.username) as owner_name, p.preview_at, p.updated_at from public_atriums p left join accounts a on a.id = p.owner
+      where p.owner not in (select account from bans) order by p.updated_at desc limit ?`).bind(MOST_PUBLIC_LISTED).all()).results))
   }
   const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
   if (!who) return answer(401, { error: 'sign-in' })
@@ -501,6 +508,8 @@ export async function people(request: Request, env: Env, what: string): Promise<
         await db.prepare('update accounts set drive_key = ?, drive_root = ? where id = ?').bind(key === 'null' ? null : key, root, who.id).run()
       }
       const row = await db.prepare('select id, kind, username, display_name, drive_key, drive_root, hosted_root, email, settings, name_changed_at from accounts where id = ?').bind(who.id).first()
+      // A name changed: an owner's, on the public list.
+      if (row && (row.username !== (before?.username ?? null) || row.display_name !== (before?.display_name ?? null))) await dropPublic(env, [LISTED])
       return answer(200, shown(row))
     }
 
@@ -609,6 +618,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         const row = await db.prepare('select kind from bans where account = ?').bind(account).first<{ kind: string }>()
         await db.prepare('delete from bans where account = ?').bind(account).run()
         bansSeen.delete(account)
+        await dropPublic(env, [LISTED])
         return answer(200, { account, kind: row?.kind ?? null })
       }
       const username = text('username', 40)?.trim().replace(/^@/, '')
@@ -627,6 +637,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         on conflict (account) do update set reason = excluded.reason, by_account = excluded.by_account, at = excluded.at`)
         .bind(found.id, found.username, found.kind, text('reason', 500) || null, who.id, Date.now()).run()
       bansSeen.delete(found.id)
+      await dropPublic(env, [LISTED])
       return answer(200, { account: found.id, kind: found.kind, username: found.username })
     }
 
@@ -649,7 +660,7 @@ export async function people(request: Request, env: Env, what: string): Promise<
         const webp = preview.length >= 12 && String.fromCharCode(...preview.slice(0, 4)) === 'RIFF' && String.fromCharCode(...preview.slice(8, 12)) === 'WEBP'
         if (!webp || preview.length > MOST_PREVIEW_BYTES) return answer(400, { error: 'preview' })
       }
-      const had = await db.prepare('select owner from public_atriums where lobby_id = ?').bind(lobby).first<{ owner: string }>()
+      const had = await db.prepare('select owner, preview_at from public_atriums where lobby_id = ?').bind(lobby).first<{ owner: string; preview_at: number | null }>()
       if (had && had.owner !== who.id) return answer(403, { error: 'not yours' })
       if (!had) {
         const listed = await db.prepare('select count(*) as n from public_atriums where owner = ?').bind(who.id).first<{ n: number }>()
@@ -661,16 +672,25 @@ export async function people(request: Request, env: Env, what: string): Promise<
         preview = coalesce(excluded.preview, public_atriums.preview), preview_at = coalesce(excluded.preview_at, public_atriums.preview_at)
         where public_atriums.owner = excluded.owner`)
         .bind(lobby, roster, name, who.id, preview, preview ? now : null, now, now).run()
+      if (preview) {
+        await putPublic(env, pictureKey(lobby, now), preview, PICTURE)
+        if (had?.preview_at) await dropPublic(env, [pictureKey(lobby, had.preview_at)])
+      }
+      await dropPublic(env, [LISTED])
       return answer(200, { ok: true })
     }
     // Off the list: by its owner, or the platform's operator.
     case 'unpublish': {
       const lobby = text('lobby_id', 64)
       if (!lobby) return answer(400, { error: 'body' })
-      const done = await db.prepare('delete from public_atriums where lobby_id = ? and owner = ?').bind(lobby, who.id).run()
-      const taken = done.meta.changes || (await isOperator(env, who, asked.token as string) && (await db.prepare('delete from public_atriums where lobby_id = ?').bind(lobby).run()).meta.changes)
-      // Its mirror goes with its listing.
-      if (taken) await dropMirror(env, lobby)
+      const gone = 'delete from public_atriums where lobby_id = ?'
+      const taken = await db.prepare(`${gone} and owner = ? returning preview_at`).bind(lobby, who.id).first<{ preview_at: number | null }>()
+        ?? (await isOperator(env, who, asked.token as string) ? await db.prepare(`${gone} returning preview_at`).bind(lobby).first<{ preview_at: number | null }>() : null)
+      // Its mirror and picture go with its listing.
+      if (taken) {
+        await dropMirror(env, lobby)
+        await dropPublic(env, [LISTED, ...(taken.preview_at ? [pictureKey(lobby, taken.preview_at)] : [])])
+      }
       return answer(200, { ok: true })
     }
 
@@ -725,9 +745,12 @@ export async function people(request: Request, env: Env, what: string): Promise<
 export async function publicPreview(env: Env, lobbyId: string): Promise<Response> {
   if (!env.PEOPLE) return new Response('Not set up', { status: 503 })
   await tablesIn(env.PEOPLE)
-  const row = await env.PEOPLE.prepare('select preview from public_atriums where lobby_id = ?').bind(lobbyId).first<{ preview: ArrayBuffer | number[] | null }>()
+  const row = await env.PEOPLE.prepare('select preview, preview_at from public_atriums where lobby_id = ?').bind(lobbyId).first<{ preview: ArrayBuffer | number[] | null; preview_at: number | null }>()
   if (!row?.preview) return new Response('Not found', { status: 404 })
-  return new Response(new Uint8Array(row.preview), {
+  // One listed before the public bucket: put there as it's read (who.ts).
+  const bytes = new Uint8Array(row.preview)
+  if (row.preview_at) await putPublic(env, pictureKey(lobbyId, row.preview_at), bytes, PICTURE)
+  return new Response(bytes, {
     headers: { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' },
   })
 }

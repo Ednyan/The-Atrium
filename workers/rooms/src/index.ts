@@ -93,8 +93,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith('/store/')) return store(request, env, url.pathname.slice('/store/'.length))
   // Public Drive atriums' mirrors (phase 10, step 3).
   if (url.pathname.startsWith('/mirror/')) return mirror(request, env, url.pathname.slice('/mirror/'.length))
-  // A public atrium's picture (phase 8), for anyone.
-  const picture = url.pathname.match(/^\/public\/([\w-]{1,64})\.webp$/)?.[1]
+  // A public atrium's picture (phase 8), for anyone: as its public file is
+  // addressed (people.ts, pictureKey), for one not there yet.
+  const picture = url.pathname.match(/^\/public\/([\w-]{1,64})\.webp$/)?.[1] ?? url.pathname.match(/^\/p\/([\w-]{1,64})-\d+\.webp$/)?.[1]
   if (picture && request.method === 'GET') return publicPreview(env, picture)
   // What the account calls on (phase 6, step 6): its relay pass, the report
   // form, a Google account's Pinterest.
