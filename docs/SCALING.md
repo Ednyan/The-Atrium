@@ -30,8 +30,10 @@ redo these tables from it once there's real traffic.
     and files in R2, and their listing in D1. Each account gets 3 atriums
     and 50 MB, with at most 25 MB a file.
   - The public mirror (`/mirror/*`): public Drive atriums' files copied to
-    R2 (up to 200 MB each), so visitors read them from us and not from
-    Google.
+    R2, so visitors read them from us and not from Google. 500 MB per
+    owner across all their public atriums; past it, files are read from
+    Drive. What Drive no longer has is dropped as the owner's app refills
+    the mirror.
   - Relay passes (Cloudflare TURN), capped at 800 GB a month
     (`RELAY_BUDGET_GB`).
   - Contributions (Stripe Checkout and its webhook), reports and mail, and

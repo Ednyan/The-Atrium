@@ -28,6 +28,16 @@ export async function mirrorPut(lobbyId: string, entry: { id: string; parent: st
   return !!response?.ok
 }
 
+/** Out of an atrium's mirror: what its Drive no longer has (lib/driveSync,
+ *  fillFolder) -- its owner's or an admin's. */
+export async function mirrorDrop(lobbyId: string, ids: string[]): Promise<void> {
+  const token = await accountToken().catch(() => null)
+  // So many at once, as the worker takes them (workers/rooms, mirror.ts drop).
+  for (let from = 0; token && from < ids.length; from += 90) {
+    await fetch(at('drop'), { method: 'POST', body: JSON.stringify({ token, lobby: lobbyId, ids: ids.slice(from, from + 90) }) }).catch(() => null)
+  }
+}
+
 /** A folder, as the mirror has it ([] for none). */
 export async function mirrorList(lobbyId: string, folder: string): Promise<Mirrored[]> {
   const response = await fetch(at(`list/${lobbyId}/${folder}`)).catch(() => null)

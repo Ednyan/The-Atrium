@@ -46,7 +46,7 @@ import { isDesktop } from './supabase'
 import { workerAccount } from './signedIn'
 import { hostedSpace, hostedStore, isHostedId } from './hostedStore'
 import { inFront, onFront } from './appFront'
-import { mirrorList, mirrorPut, mirroredStore } from './mirror'
+import { mirrorDrop, mirrorList, mirrorPut, mirroredStore } from './mirror'
 import { t } from './i18n'
 import type { TranslationKey } from '../locales/en'
 
@@ -1091,7 +1091,8 @@ async function fillMirror(lobbyId: string, rosterId: string): Promise<void> {
 }
 async function fillFolder(lobbyId: string, folder: string): Promise<void> {
   const have = new Map((await mirrorList(lobbyId, folder)).map(entry => [entry.id, entry.version]))
-  for (const file of await driveStore.listByLink(folder)) {
+  const inDrive = await driveStore.listByLink(folder)
+  for (const file of inDrive) {
     // Its files' folder: itself, and what's in it.
     if (file.name === 'files') {
       if (!have.has(file.id)) await mirrorPut(lobbyId, { id: file.id, parent: folder, name: 'files', version: file.version })
@@ -1100,6 +1101,10 @@ async function fillFolder(lobbyId: string, folder: string): Promise<void> {
       await mirrorPut(lobbyId, { id: file.id, parent: folder, name: file.name, version: file.version, bytes: await driveStore.readByLink(file.id) })
     }
   }
+  // What Drive no longer has, out of the mirror: it would cost, and fill its
+  // owner's budget there (workers/rooms, mirror.ts).
+  const gone = [...have.keys()].filter(id => !inDrive.some(file => file.id === id))
+  if (gone.length) await mirrorDrop(lobbyId, gone)
 }
 /** The owner's: private again -- its keys out of its roster, and a new
  *  generation, so whoever read it while it was public can't read what's

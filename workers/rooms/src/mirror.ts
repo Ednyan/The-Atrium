@@ -7,13 +7,15 @@
 // its roster; its members -- as that mirrored roster has them -- their own
 // saves and files, and the owner's app fills in what's missing. Read by
 // anyone, as the atrium itself is: it's public, and what it holds is sealed.
-// Gone when it's no longer listed (dropMirror).
+// Gone when it's no longer listed (dropMirror); what its Drive no longer has,
+// as its owner's app finds it ('drop').
 
 import { tablesIn, allowedWrite } from './people'
 import { dropPublic, FILE_NAME as NAME, MOST_FILE_BYTES, publicFile, putPublic, replies, sentFile, whoIs, type Env } from './who'
 
-// One mirrored atrium's bytes, at most.
-const MOST_MB = 200
+// The bytes one owner's public atriums take in mirrors, all together, at
+// most: past it, what isn't mirrored is read from Drive, as before mirrors.
+const MOST_MB = 500
 const DRIVE_ID = /^[\w-]{10,128}$/
 const LOBBY = /^[\w-]{1,64}$/
 
@@ -48,6 +50,7 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
 
   const { allowed, answer } = replies(request)
   if (!allowed) return answer(403, { error: 'origin' })
+  if (what === 'drop') return drop(request, env, db, answer)
   if (what !== 'put') return answer(404, { error: 'what' })
   // Its head (the sign-in, which file of which atrium) and its bytes,
   // streamed on to R2 (who.ts, sentFile); a folder has none.
@@ -90,13 +93,37 @@ export async function mirror(request: Request, env: Env, what: string): Promise<
 
   const had = await db.prepare('select size from mirror_files where lobby = ? and id = ?').bind(lobby, id).first<Entry>()
   const size = folder ? 0 : sent.size
-  const used = (await db.prepare('select coalesce(sum(size), 0) as used from mirror_files where lobby = ?').bind(lobby).first<{ used: number }>())?.used ?? 0
+  const used = (await db.prepare(`select coalesce(sum(m.size), 0) as used from mirror_files m join public_atriums p on p.lobby_id = m.lobby
+    where p.owner = ?`).bind(listed.owner).first<{ used: number }>())?.used ?? 0
   if (used - (had?.size ?? 0) + size > MOST_MB * 1024 * 1024) return answer(507, { error: 'quota' })
   if (body) await putPublic(env, `m/${lobby}/${id}`, body)
   await db.prepare(`insert into mirror_files (lobby, id, parent, name, folder, version, size, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)
     on conflict (lobby, id) do update set parent = coalesce(excluded.parent, mirror_files.parent), name = excluded.name, version = excluded.version, size = excluded.size, updated_at = excluded.updated_at`)
     .bind(lobby, id, parent, name, folder ? 1 : 0, version, size, Date.now()).run()
   return answer(200, { ok: true })
+}
+
+// What its Drive no longer has -- a file deleted, saves folded into one --
+// out of an atrium's mirror (lib/driveSync, fillFolder): by its owner or an
+// admin, as its roster, whose apps fill it. Never the roster itself.
+const MOST_DROPPED = 90
+async function drop(request: Request, env: Env, db: D1Database, answer: (status: number, body: unknown) => Response): Promise<Response> {
+  let asked: Record<string, unknown>
+  try { asked = await request.json() } catch { return answer(400, { error: 'body' }) }
+  const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
+  if (!who) return answer(401, { error: 'sign-in' })
+  const lobby = String(asked.lobby ?? ''), ids = Array.isArray(asked.ids) ? asked.ids.map(String) : []
+  if (!LOBBY.test(lobby) || !ids.length || ids.length > MOST_DROPPED || !ids.every(id => DRIVE_ID.test(id))) return answer(400, { error: 'body' })
+  const listed = await db.prepare('select roster, owner from public_atriums where lobby_id = ?').bind(lobby).first<{ roster: string; owner: string }>()
+  if (!listed) return answer(404, { error: 'not public' })
+  const role = (await mirroredRoster(env, lobby, listed.roster))?.members?.find(member => member.user === who.id)?.role
+  if (who.id !== listed.owner && role !== 'admin') return answer(403, { error: 'Drive 403: not the roster’s' })
+  const some = ids.filter(id => id !== listed.roster)
+  if (!some.length) return answer(200, { dropped: 0 })
+  const marks = some.map(() => '?').join(',')
+  await dropPublic(env, some.map(id => `m/${lobby}/${id}`))
+  const done = await db.prepare(`delete from mirror_files where lobby = ? and id in (${marks})`).bind(lobby, ...some).run()
+  return answer(200, { dropped: done.meta.changes })
 }
 
 async function mirroredRoster(env: Env, lobby: string, rosterId: string): Promise<{ members?: { user: string; role: string }[] } | null> {
