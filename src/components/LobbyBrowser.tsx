@@ -60,7 +60,10 @@ const SMALL_BUTTON = 'px-3 h-8 shrink-0 flex items-center justify-center border 
 const FOOT_BUTTON = 'flex-1 min-w-[10rem] py-3 border border-nier-border/30 text-nier-bg/80 text-xs tracking-[0.15em] uppercase hover:border-nier-border/60 hover:text-nier-bg transition-colors'
 // Which way the lists are shown, kept for the next visit.
 const VIEW_KEY = 'atrium.browserView'
-// When each Drive or hosted atrium on the list was last looked at, this visit.
+// When each Drive or hosted atrium on the list was last looked at, this visit:
+// again once it's LOOK_AGAIN_MS old -- and every LOOK_AGAIN_MS while the
+// browser stays open, all of them on the same tick as the invitations and the
+// public list (below), so all of it goes to the worker together, in one request.
 const LOOK_AGAIN_MS = 30 * 60_000
 const lookedAt = new Map<string, number>()
 
@@ -826,11 +829,11 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   // owner's latest picture taken along the way. Each looked at no more than
   // every LOOK_AGAIN_MS: a hosted atrium's look is a request to the Atrium's
   // own server, and every atrium looked at each minute was most of its day.
-  const letGoOfEnded = async (lobbies: { id: string; name: string }[]) => {
+  const letGoOfEnded = async (lobbies: { id: string; name: string }[], all = false) => {
     // The account, or this browser's guest (a public atrium's viewer).
     const me = sharedId()
     if (!me) return
-    const due = lobbies.filter(lobby => Date.now() - (lookedAt.get(lobby.id) ?? 0) >= LOOK_AGAIN_MS)
+    const due = all ? lobbies : lobbies.filter(lobby => Date.now() - (lookedAt.get(lobby.id) ?? 0) >= LOOK_AGAIN_MS)
     for (const lobby of due) lookedAt.set(lobby.id, Date.now())
     // Side by side: a hosted atrium's versions go to the worker together
     // (lib/worker, viaBatch) -- each card's two, one after the other, were
@@ -853,22 +856,27 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       ownerUsername: atrium.owner_name ?? '', inDrive: true, publicRoster: atrium.roster, previewUrl: publicPreviewUrl(atrium),
     })))
   }
-  // While the browser's open: the list again each minute -- Drive and hosted
-  // atriums looked at with it, each at most every LOOK_AGAIN_MS -- and every
-  // fifteenth, the public list and what's come for one meanwhile (invitations,
-  // one's own atriums put online elsewhere): that's the Atrium's own server,
-  // whose free day is 100,000 requests for everyone together -- every fifth
-  // was two requests each time, for a page only looked at. Only while the
-  // app is in front (lib/appFront): a desktop window behind others, or
-  // minimised, says it's visible.
+  // While the browser's open: the list again each minute, from here -- and
+  // every half hour, all that's the Atrium's own server's at once, so it goes
+  // in one request (lib/worker): the Drive and hosted atriums looked at (each
+  // due then, LOOK_AGAIN_MS), the public list, and what's come for one
+  // meanwhile (invitations, one's own atriums put online elsewhere). Its
+  // free day is 100,000 requests for everyone together: each on a clock of
+  // its own, they were a request or two every five minutes for a page only
+  // looked at. Only while the app is in front (lib/appFront): a desktop
+  // window behind others, or minimised, says it's visible.
   const lookAgain = useRef(lookForInvitations)
   lookAgain.current = lookForInvitations
   useEffect(() => {
-    let minutes = 0
+    // By the clock, as the cards are: back in front after longer away, all
+    // of it at the first minute in front, together.
+    let lookedAll = Date.now()
     const every = window.setInterval(() => {
       if (!inFront()) return
-      void loadBrowserLobbies()
-      if (++minutes % 15 === 0) {
+      const all = Date.now() - lookedAll >= LOOK_AGAIN_MS
+      void loadBrowserLobbies(all ? 'all' : 'none')
+      if (all) {
+        lookedAll = Date.now()
         void loadPublicDrive()
         lookAgain.current()
       }
@@ -899,7 +907,9 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     }
   }
 
-  const loadBrowserLobbies = async () => {
+  // `cards`: which of the Drive and hosted atriums are looked at with it --
+  // those due (never looked at, or LOOK_AGAIN_MS ago), all of them, or none.
+  const loadBrowserLobbies = async (cards: 'due' | 'all' | 'none' = 'due') => {
     // Another account's Drive atriums on this browser aren't this one's.
     // On desktop: those shared with the account (the vault's own are listed as ever).
     const ids = browserAtriumIds().filter(id => !anotherAccountsDriveAtrium(id) && (!isDesktop || isDriveAtrium(id)))
@@ -909,7 +919,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       const { data, error } = await localClient.from('lobbies').select('*').in('id', ids)
       if (error) throw error
       setBrowserLobbies((data ?? []).map((lobby: any) => ({ ...asLobby(lobby), inBrowser: true, inDrive: isDriveAtrium(lobby.id) })))
-      void letGoOfEnded((data ?? []).filter((lobby: any) => isDriveAtrium(lobby.id)))
+      if (cards !== 'none') void letGoOfEnded((data ?? []).filter((lobby: any) => isDriveAtrium(lobby.id)), cards === 'all')
     } catch (err) {
       const problem = vaultProblem(err)
       setError(problem ? t(problem) : t('browser.errLoadLobbies', { message: String(err) }))
