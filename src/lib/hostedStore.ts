@@ -64,7 +64,7 @@ export function hostedStoreFor(token: () => Promise<string | null>): DriveStore 
     // the worker streams on as they come (workers/rooms, who.ts sentFile):
     // also a plain request.
     write: async (name, bytes, place) => {
-      forgetReads()
+      forgetReads('/store/write')
       const head = JSON.stringify({ token: await signedInToken(), name, ...place })
       const response = await fetch(at('write'), { method: 'POST', body: new Blob([`${head}\n`, bytes as BlobPart]) })
       if (!response.ok) throw await failed(response)

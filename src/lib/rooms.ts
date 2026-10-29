@@ -156,6 +156,13 @@ export function presenceChannel(lobbyId: string, options: Parameters<NonNullable
   return (url ? new RoomChannel(url, lobbyId, viaSupabase) : viaSupabase(lobbyId)) as RealtimeChannel
 }
 
+// Why each connection opens and closes, said in the console while this
+// browser asks for it (localStorage 'atrium.debug' holding 'rooms'): each is a
+// request to the worker, and an atrium's entry was making four.
+const roomLog = (...said: unknown[]) => {
+  try { if (localStorage.getItem('atrium.debug')?.includes('rooms')) console.info('[rooms]', Math.round(performance.now()), ...said) } catch { /* not asked */ }
+}
+
 class RoomChannel {
   private listeners: Listener[] = []
   private status: Status = () => {}
@@ -184,7 +191,9 @@ class RoomChannel {
     this.lobbyId = lobbyId
     this.viaSupabase = viaSupabase
     setStatus(this, lobbyId, 'trying')
+    roomLog('made', this.kind(), lobbyId.slice(0, 8), new Error().stack?.split('\n').slice(2, 5).map(line => line.trim()).join(' < '))
   }
+  private kind() { return this.door ? 'door' : this.aside ? 'aside' : 'room' }
 
   on(type: string, filter: { event: string }, callback: Callback) {
     this.listeners.push({ type, event: filter?.event, callback })
@@ -229,6 +238,7 @@ class RoomChannel {
   }
 
   async unsubscribe() {
+    roomLog('unsubscribe', this.kind(), this.lobbyId.slice(0, 8))
     this.closed = true
     setStatus(this, this.lobbyId, null)
     window.clearInterval(this.pinger)
@@ -240,6 +250,7 @@ class RoomChannel {
   rejoin() {
     const socket = this.socket
     if (this.closed || this.fallback || !socket) return
+    roomLog('rejoin', this.kind(), this.lobbyId.slice(0, 8))
     // Its closing is no failure: nothing waits on it.
     this.socket = null
     this.ref = ''
@@ -271,6 +282,7 @@ class RoomChannel {
     // throws when the page's policy blocks the address -- is Supabase at once.
     let socket: WebSocket
     try {
+      roomLog('connect', this.kind(), this.lobbyId.slice(0, 8), 'failures', this.failures)
       socket = new WebSocket(`${this.url}/room/${this.name}`, ['atrium', token])
     } catch {
       this.giveUp()
@@ -299,7 +311,8 @@ class RoomChannel {
         for (const { event, payload } of this.held.splice(0)) this.write({ t: 'b', e: event, p: payload })
       } else this.receive(message)
     }
-    socket.onclose = () => {
+    socket.onclose = event => {
+      roomLog('closed', this.kind(), this.lobbyId.slice(0, 8), 'code', event.code, 'opened', this.opened, 'by this page', this.closed || this.socket !== socket)
       window.clearTimeout(late)
       if (this.socket !== socket || this.closed) return
       window.clearInterval(this.pinger)

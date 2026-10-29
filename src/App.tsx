@@ -19,6 +19,7 @@ import type { TranslationKey } from './locales/en'
 import RichText from './components/RichText'
 import { maybeSendWelcome } from './lib/welcome'
 import { myEntry, publishAccount } from './lib/people'
+import { askAhead, holdReads } from './lib/worker'
 import { ACCOUNT_EVENT, workerAccount, type SignedOutReason } from './lib/signedIn'
 import type { DriveEnd } from './lib/driveSync'
 import { readRecentThanksName } from './lib/pendingContribution'
@@ -1555,7 +1556,13 @@ function AppInner() {
       const account = workerAccount()
       if (!account) return
       try {
-        const entry = await myEntry()
+        // With it, what the first page will ask the directory (lib/worker
+        // askAhead): one request, where the sign-in's went alone.
+        const release = holdReads()
+        const asking = myEntry()
+        await askAhead().catch(() => {})
+        release()
+        const entry = await asking
         if (!entry.username) {
           setPendingUsernameUser({ id: account.id, email: account.email ?? '', google: true })
           setLoading(false)

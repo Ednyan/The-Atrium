@@ -84,8 +84,28 @@ const kept = new Map<string, Answer & { at: number }>()
 const coming = new Map<string, Promise<Answer | null>>()
 // Moved on by each forgetting: an answer to a read asked before a write isn't kept.
 let era = 0
-/** Every directory answer kept is let go of: something was just written. */
-export const forgetReads = () => { kept.clear(); coming.clear(); era++ }
+// A path's kind: its first part (/people, /store, /held...).
+const kindOf = (path: string) => path.split('/')[1] ?? ''
+// What a write changes, where that's narrower than its kind.
+const CHANGES: Record<string, string[]> = {
+  '/people/clear': ['/people/invites'],
+  '/people/visits': ['/people/visits'],
+  '/people/me': ['/people/me'],
+  '/people/publish': ['/people/atriums'],
+  '/people/unpublish': ['/people/atriums'],
+}
+/** The directory answers `path`'s write may have changed let go of: those
+ *  CHANGES names, else all of its kind -- a /held write, one's held atriums;
+ *  a /store write, one's storage. Not every answer: an invitation's secret
+ *  cleared, as an atrium is first opened, had them all asked again. With no
+ *  path, all of them. */
+export const forgetReads = (path?: string) => {
+  const changed = path === undefined ? null : CHANGES[path]
+  const goes = (key: string) => path === undefined || (changed ? changed.includes(key.split(' ')[0]) : kindOf(key) === kindOf(path))
+  for (const key of [...kept.keys()]) if (goes(key)) kept.delete(key)
+  for (const key of [...coming.keys()]) if (goes(key)) coming.delete(key)
+  era++
+}
 const asResponse = (answer: Answer) => new Response(answer.body, { status: answer.status })
 
 /** `path`'s answer, asked together with the other reads made about now --
@@ -96,7 +116,7 @@ export function viaBatch(path: string, body?: Record<string, unknown>, get = fal
   const url = workerUrl()
   const read = readTest(path, get)
   if (!read || !read(body ?? {})) {
-    forgetReads()
+    forgetReads(path)
     return Promise.resolve(null)
   }
   if (!url || noBatches) return Promise.resolve(null)
