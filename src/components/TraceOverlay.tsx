@@ -5296,7 +5296,11 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
     const editing = editingTraceRef.current
     const key = multiSelectedIds.size > 1 ? [...multiSelectedIds].sort().join(',') : selectedTraceId ?? ''
     if (!key) dismissedRef.current = null
-    const wanted = autoOpenCustomization || key === requestedRef.current
+    // A clickable trace is there to be clicked: it opens its link, not the panel,
+    // until Clickable is turned off. Customize in the menu still opens it.
+    const selected = multiSelectedIds.size > 1 ? null : tracesRef.current.find(t => t.id === selectedTraceId)
+    const opensLink = !!selected?.isClickable && !!selected.linkUrl
+    const wanted = (autoOpenCustomization && !opensLink) || key === requestedRef.current
     // Let go after a drag: the panel left as it was, one trace or several --
     // for as long as that's what's selected, not for good.
     if (key !== draggedKeyRef.current) draggedKeyRef.current = null
