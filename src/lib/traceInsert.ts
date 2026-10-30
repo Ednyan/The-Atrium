@@ -1,5 +1,6 @@
 import type { Trace } from '../types/database'
 import { has } from './traceKinds.ts'
+import { shiftPoints } from './pathGeometry.ts'
 
 // Builds a DB-ready insert row from a Trace snapshot. Shared by duplicate
 // (new id, offset position) and by undo/redo's delete<->reinsert round-trip
@@ -102,7 +103,8 @@ export function buildTraceInsertRow(
     if (trace.shapeOutlineColor) newTrace.shape_outline_color = trace.shapeOutlineColor
     if (trace.shapeOutlineWidth !== undefined) newTrace.shape_outline_width = trace.shapeOutlineWidth
     if (trace.shapeOutlineOpacity !== undefined) newTrace.shape_outline_opacity = trace.shapeOutlineOpacity
-    if (trace.shapePoints) newTrace.shape_points = trace.shapePoints
+    // A path is drawn from its points, not its x/y: the copy's go with it.
+    if (trace.shapePoints) newTrace.shape_points = shiftPoints(trace.shapePoints, offsetX, offsetY)
     if (trace.pathCurveType) newTrace.path_curve_type = trace.pathCurveType
     if (trace.pathArrowStart) newTrace.path_arrow_start = trace.pathArrowStart
     if (trace.pathArrowEnd) newTrace.path_arrow_end = trace.pathArrowEnd

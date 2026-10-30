@@ -26,6 +26,7 @@ import { uploadTraceFile } from './traceUpload'
 import { fetchMedia } from './exportImage'
 import { traceBox } from './traceGeometry'
 import { isPathTrace, pathWorldBounds } from './pathBounds'
+import { shiftPoints } from './pathGeometry'
 import { t } from './i18n'
 import type { Layer, LobbyLocation, Trace } from '../types/database'
 
@@ -240,11 +241,6 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
     let missing = 0
     const rows: Record<string, any>[] = []
     for (const { row, trace } of parsed) {
-      const shift = (p: any) => ({
-        ...p, x: p.x + dx, y: p.y + dy,
-        ...(p.cp1x !== undefined ? { cp1x: p.cp1x + dx, cp1y: p.cp1y + dy } : {}),
-        ...(p.cp2x !== undefined ? { cp2x: p.cp2x + dx, cp2y: p.cp2y + dy } : {}),
-      })
       const placed: Trace = {
         ...trace,
         id: (row.id && ids.get(row.id)) || crypto.randomUUID(),
@@ -256,7 +252,7 @@ export function importIntoAtrium(file: AtriumFile, at: { x: number; y: number },
         layerName: trace.type === 'text' ? (trace.layerName ?? textNames.get(row) ?? null) : trace.layerName,
         x: trace.x + dx,
         y: trace.y + dy,
-        shapePoints: trace.shapePoints?.map(shift),
+        shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, dx, dy),
       }
       // Its files saved here, as a file dropped here would be; one left in
       // the vault it came from can't come with it, and is said so.

@@ -13,6 +13,7 @@ import { queueLayerChange } from '../lib/layerQueue'
 import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { withLayerUndo } from '../lib/layerUndo'
 import { buildTraceInsertRow } from '../lib/traceInsert'
+import { shiftPoints } from '../lib/pathGeometry'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
 // Each trace type's mark in the list.
@@ -579,7 +580,7 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
         console.error('Error duplicating trace:', error)
         return
       }
-      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, createdAt: data.created_at, orderKey, layerName })
+      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, 20, 20), createdAt: data.created_at, orderKey, layerName })
     } finally {
       setIsBusy(false)
     }

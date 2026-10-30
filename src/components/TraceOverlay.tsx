@@ -40,7 +40,7 @@ import { buildTraceInsertRow } from '../lib/traceInsert'
 import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
 import { APPLY_COLOUR_EVENT, type ApplyColour } from '../lib/palette'
 import { ELBOW_RADIUS, elbowRoute, lineCrosses } from '../lib/elbow'
-import { alignedHandle, boxHolds, borderMarks, handlesAt, pathLine, pathOutline, pointBetween, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
+import { alignedHandle, boxHolds, borderMarks, handlesAt, pathLine, pathOutline, pointBetween, shiftPoints, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
 import { packBoxesAroundCenter, probeRemoteImageDimensions, scaleToDisplayBox } from '../lib/binPack'
 import { pathWorldBounds, isPathTrace } from '../lib/pathBounds'
 import ShapeStyleControls, { Check, ColourField, ScaleControls, Slider, StrokeStylePicker } from './ShapeStyleControls'
@@ -3160,6 +3160,8 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
           username: insertedRow?.username ?? username,
           x: insertedRow?.position_x ?? trace.x + offsetX,
           y: insertedRow?.position_y ?? trace.y + offsetY,
+          // A path is drawn from its points, not its x/y: they move with it.
+          shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, offsetX, offsetY),
           createdAt: insertedRow?.created_at ?? new Date().toISOString(),
           lobbyId: insertedRow?.lobby_id ?? lobbyId ?? trace.lobbyId,
           isLocked: false,
@@ -3185,6 +3187,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
       username,
       x: trace.x + offsetX,
       y: trace.y + offsetY,
+      shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, offsetX, offsetY),
       createdAt: new Date().toISOString(),
       lobbyId: lobbyId ?? trace.lobbyId,
       isLocked: false,
@@ -4585,14 +4588,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
         const dx = x - initial.x, dy = y - initial.y
 
         // Move point and control handles together
-        newPoints[pointIndex] = {
-          ...initial,
-          x, y,
-          cp1x: initial.cp1x !== undefined ? initial.cp1x + dx : undefined,
-          cp1y: initial.cp1y !== undefined ? initial.cp1y + dy : undefined,
-          cp2x: initial.cp2x !== undefined ? initial.cp2x + dx : undefined,
-          cp2y: initial.cp2y !== undefined ? initial.cp2y + dy : undefined,
-        }
+        newPoints[pointIndex] = shiftPoints([initial], dx, dy)[0]
         // Update local state for instant feedback, DB update on mouseup
         livePoints(activeSelectedTraceId, newPoints)
       }
@@ -4643,14 +4639,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
       const initialPoints = startPosRef.current.initialPoints ?? currentPoints.map((p: any) => ({ ...p }))
       startPosRef.current.initialPoints = initialPoints
       
-      const newPoints = initialPoints.map((p: any) => ({
-        x: p.x + worldDeltaX,
-        y: p.y + worldDeltaY,
-        cp1x: p.cp1x !== undefined ? p.cp1x + worldDeltaX : undefined,
-        cp1y: p.cp1y !== undefined ? p.cp1y + worldDeltaY : undefined,
-        cp2x: p.cp2x !== undefined ? p.cp2x + worldDeltaX : undefined,
-        cp2y: p.cp2y !== undefined ? p.cp2y + worldDeltaY : undefined,
-      }))
+      const newPoints = shiftPoints(initialPoints, worldDeltaX, worldDeltaY)
       
       // Update local state for instant feedback, DB update on mouseup.
       // Alone: with others, a path moves as they do ('move').
@@ -4688,11 +4677,7 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
         for (const id of draggedIdsRef.current) {
           const startPoints = multiStartPathPointsRef.current[id]
           if (multi && startPoints) {
-            const points = startPoints.map(p => ({
-              ...p, x: p.x + delta.x, y: p.y + delta.y,
-              ...(p.cp1x !== undefined && p.cp1y !== undefined ? { cp1x: p.cp1x + delta.x, cp1y: p.cp1y + delta.y } : {}),
-              ...(p.cp2x !== undefined && p.cp2y !== undefined ? { cp2x: p.cp2x + delta.x, cp2y: p.cp2y + delta.y } : {}),
-            }))
+            const points = shiftPoints(startPoints, delta.x, delta.y)
             setLocalShapePoints(prev => ({ ...prev, [id]: points }))
             updateTraceCustomization(id, { shapePoints: points }, { skipUndo: true })
             continue

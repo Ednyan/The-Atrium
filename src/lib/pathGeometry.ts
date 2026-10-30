@@ -15,6 +15,15 @@ export interface PathPoint extends Pt {
   cp2y?: number
 }
 
+/** `points` moved by dx, dy, their curve handles with them. */
+export function shiftPoints<P extends PathPoint>(points: P[], dx: number, dy: number): P[] {
+  return points.map(p => ({
+    ...p, x: p.x + dx, y: p.y + dy,
+    ...(p.cp1x !== undefined && p.cp1y !== undefined ? { cp1x: p.cp1x + dx, cp1y: p.cp1y + dy } : {}),
+    ...(p.cp2x !== undefined && p.cp2y !== undefined ? { cp2x: p.cp2x + dx, cp2y: p.cp2y + dy } : {}),
+  }))
+}
+
 // How far a point's handles reach when they haven't been set: a share of the
 // run from the point before to the point after. It was half of this, which
 // left an unedited curve barely bending.
