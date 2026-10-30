@@ -1503,6 +1503,7 @@ export const en = {
   'atrium.customize.descriptionCaption': 'Description / Caption',
   'atrium.customize.clickable': 'Clickable',
   'atrium.customize.clickableOff': 'Stop opening the link when clicked',
+  'atrium.customize.openPin': 'Open on Pinterest',
   'atrium.customize.clickableHint': 'Left-clicking this trace opens the link below',
   'atrium.customize.needsHttp': 'Needs to be a full http',
   'atrium.customize.fontFamily': 'Font Family',

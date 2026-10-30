@@ -1552,6 +1552,7 @@ const de: Catalogue = {
   'atrium.customize.descriptionCaption': 'Beschreibung / Bildunterschrift',
   'atrium.customize.clickable': 'Anklickbar',
   'atrium.customize.clickableOff': 'Link beim Klicken nicht mehr öffnen',
+  'atrium.customize.openPin': 'Auf Pinterest öffnen',
   'atrium.customize.clickableHint': 'Ein Linksklick auf diesen Trace öffnet den Link darunter',
   'atrium.customize.needsHttp': 'Muss ein vollständiges http sein',
   'atrium.customize.fontFamily': 'Schriftart',

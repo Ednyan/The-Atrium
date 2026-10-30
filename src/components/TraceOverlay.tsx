@@ -53,6 +53,7 @@ import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelFooter, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel, type FooterAction } from './Customization'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
+import PinterestMark from './PinterestMark'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import { useMenuGlide } from './MenuGlide'
 import DeckSlide from './DeckSlide'
@@ -316,6 +317,9 @@ const ROTATION_SNAP_DEGREES = 5
 function holdPointer() {
   try { document.querySelector('.lobby-scene')?.setPointerCapture(1) } catch { /* a touch, or no pointer down: nothing to hold */ }
 }
+
+// A pin imported from Pinterest, by the link the import keeps (PinterestImportPanel).
+const PIN_LINK = /^https:\/\/www\.pinterest\.com\/pin\//
 
 // An embed's link to a picture, by its extension: drawn as an <img>, not a page.
 const PICTURE_LINK = /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i
@@ -7650,7 +7654,7 @@ return (
         && inlineEditingTraceId !== trace.id && borderWidth >= 60 && borderHeight >= 40 && (
         <button
           type="button"
-          className="trace-link-off"
+          className="trace-hover-button trace-link-off"
           title={t('atrium.customize.clickableOff')}
           aria-label={t('atrium.customize.clickableOff')}
           onMouseDown={(e) => e.stopPropagation()}
@@ -7665,6 +7669,26 @@ return (
           }}
         >
           <MenuIcon d={MENU_ICONS.linkOff} size={14} />
+        </button>
+      )}
+      {/* A pin from Pinterest, there while it's pointed at: says where it came
+          from and opens it there -- Pinterest's rule for showing Pins -- whether
+          or not it's clickable, for anyone who can see it. */}
+      {trace.linkUrl && PIN_LINK.test(trace.linkUrl) && !movingIds.has(trace.id) && borderWidth >= 60 && borderHeight >= 40 && (
+        <button
+          type="button"
+          className="trace-hover-button trace-pin-mark"
+          title={t('atrium.customize.openPin')}
+          aria-label={t('atrium.customize.openPin')}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            openExternalUrl(trace.linkUrl)
+          }}
+        >
+          <PinterestMark className="w-3.5 h-3.5" />
         </button>
       )}
       {/* A frame: its edge, a few pixels either side of the border, is where

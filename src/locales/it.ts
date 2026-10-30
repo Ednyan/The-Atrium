@@ -1553,6 +1553,7 @@ const it: Catalogue = {
   'atrium.customize.descriptionCaption': 'Descrizione / didascalia',
   'atrium.customize.clickable': 'Cliccabile',
   'atrium.customize.clickableOff': 'Non aprire più il link al clic',
+  'atrium.customize.openPin': 'Apri su Pinterest',
   'atrium.customize.clickableHint': 'Un clic sinistro su questo trace apre il link qui sotto',
   'atrium.customize.needsHttp': 'Deve essere un http completo',
   'atrium.customize.fontFamily': 'Carattere',

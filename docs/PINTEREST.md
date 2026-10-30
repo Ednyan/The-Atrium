@@ -18,10 +18,10 @@ Pinterest confirms the use in writing (the message at the end).
   (`src/components/PinterestImportPanel.tsx`): the pin's image address
   (`media_url`, i.pinimg.com), the pin's own page (`link_url`), and its
   title as the trace's name.
-- **A click opens the pin on Pinterest.** The import sets `is_clickable`; a
-  button shown when the pin is pointed at turns that off for that pin (and
-  Clickable, in its panel, back on). Pins imported before 2026-10-30 stored the
-  link without it: they open it only if Clickable is turned on.
+- **A Pinterest mark opens the pin on Pinterest.** Any trace with a pin link
+  shows it at its corner while pointed at (always on touch screens), for
+  everyone who can see the atrium, pins imported earlier included. Pins aren't
+  Clickable by default: a click on one selects it, as on any trace.
 - Those traces are kept like any others: in the vault, in Drive, or in the
   hosted store; shown in shared and public atriums; mirrored for public
   Drive atriums (`workers/rooms/src/mirror.ts`).
@@ -29,8 +29,8 @@ Pinterest confirms the use in writing (the message at the end).
   (`src/lib/traceConvert.ts`, Rust `download_remote_image`); from there it
   can be uploaded with the atrium like any picture.
 - A pin can be cropped and given a Look filter, like any embed.
-- Nothing on the canvas says a pin came from Pinterest (the mark appears
-  only in the connection panel and on the welcome screen).
+- At rest, nothing on the canvas says a pin came from Pinterest: the mark
+  shows only while it's pointed at.
 
 ## Where that meets Pinterest's rules
 
@@ -43,7 +43,7 @@ Read them before relying on this, or have the lawyer do it.
 |---|---|---|
 | No storing | "you may not store any information accessed through any Pinterest Materials including the API … call the API each time you need to access information" (except an account whose holder has expressly granted access) | Keeps each pin's image address, link and title in the atrium. Arguably within the exception (people import their own boards after granting access); unclear for keeping them for good |
 | No new content | "Not create new content from Pins that can be distributed on your app or service" | A public atrium made of pins comes close |
-| Attribution | "Link Pins back to their source on Pinterest" and "make sure it's clear that the content comes from Pinterest" | A click opens the pin, unless the person turned that off (yes); no mark on the canvas (no) |
+| Attribution | "Link Pins back to their source on Pinterest" and "make sure it's clear that the content comes from Pinterest" | The mark links back (yes), but shows only while pointed at, so whether it's clear enough is for Pinterest to say |
 | Don't obscure | "Not cover or obscure content from Pinterest", such as by applying filters to Pins | Crop and Look apply to pins |
 | Consent | No actions on users' behalf without their knowledge and consent | Import is the person's own choice, board by board (yes) |
 | Paid apps | No rule against charging for an app | Fine; but don't sell Pinterest content or make the import a paid feature |
@@ -75,11 +75,9 @@ its users any right to the images.
 In order; none of it built yet.
 
 1. **Ask Pinterest in writing** (the message below); keep the answer here.
-2. **A Pinterest mark on every imported pin** on the canvas, so it's clear it
-   comes from Pinterest, opening the pin, whether or not Clickable is on. At
-   the pin's corner, outside the picture. Tell imported pins apart by `link_url`
-   on pinterest.com/pin (or an explicit marker set by the import). The message
-   below says this is being added, so it needs doing either way.
+2. **Done: a Pinterest mark on every imported pin**, while it's pointed at,
+   opening the pin. If Pinterest wants it clearer, show it at rest too
+   (`.trace-pin-mark`, `src/index.css`).
 3. **No Convert to image for imported pins** -- or, if Pinterest allows a
    local copy: local only, never uploaded to cloud or public atriums, never
    mirrored.
@@ -120,9 +118,10 @@ In order; none of it built yet.
 > whiteboard an "atrium". With the boards:read and pins:read scopes, a person
 > can import one of their own Pinterest boards onto one of their whiteboards.
 > Each Pin becomes an item on the whiteboard that shows the Pin's image from
-> Pinterest's servers. Clicking it opens the Pin on Pinterest, which the person
-> can turn off for that Pin while they arrange their whiteboard, and we're
-> adding a visible Pinterest mark on each one that also opens the Pin.
+> Pinterest's servers. When the pointer is over it (always, on touch screens),
+> it shows the Pinterest logo, which opens the Pin on Pinterest. Is that enough
+> to make clear the content comes from Pinterest, or should the logo always
+> show?
 >
 > The app does the following today. Could you confirm whether each is within
 > the Developer Guidelines and the Developer & API Terms, in particular "you

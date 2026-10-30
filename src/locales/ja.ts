@@ -1549,6 +1549,7 @@ const ja: Catalogue = {
   'atrium.customize.descriptionCaption': '説明／キャプション',
   'atrium.customize.clickable': 'クリックできる',
   'atrium.customize.clickableOff': 'クリックでリンクを開かないようにする',
+  'atrium.customize.openPin': 'Pinterestで開く',
   'atrium.customize.clickableHint': 'この trace を左クリックすると、下のリンクが開きます',
   'atrium.customize.needsHttp': 'http から始まる完全なアドレスが必要です',
   'atrium.customize.fontFamily': 'フォント',

@@ -1556,6 +1556,7 @@ const ptPT: Catalogue = {
   'atrium.customize.descriptionCaption': 'Descrição / legenda',
   'atrium.customize.clickable': 'Clicável',
   'atrium.customize.clickableOff': 'Deixar de abrir a ligação ao clicar',
+  'atrium.customize.openPin': 'Abrir no Pinterest',
   'atrium.customize.clickableHint': 'Clicar com o botão esquerdo neste trace abre o link abaixo',
   'atrium.customize.needsHttp': 'Tem de ser um http completo',
   'atrium.customize.fontFamily': 'Tipo de letra',
