@@ -110,13 +110,19 @@ In order; none of it built yet.
 - Not a reply to the approval email: it came from an automated sender
   (pinbot@account.pinterest.com).
 
+**Before posting.** The message holds no secrets. The app ID is the client ID,
+already public in the site's code. Never add the App secret, an access token,
+or a screenshot of the developer apps page. It does say publicly what the app
+does today and that a paid plan is planned.
+
 **The message:**
 
-> Hello. Our app, The Digital Atrium (app ID: [YOUR APP ID], approved for
-> Standard access on 13 October 2026), is a whiteboard app for collecting and
-> arranging visual references, on the web and on desktop. We call each
-> whiteboard an "atrium". With the boards:read and pins:read scopes, a person
-> can import one of their own Pinterest boards onto one of their whiteboards.
+> Hello. Our app, Digital Atrium (https://digitalatrium.org, app ID:
+> [YOUR APP ID], approved for Standard access on 13 October 2026), is a
+> whiteboard app for collecting and arranging visual references, on the web and
+> on desktop. We call each whiteboard an "atrium". With the boards:read and
+> pins:read scopes, a person can import one of their Pinterest boards onto one
+> of their whiteboards.
 > Each Pin becomes an item on the whiteboard that shows the Pin's image from
 > Pinterest's servers. When the pointer is over it (always, on touch screens),
 > it shows the Pinterest logo, which opens the Pin on Pinterest. Is that enough
@@ -131,7 +137,8 @@ In order; none of it built yet.
 > 2. Showing those Pins to people the owner has shared the whiteboard with, or
 >    on a whiteboard they've made public.
 > 3. In our desktop app, letting the person save a copy of a Pin's image to
->    their own computer.
+>    their own computer. If that whiteboard is also stored online or shared,
+>    the copy can go with it; we can stop that if needed.
 > 4. Letting the person crop a Pin or adjust its colours on their whiteboard.
 >
 > We plan to offer a paid plan for the app itself; the Pinterest import would
