@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 200" role="img" aria-label="Three frames. A trace fully inside is in. A trace over the edge with its middle inside is still in. A trace with its middle outside is out.">
+  <rect width="660" height="200" fill="#ebe8e1"/>
+  <g font-family="ui-monospace, Consolas, monospace" font-size="13" fill="#2b2b2b" text-anchor="middle">
+    <g fill="none" stroke="#5f7485" stroke-width="2">
+      <rect x="20" y="20" width="160" height="120" rx="6"/>
+      <rect x="240" y="20" width="160" height="120" rx="6"/>
+      <rect x="460" y="20" width="160" height="120" rx="6"/>
+    </g>
+    <rect x="70" y="50" width="60" height="60" fill="#4f86b8"/>
+    <circle cx="100" cy="80" r="4" fill="#fff"/>
+    <rect x="360" y="50" width="60" height="60" fill="#4f86b8"/>
+    <circle cx="390" cy="80" r="4" fill="#fff"/>
+    <rect x="590" y="50" width="60" height="60" fill="#c98a4b"/>
+    <circle cx="620" cy="80" r="4" fill="#fff" stroke="#c98a4b"/>
+    <text x="100" y="172">In</text>
+    <text x="320" y="172">Still in: its middle is inside</text>
+    <text x="540" y="172">Out: its middle is outside</text>
+  </g>
+</svg>
