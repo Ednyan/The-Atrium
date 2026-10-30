@@ -763,6 +763,27 @@ input:focus, textarea:focus, select:focus {
   margin: 16px 0;
 }
 
+/* A clickable trace's button to stop opening its link (TraceOverlay): there
+   while the trace is pointed at, and always where nothing can point. */
+.trace-link-off {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 9;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: rgb(var(--c-fg) / 0.85);
+  background: rgb(var(--c-ground) / 0.94);
+  border: 1px solid rgb(var(--c-line) / 0.7);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+[data-trace-id]:hover > .trace-link-off, .trace-link-off:focus-visible { opacity: 1; }
+.trace-link-off:hover { color: rgb(var(--c-strong)); border-color: rgb(var(--c-fg) / 0.8); }
+@media (hover: none) { .trace-link-off { opacity: 1; } }
+
 /* Prevent text selection during drag */
 body.dragging,
 body.dragging * {

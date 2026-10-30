@@ -1552,6 +1552,7 @@ const ko: Catalogue = {
   'atrium.customize.descriptionTitle': '설명 / 제목',
   'atrium.customize.descriptionCaption': '설명 / 캡션',
   'atrium.customize.clickable': '클릭할 수 있게',
+  'atrium.customize.clickableOff': '클릭해도 링크가 열리지 않게 하기',
   'atrium.customize.clickableHint': '이 trace를 왼쪽 클릭하면 아래 링크가 열려요',
   'atrium.customize.needsHttp': 'http 로 시작하는 전체 주소가 필요해요',
   'atrium.customize.fontFamily': '글꼴',

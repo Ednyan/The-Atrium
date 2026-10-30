@@ -116,6 +116,9 @@ export default function PinterestImportPanel({ onClose, lobbyId, worldCenter, pa
         position_y: worldCenter.y + offsets[i].y,
         media_url: pin.imageUrl,
         link_url: pin.pinUrl,
+        // A click opens the pin on Pinterest (their rules: link Pins back to
+        // their source); pointed at, a button turns that off.
+        is_clickable: true,
         width: sizes[i].width,
         height: sizes[i].height,
         scale: 1.0,

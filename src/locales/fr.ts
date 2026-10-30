@@ -1550,6 +1550,7 @@ const fr: Catalogue = {
   'atrium.customize.descriptionTitle': 'Description / titre',
   'atrium.customize.descriptionCaption': 'Description / légende',
   'atrium.customize.clickable': 'Cliquable',
+  'atrium.customize.clickableOff': 'Ne plus ouvrir le lien au clic',
   'atrium.customize.clickableHint': 'Un clic gauche sur ce trace ouvre le lien ci-dessous',
   'atrium.customize.needsHttp': 'Doit être un http complet',
   'atrium.customize.fontFamily': 'Police',

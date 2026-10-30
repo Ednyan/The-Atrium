@@ -52,7 +52,7 @@ import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
 import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
 import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelFooter, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel, type FooterAction } from './Customization'
-import { MenuIcon } from './AtriumMenu'
+import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import ConfirmBox, { ConfirmButtons } from './ConfirmBox'
 import { useMenuGlide } from './MenuGlide'
 import DeckSlide from './DeckSlide'
@@ -7642,6 +7642,31 @@ return (
           The same size at any zoom, and during one: see data-keeps-size in
           index.css. Its anchor, the top middle, is at its own 0 0 once the
           translate has centred it. */}
+      {/* A trace that opens its link on a click: pointed at, a button to stop
+          it, so it can be clicked and worked with as any other without being
+          sent away. Clickable, in its panel, turns it back on. Too small a
+          trace would be all button. */}
+      {trace.isClickable && trace.linkUrl && canEdit && !isLockedTrace(trace) && !isInSelection && !movingIds.has(trace.id)
+        && inlineEditingTraceId !== trace.id && borderWidth >= 60 && borderHeight >= 40 && (
+        <button
+          type="button"
+          className="trace-link-off"
+          title={t('atrium.customize.clickableOff')}
+          aria-label={t('atrium.customize.clickableOff')}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            on.updateTraceCustomization(trace.id, { isClickable: false })
+            if (editingTraceRef.current?.id === trace.id) {
+              setEditingTrace({ ...editingTraceRef.current, isClickable: false })
+            }
+          }}
+        >
+          <MenuIcon d={MENU_ICONS.linkOff} size={14} />
+        </button>
+      )}
       {/* A frame: its edge, a few pixels either side of the border, is where
           it's taken hold of -- presses there reach the handlers above -- and
           its title sits over its top-left corner, the same size at any zoom.

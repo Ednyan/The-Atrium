@@ -1552,6 +1552,7 @@ const ptBR: Catalogue = {
   'atrium.customize.descriptionTitle': 'Descrição / título',
   'atrium.customize.descriptionCaption': 'Descrição / legenda',
   'atrium.customize.clickable': 'Clicável',
+  'atrium.customize.clickableOff': 'Parar de abrir o link ao clicar',
   'atrium.customize.clickableHint': 'Clicar com o botão esquerdo neste trace abre o link abaixo',
   'atrium.customize.needsHttp': 'Precisa ser um http completo',
   'atrium.customize.fontFamily': 'Fonte',

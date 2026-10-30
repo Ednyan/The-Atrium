@@ -1554,6 +1554,7 @@ const ru: Catalogue = {
   'atrium.customize.descriptionTitle': 'Описание / заголовок',
   'atrium.customize.descriptionCaption': 'Описание / подпись',
   'atrium.customize.clickable': 'Кликабельно',
+  'atrium.customize.clickableOff': 'Не открывать ссылку по клику',
   'atrium.customize.clickableHint': 'Левый клик по этому trace откроет ссылку ниже',
   'atrium.customize.needsHttp': 'Нужен полный http',
   'atrium.customize.fontFamily': 'Шрифт',

@@ -1551,6 +1551,7 @@ const zh: Catalogue = {
   'atrium.customize.descriptionTitle': '描述／标题',
   'atrium.customize.descriptionCaption': '描述／说明',
   'atrium.customize.clickable': '可点击',
+  'atrium.customize.clickableOff': '点击时不再打开链接',
   'atrium.customize.clickableHint': '左键点击这个 trace 会打开下面的链接',
   'atrium.customize.needsHttp': '需要完整的 http',
   'atrium.customize.fontFamily': '字体',
