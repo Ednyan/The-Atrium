@@ -11,13 +11,11 @@ interface ReportFeedbackModalProps {
   atriumName?: string
 }
 
-// Report a problem / suggest a feature -- tries to send directly via the
-// send-feedback Edge Function (so the user never leaves the page); falls
-// back to a mailto: link (opens the user's own mail client, subject/body
-// pre-filled) if direct sending isn't available on this platform (desktop)
-// or the call fails for any reason (e.g. the Resend API key isn't
-// configured yet), so the feature never fully breaks. Shared between the
-// in-atrium HUD menu and the Atrium Browser.
+// Report a problem / suggest a feature -- sent to the worker (lib/feedback), so
+// the user never leaves the page; falls back to a mailto: link (opens the
+// user's own mail client, subject/body pre-filled) if that isn't set up or
+// the call fails for any reason, so the feature never fully breaks. Shared
+// between the in-atrium HUD menu and the Atrium Browser.
 export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFeedbackModalProps) {
   const { t } = useTranslation()
   const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')

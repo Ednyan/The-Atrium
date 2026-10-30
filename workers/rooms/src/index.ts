@@ -16,7 +16,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import { google } from './google'
 import { auth } from './auth'
-import { feedback } from './mail'
+import { feedback } from './feedback'
 import { people, publicPreview } from './people'
 import { store } from './store'
 import { mirror } from './mirror'
@@ -100,7 +100,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   // What the account calls on (phase 6, step 6): its relay pass, the report
   // form, a Google account's Pinterest.
   if (url.pathname === '/relay') return relay(request, env)
-  if (url.pathname === '/feedback') return feedback(request, env)
+  if (url.pathname === '/feedback' || url.pathname.startsWith('/feedback/')) return feedback(request, env, url.pathname.slice('/feedback/'.length))
   if (url.pathname.startsWith('/pinterest/')) return pinterest(request, env, url.pathname.slice('/pinterest/'.length))
   // Contributions (phase 10, step 6), Stripe's word on them, and the operator's dashboard.
   if (url.pathname.startsWith('/contributions/')) return contributions(request, env, url.pathname.slice('/contributions/'.length))

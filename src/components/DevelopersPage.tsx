@@ -9,6 +9,7 @@
 //   year it's shown, and hidden until it's ready. Nothing is written until
 //   Save; the database refuses anyone else's changes either way.
 // - Bans (BansTool).
+// - Feedback (FeedbackTool): what the report form sends.
 // - Health (HealthTool): money, limits, usage, the worker's setup.
 // - Cloud atriums (CloudAtriumsTool): what's left in Supabase, held for its owners.
 
@@ -18,6 +19,7 @@ import type { TranslationKey } from '../locales/en'
 import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import BansTool from './BansTool'
+import FeedbackTool from './FeedbackTool'
 import HealthTool from './HealthTool'
 import CloudAtriumsTool from './CloudAtriumsTool'
 import Atmosphere from './Atmosphere'
@@ -36,6 +38,7 @@ import type { ThemeSettings } from '../types/database'
 // Each tool: its name, what its card says, and what its page opens with.
 const TOOLS = [
   { id: 'health', name: 'developers.health', about: 'developers.healthDesc', lead: 'developers.healthDesc' },
+  { id: 'feedback', name: 'developers.feedback', about: 'developers.feedbackDesc', lead: 'developers.feedbackDesc' },
   { id: 'cloud', name: 'developers.cloud', about: 'developers.cloudDesc', lead: 'developers.cloudDesc' },
   { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc', lead: 'developers.specialThemesLead' },
   { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc', lead: 'developers.bansDesc' },
@@ -113,11 +116,11 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
         {allowed && tool === 'health' && <HealthTool />}
         {allowed && tool === 'cloud' && <CloudAtriumsTool />}
         {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
-        {allowed && tool === 'bans' && (
+        {allowed && (tool === 'bans' || tool === 'feedback') && (
           <div className="relative max-w-3xl mx-auto">
             <Brackets inset="-0.35rem" />
             <div className="border border-nier-border/30 p-5 sm:p-7" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
-              <BansTool />
+              {tool === 'bans' ? <BansTool /> : <FeedbackTool />}
             </div>
           </div>
         )}

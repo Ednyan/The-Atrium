@@ -1,9 +1,8 @@
-// Sends a "report a problem / suggest a feature" submission via the
-// send-feedback Edge Function, so the reporting user never has to leave
-// the page (no mailto: redirect). Web only -- desktop's `supabase` is the
-// local SQLite shim (see localDb.ts's localClient), which has no
-// `.functions` at all, so this always reports itself unavailable there and
-// the caller (LobbyScene) falls back to a mailto: link instead.
+// A "report a problem / suggest a feature" submission, to the worker, which
+// keeps it in the database (workers/rooms, feedback.ts) -- the reporting user
+// never leaves the page, on the web or on desktop. If the worker can't be
+// reached, the form falls back to a mailto: link (ReportFeedbackModal). The
+// operator reads them in Developers (FeedbackTool).
 
 import { isDesktop } from './supabase'
 import { workerUrl } from './rooms'
@@ -13,8 +12,7 @@ import { t } from './i18n'
 export interface FeedbackReport {
   motive: 'bug' | 'feature' | 'other'
   // User-written subject line, appended after the motive label -- e.g.
-  // "Bug Report - Traces disappear on zoom". Optional; the Edge Function
-  // falls back to just the motive label if left blank.
+  // "Bug Report - Traces disappear on zoom". Optional.
   subject?: string
   description: string
   username?: string
@@ -22,7 +20,7 @@ export interface FeedbackReport {
 }
 
 export function canSendFeedbackDirectly(): boolean {
-  return !isDesktop && !!workerUrl()
+  return !!workerUrl()
 }
 
 export async function sendFeedbackReport(report: FeedbackReport): Promise<{ success: boolean; error?: string }> {
@@ -31,9 +29,7 @@ export async function sendFeedbackReport(report: FeedbackReport): Promise<{ succ
   }
 
   try {
-    // The worker's (workers/rooms, mail): replies go to the sender's own
-    // address only where it's known to be theirs.
-    const { ok, answer } = await toWorker('/feedback', { ...report, platform: 'Web' })
+    const { ok, answer } = await toWorker('/feedback', { ...report, platform: isDesktop ? 'Desktop' : 'Web' })
     if (!ok || answer?.error) {
       return { success: false, error: answer?.error || t('report.sendFailed') }
     }
@@ -42,3 +38,27 @@ export async function sendFeedbackReport(report: FeedbackReport): Promise<{ succ
     return { success: false, error: err?.message || t('report.sendFailed') }
   }
 }
+
+// The operator's.
+export interface FeedbackEntry {
+  id: string
+  at: number
+  motive: FeedbackReport['motive']
+  subject: string | null
+  description: string
+  username: string | null
+  atrium: string | null
+  platform: string | null
+  reply_to: string | null
+  handled: number
+}
+
+async function ask<T>(what: 'list' | 'handled' | 'delete', body: object = {}): Promise<T> {
+  const { ok, answer } = await toWorker<T & { error?: string }>(`/feedback/${what}`, body)
+  if (!ok) throw new Error(answer?.error || t('report.sendFailed'))
+  return answer as T
+}
+
+export const listFeedback = () => ask<FeedbackEntry[]>('list')
+export const setFeedbackHandled = (id: string, handled: boolean) => ask('handled', { id, handled })
+export const deleteFeedback = (id: string) => ask('delete', { id })

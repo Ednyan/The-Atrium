@@ -1,7 +1,6 @@
 // Mail from the Atrium, through Resend and Brevo (their keys secrets here,
 // RESEND_API_KEY and BREVO_API_KEY): sign-up and reset codes (src/auth.ts);
-// the report form's, to support, for either kind of account; and a Google
-// account's welcome, as it chooses its username (src/people.ts), and its
+// and a Google account's welcome, as it chooses its username (src/people.ts), and its
 // goodbye, once it's deleted (src/google.ts) -- an existing account's come
 // from Supabase (supabase/functions/send-welcome, delete-account); and the
 // operator's to a contributor (src/contributions.ts). The card
@@ -12,14 +11,10 @@ import { renderAtriumEmail, renderContributorEmail, type ContributorEmail } from
 import { GOODBYE_COPY } from '../../../supabase/functions/_shared/goodbyeCopy'
 import { WELCOME_COPY } from '../../../supabase/functions/send-welcome/copy'
 import { CONFIRM_COPY, RESET_COPY } from './authCopy'
-import { allowedNow, emailOf, keep, setting, tablesIn } from './people'
-import { outbound, replies, whoIs, type Env } from './who'
+import { keep, setting } from './people'
+import { outbound, type Env } from './who'
 
 const SUPPORT = 'thedigitalatrium@gmail.com'
-// The report form's mail, at most: from one network, and from everyone, an hour.
-const FEEDBACK_AN_HOUR = 5
-const FEEDBACK_ALL_AN_HOUR = 30
-const FROM_FEEDBACK = 'Digital Atrium <feedback@mail.digitalatrium.org>'
 const FROM_HELLO = 'Digital Atrium <hello@mail.digitalatrium.org>'
 const FROM_CONTRIBUTIONS = 'Digital Atrium <contributions@mail.digitalatrium.org>'
 export const SITE = 'https://digitalatrium.org'
@@ -32,7 +27,7 @@ interface Mail { from: string; to: string; reply_to?: string; subject: string; h
 // - A code by Resend alone. Brevo puts an Unsubscribe link on everything it
 //   sends, and one clicked has it drop that address's later mail without a
 //   word -- a code that never comes.
-// - Mail that can wait -- welcomes, goodbyes, reports, a contributor's -- by
+// - Mail that can wait -- welcomes, goodbyes, a contributor's -- by
 //   Brevo first, then Resend up to CAN_WAIT of its day: the rest of Resend's
 //   day is the codes'.
 const CAN_WAIT = 0.8
@@ -114,45 +109,6 @@ async function keepCounts(env: Env, headers: Headers): Promise<void> {
   const daily = count('x-resend-daily-quota'), monthly = count('x-resend-monthly-quota')
   if (!env.PEOPLE || (daily === null && monthly === null)) return
   await keep(env.PEOPLE, MAIL_COUNTS, JSON.stringify({ daily, monthly, at: Date.now() })).run().catch(error => console.error('[mail] its counts:', error))
-}
-
-/** The report form's, to support. Open to anyone, as the form is; replies go
- *  to the sender's own address only when it's one known to be theirs (a
- *  confirmed or Google-verified address), never one they give. */
-export async function feedback(request: Request, env: Env): Promise<Response> {
-  const { allowed, answer } = replies(request)
-  if (!allowed) return answer(403, { error: 'origin' })
-  if (!mailReady(env)) return answer(503, { error: 'not set up' })
-  // So many an hour from a network, and from everyone: a script mustn't spend
-  // the day's mail, which sign-up and reset codes need.
-  if (env.PEOPLE) {
-    await tablesIn(env.PEOPLE)
-    const from = request.headers.get('CF-Connecting-IP') ?? 'local'
-    if (!(await allowedNow(env.PEOPLE, `feedback:${from}`, FEEDBACK_AN_HOUR)) || !(await allowedNow(env.PEOPLE, 'feedback:all', FEEDBACK_ALL_AN_HOUR))) return answer(429, { error: 'Too many reports just now. Try again in a while.' })
-  }
-  let asked: Record<string, unknown>
-  try {
-    asked = await request.json()
-  } catch {
-    return answer(400, { error: 'body' })
-  }
-  const text = (key: string, most: number) => (typeof asked[key] === 'string' ? (asked[key] as string).trim().slice(0, most) : '')
-  const description = text('description', 5000)
-  if (!description) return answer(400, { error: 'Description is required' })
-  const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
-  const replyTo = who ? await emailOf(env, who) : null
-  const motive = asked.motive === 'feature' ? 'Feature Suggestion' : asked.motive === 'other' ? 'Other' : 'Bug Report'
-  const subject = text('subject', 200)
-  // The same card the rest of the mail uses: a report that arrives looking
-  // like the product reads at a glance, with its details set apart.
-  const { html, text: plain } = renderAtriumEmail({
-    heading: motive,
-    body: description,
-    quote: [`User: ${text('username', 80) || 'Unknown'}`, `Atrium: ${text('atriumName', 200) || 'Unknown'}`, `Platform: ${text('platform', 80) || 'Unknown'}`].join('\n'),
-    footer: 'Sent from the report form inside The Digital Atrium.',
-  })
-  const sent = await send(env, { from: FROM_FEEDBACK, to: SUPPORT, ...(replyTo ? { reply_to: replyTo } : {}), subject: subject ? `${motive} - ${subject}` : motive, html, text: plain })
-  return sent ? answer(200, { success: true }) : answer(502, { error: 'Failed to send email' })
 }
 
 /** A Google account's welcome, and its goodbye: in the language its page
