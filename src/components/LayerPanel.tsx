@@ -6,14 +6,15 @@ import type { Layer, Trace } from '../types/database'
 import { drawRanks, inOrder, isValidOrderKey, keyAt, keysBetween, keysOnTop, topLevel, type Ordered } from '../lib/order'
 import { feelSpring, feelStep } from '../lib/dragFeel'
 import { panelDrop, type PanelDropTarget } from '../lib/panelDrop'
-import { cleanTitle, nextTextName } from '../lib/traceNames'
+import { cleanTitle } from '../lib/traceNames'
 import { createGroup as insertGroup, mapRowToLayer, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { mapRowToTrace } from '../hooks/useTraces'
 import { queueLayerChange } from '../lib/layerQueue'
 import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { withLayerUndo } from '../lib/layerUndo'
 import { buildTraceInsertRow } from '../lib/traceInsert'
-import { shiftPoints } from '../lib/pathGeometry'
+import { copyTraces } from '../lib/traceCopy'
+import { withHeld } from '../lib/frames'
 import { useClampedMenuPosition } from '../hooks/useClampedMenuPosition'
 
 // Each trace type's mark in the list.
@@ -565,22 +566,12 @@ export default function LayerPanel({ lobbyId, onClose, selectedTraceId, multiSel
 
     setIsBusy(true)
     try {
-      // Just above the original, among what it's ordered among -- and the same
-      // 20px nudge the canvas duplicate uses, so the copy doesn't hide exactly
-      // behind it.
-      const pool = poolOf(layerIdOf(trace))
-      const at = pool.findIndex(item => item.id === traceId)
-      const orderKey = keyAt(pool, at + 1) ?? keysOnTop(pool)[0]
-      const layerName = trace.type === 'text'
-        ? nextTextName(useGameStore.getState().traces, n => t('atrium.layers.numberedText', { n }))
-        : trace.layerName ?? null
-      const row = { ...buildTraceInsertRow(trace, userId, username, lobbyId, 20, 20), order_key: orderKey, layer_name: layerName }
-      const { data, error } = await (supabase.from('traces') as any).insert(row).select().single()
-      if (error || !data) {
-        console.error('Error duplicating trace:', error)
-        return
-      }
-      addTrace({ ...trace, id: data.id, x: trace.x + 20, y: trace.y + 20, shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, 20, 20), createdAt: data.created_at, orderKey, layerName })
+      // A small nudge, so the copy doesn't hide exactly behind it; a frame
+      // with what it holds.
+      const all = useGameStore.getState().traces
+      await copyTraces(withHeld([trace], all), { x: 20, y: 20 }, { userId, username, lobbyId, textName: n => t('atrium.layers.numberedText', { n }) })
+    } catch (error) {
+      console.error('Error duplicating trace:', error)
     } finally {
       setIsBusy(false)
     }

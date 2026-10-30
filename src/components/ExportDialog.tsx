@@ -10,7 +10,7 @@ import { useGamePick } from '../store/gameStore'
 import { exportImage, type ExportScale } from '../lib/exportImage'
 import { atriumFileBlob } from '../lib/atriumFile'
 import { fileNameOf, saveFile } from '../lib/fileSave'
-import { heldBy } from '../lib/frames'
+import { withHeld } from '../lib/frames'
 import { showToast } from '../lib/toast'
 import { Check } from './ShapeStyleControls'
 
@@ -58,9 +58,7 @@ export default function ExportDialog({ lobbyName, lobbyMeta, background, selecti
   const scope = useMemo(() => {
     if (whole) return traces
     const chosen = new Set(selection)
-    const frames = new Set(traces.filter(tr => chosen.has(tr.id) && tr.type === 'frame').map(tr => tr.id))
-    for (const tr of heldBy(frames, traces)) chosen.add(tr.id)
-    return traces.filter(tr => chosen.has(tr.id))
+    return withHeld(traces.filter(tr => chosen.has(tr.id)), traces)
   }, [whole, traces, selection])
 
   // The picture, made again a moment after anything that changes it.

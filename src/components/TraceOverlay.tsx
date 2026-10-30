@@ -37,7 +37,7 @@ import { privately, throughRelay, toEmbedUrl, withPlayerApi } from '../lib/embed
 import { compareOrder, drawRanks, groupIdOf, inOrder, keyAt, keysAt, keysBetween, keysOnTop, keysOnTopOfGroup, reorder, siblingsOf, topLevel, type Ordered } from '../lib/order'
 import { createGroup, reloadLayers, writeGroupKey } from '../hooks/useLayers'
 import { buildTraceInsertRow } from '../lib/traceInsert'
-import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../lib/frames'
+import { boxContains, frameAround, heldBy, isFrame, masonry, newFrame, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, withHeld, type FrameBox } from '../lib/frames'
 import { APPLY_COLOUR_EVENT, type ApplyColour } from '../lib/palette'
 import { ELBOW_RADIUS, elbowRoute, lineCrosses } from '../lib/elbow'
 import { alignedHandle, boxHolds, borderMarks, handlesAt, pathLine, pathOutline, pointBetween, shiftPoints, snapToBorder, type PathCurve, type PathPoint, type TurnedBox } from '../lib/pathGeometry'
@@ -50,7 +50,8 @@ import { has } from '../lib/traceKinds'
 import { copiedStyle, copyStyle, shownValue, stylePatchFor } from '../lib/traceStyle'
 import FontSizeField from './FontSizeField'
 import TraceNameField from './TraceNameField'
-import { ARROW_SCALE, previewFrameColour, rememberShapeStyle, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
+import { ARROW_SCALE, multiSelectionInk, previewFrameColour, rememberShapeStyle, selectionInk, shapePaint, shapeStyleOf, type ShapeStyle } from '../lib/shapeStyle'
+import { copyTraces } from '../lib/traceCopy'
 import { ACTION_ICONS, ChoiceButton, Choices, CustomizationPanel, PanelFooter, Row, Section, Switch, TextAlignField, TextValignField, traceKindLabel, type FooterAction } from './Customization'
 import { MENU_ICONS, MenuIcon } from './AtriumMenu'
 import PinterestMark from './PinterestMark'
@@ -78,7 +79,7 @@ import { UNLOCKED, isLockedTrace } from '../lib/traceLock'
 import { PAN_ICON } from './AtriumInfo'
 import { feelRest, feelSpring, feelStep, type FeelSpring } from '../lib/dragFeel'
 import { overPanel, panelDrop } from '../lib/panelDrop'
-import { firstFreeName, nextTextName } from '../lib/traceNames'
+import { firstFreeName } from '../lib/traceNames'
 import SheetTrace from './SheetTrace'
 import ExrGradePanel from './ExrGradePanel'
 import LookFilter, { LookControls } from './LookFilter'
@@ -3087,19 +3088,15 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
       selectedIds.add(preferredTraceId)
     }
 
-    return tracesRef.current
-      .filter(trace => selectedIds.has(trace.id))
+    // A frame with what it holds: copied, it's all of it.
+    return withHeld(tracesRef.current.filter(trace => selectedIds.has(trace.id)), tracesRef.current)
       .map(trace => cloneTraceSnapshot(trace))
   }, [])
-
-  const buildDuplicateInsert = useCallback((trace: Trace, offsetX: number, offsetY: number) => {
-    return buildTraceInsertRow(trace, userId, username, lobbyId, offsetX, offsetY)
-  }, [lobbyId, userId, username])
 
   // `at`: where the copies go, their middle on it (a paste, at the pointer);
   // without, each just below and right of its original (Duplicate).
   const duplicateTraces = useCallback(async (sourceTraces: Trace[], at?: { x: number; y: number }) => {
-    if (!userId || sourceTraces.length === 0) return
+    if (!userId || !lobbyId || sourceTraces.length === 0) return
 
     if (useGameStore.getState().isLobbyFull()) {
       showToast(lobbyFullMessage())
@@ -3118,89 +3115,25 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
       offsetY = at.y - (top + bottom) / 2
     }
 
-    // Each copy just above its original, among what that's ordered among (its
-    // group, or the stack). A pasted trace from another atrium has no original
-    // here, and its group isn't this atrium's: it goes on top of the stack.
-    const store = useGameStore.getState()
-    const known = new Set(store.layers.map(l => l.id))
-    const working = new Map<string | null, Ordered[]>()
-    const namedCopies: string[] = []
-    const placed = sourceTraces.map(trace => {
-      const layerId = trace.layerId && known.has(trace.layerId) ? trace.layerId : null
-      if (!working.has(layerId)) working.set(layerId, layerId ? store.traces.filter(t => t.layerId === layerId) : topLevel(store.traces, store.layers))
-      const group = working.get(layerId)!
-      const sorted = inOrder(group)
-      const at = sorted.findIndex(t => t.id === trace.id)
-      const key = (at === -1 ? null : keyAt(sorted, at + 1)) ?? keysOnTop(group)[0]
-      // Seen by the copies after it, so two from one group don't collide.
-      group.push({ id: `copy-${group.length}`, orderKey: key })
-      // A copied text trace is a new one, with the next free name.
-      const layerName = trace.type === 'text' ? nextTextName(store.traces, n => t('atrium.layers.numberedText', { n }), namedCopies) : trace.layerName ?? null
-      if (trace.type === 'text' && layerName) namedCopies.push(layerName)
-      return { layerId, orderKey: key, layerName }
-    })
-
-    if (supabase) {
-      const insertRows = sourceTraces.map((trace, index) => ({
-        ...buildDuplicateInsert(trace, offsetX, offsetY),
-        layer_id: placed[index].layerId,
-        order_key: placed[index].orderKey,
-        layer_name: placed[index].layerName,
-      }))
-      const { data, error } = await (supabase.from('traces') as any).insert(insertRows).select()
-
-      if (error) {
-        showToast(t('atrium.error.duplicateFailed', { message: error.message }))
-        return
-      }
-
-      const insertedRows = Array.isArray(data) ? data : []
-      const duplicatedTraces = sourceTraces.map((trace, index) => {
-        const insertedRow = insertedRows[index] as any
-        return {
-          ...cloneTraceSnapshot(trace),
-          id: insertedRow?.id ?? `trace_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          userId: insertedRow?.user_id ?? userId,
-          username: insertedRow?.username ?? username,
-          x: insertedRow?.position_x ?? trace.x + offsetX,
-          y: insertedRow?.position_y ?? trace.y + offsetY,
-          // A path is drawn from its points, not its x/y: they move with it.
-          shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, offsetX, offsetY),
-          createdAt: insertedRow?.created_at ?? new Date().toISOString(),
-          lobbyId: insertedRow?.lobby_id ?? lobbyId ?? trace.lobbyId,
-          isLocked: false,
-          layerId: placed[index].layerId,
-          orderKey: placed[index].orderKey,
-          layerName: placed[index].layerName,
-        }
-      })
-
-      duplicatedTraces.forEach(trace => addTrace(trace))
-
-      if (duplicatedTraces.length > 0) {
-        setSelectedTraceId(duplicatedTraces[0].id)
-        setMultiSelectedIds(new Set(duplicatedTraces.map(trace => trace.id)))
-      }
+    const copy = () => copyTraces(sourceTraces, { x: offsetX, y: offsetY }, { userId, username, lobbyId, textName: n => t('atrium.layers.numberedText', { n }) })
+    let copies: Trace[]
+    try {
+      // A frame's copy makes groups and threads too: one step of undo for all
+      // of it (lib/traceCopy).
+      copies = await (sourceTraces.some(isFrame) ? queueLayerChange(() => withLayerUndo('duplicate', copy)) : copy())
+    } catch (error) {
+      showToast(t('atrium.error.duplicateFailed', { message: error instanceof Error ? error.message : String(error) }))
       return
     }
 
-    const duplicatedTraces = sourceTraces.map((trace, index) => ({
-      ...cloneTraceSnapshot(trace),
-      id: `trace_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 9)}`,
-      userId,
-      username,
-      x: trace.x + offsetX,
-      y: trace.y + offsetY,
-      shapePoints: trace.shapePoints && shiftPoints(trace.shapePoints, offsetX, offsetY),
-      createdAt: new Date().toISOString(),
-      lobbyId: lobbyId ?? trace.lobbyId,
-      isLocked: false,
-    }))
-
-    duplicatedTraces.forEach(trace => addTrace(trace))
-    setSelectedTraceId(duplicatedTraces[0]?.id ?? null)
-    setMultiSelectedIds(new Set(duplicatedTraces.map(trace => trace.id)))
-  }, [addTrace, buildDuplicateInsert, lobbyId, setSelectedTraceId, userId, username])
+    // Selected as the originals were: a frame's copy, without what it carries.
+    const newFrames = new Set(copies.filter(isFrame).map(frame => frame.id))
+    const chosen = copies.filter(copy => !copy.frameId || !newFrames.has(copy.frameId))
+    if (chosen.length > 0) {
+      setSelectedTraceId(chosen[0].id)
+      setMultiSelectedIds(new Set(chosen.map(copy => copy.id)))
+    }
+  }, [lobbyId, setSelectedTraceId, t, userId, username])
 
   // Ctrl+C / Ctrl+V keyboard shortcuts for copy/paste traces
   useEffect(() => {
@@ -5636,20 +5569,20 @@ export default function TraceOverlay({ traces: storeTraces, onPaste, atriumBackg
   }
 
   // Traces of mine just made -- dropped, pasted, duplicated -- whose middle is
-  // in an arranged frame: in it, and it laid out again. (Made anywhere else, a
-  // trace joins no frame until it's moved into one; others' arrive placed.)
+  // in an arranged frame: in it, and it laid out again, as it is for a copy
+  // that came already in one. (Made anywhere else, a trace joins no frame until
+  // it's moved into one; others' arrive placed.)
   const joinArrangedFrames = (fresh: Trace[]) => {
     const all = useGameStore.getState().traces
     const arranged = framesNow(all).filter(f => all.find(t => t.id === f.id)?.frameArrange === 'masonry')
     if (arranged.length === 0 || !canEdit) return
     const known = new Set(all.map(t => t.id))
-    const mine = fresh.filter(t => t.userId === userId && !isFrame(t) && !(t.frameId && known.has(t.frameId))
-      && Date.now() - Date.parse(t.createdAt) < 2 * 60_000)
-    if (mine.length === 0) return
-    const changes = placeUnits(unitsOf(all, groupIdsNow(), new Set(mine.map(t => t.id))), arranged, storedBox)
-    if (changes.size === 0) return
-    applyFrameChanges(changes, 'fold')
-    arrangeFrames([...changes.values()].filter((id): id is string => !!id), 'fold')
+    const mine = fresh.filter(t => t.userId === userId && !isFrame(t) && Date.now() - Date.parse(t.createdAt) < 2 * 60_000)
+    const loose = mine.filter(t => !(t.frameId && known.has(t.frameId)))
+    const changes = placeUnits(unitsOf(all, groupIdsNow(), new Set(loose.map(t => t.id))), arranged, storedBox)
+    if (changes.size > 0) applyFrameChanges(changes, 'fold')
+    const inArranged = mine.flatMap(t => (t.frameId && arranged.some(f => f.id === t.frameId) ? [t.frameId] : []))
+    arrangeFrames([...inArranged, ...[...changes.values()].filter((id): id is string => !!id)], 'fold')
   }
   const joinArrangedRef = useRef(joinArrangedFrames)
   joinArrangedRef.current = joinArrangedFrames
@@ -6983,7 +6916,7 @@ return (
         const lineWidth = displayTrace.borderWidth ?? 2
         const line = lineWidth * zoom
         const radius = (displayTrace.borderRadius ?? 0) * zoom
-        const lineColour = isSelected && isCropMode ? '#8f8f8f' : isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac'
+        const lineColour = isSelected && isCropMode ? '#8f8f8f' : isSelected ? selectionInk(atriumBackground) : isMultiSelected ? multiSelectionInk(atriumBackground)
           : (trace.borderOpacity ?? 1) < 1 ? `rgb(${rgbChannels(borderColor)} / ${trace.borderOpacity})` : borderColor
         const dash = showBorder ? dashProps(displayTrace.strokeStyle, lineWidth, zoom) : {}
         const dashed = !!dash.strokeDasharray
@@ -7723,7 +7656,7 @@ return (
                 // Its anchor, the bottom left, at its own 0 0: the corner.
                 transform: 'translateY(-100%)',
                 paddingBottom: '4px',
-                color: isSelected ? '#cbcbcb' : isMultiSelected ? '#86efac' : borderColor,
+                color: isSelected ? selectionInk(atriumBackground) : isMultiSelected ? multiSelectionInk(atriumBackground) : borderColor,
               }}
               title={canEdit ? t('atrium.frame.renameHint') : undefined}
               onDoubleClick={(e) => {

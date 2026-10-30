@@ -164,3 +164,8 @@ export function previewFrameColour(background: string | undefined): number {
   const b = value & 255
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5 ? 0x1a1a1a : 0xffffff
 }
+
+// A selected trace's line and a selected frame's title, and the same when
+// it's one of several selected: seen on the atrium's background, light or dark.
+export const selectionInk = (background: string | undefined) => (previewFrameColour(background) === 0x1a1a1a ? '#1a1a1a' : '#cbcbcb')
+export const multiSelectionInk = (background: string | undefined) => (previewFrameColour(background) === 0x1a1a1a ? '#15803d' : '#86efac')

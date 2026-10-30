@@ -86,6 +86,28 @@ export function heldBy<T extends Framed>(frameIds: Set<string>, traces: T[]): T[
   return traces.filter(t => !isFrame(t) && t.frameId != null && frameIds.has(t.frameId))
 }
 
+// These traces as what they are: a frame with what it holds, as copying or
+// exporting a frame means all of it. In the order of `all`.
+export function withHeld<T extends Framed>(chosen: T[], all: T[]): T[] {
+  const picked = new Set(chosen.map(t => t.id))
+  for (const t of heldBy(new Set(chosen.filter(isFrame).map(f => f.id)), all)) picked.add(t.id)
+  return all.filter(t => picked.has(t.id))
+}
+
+// The frame a trace's copy belongs to (lib/traceCopy): its frame's copy, if
+// that was copied too (`ids`, old to new); its original's, if it stays in its
+// original's group, as a group is one unit; or the one it lands in.
+export function frameOfCopy(
+  trace: Framed, ids: Map<string, string>, keepsGroup: boolean,
+  frames: { id: string; box: FrameBox }[], landed: { x: number; y: number },
+): string | null {
+  if (isFrame(trace)) return null
+  const copied = trace.frameId ? ids.get(trace.frameId) : undefined
+  if (copied) return copied
+  if (keepsGroup) return trace.frameId && frames.some(f => f.id === trace.frameId) ? trace.frameId : null
+  return frameAt(frames, landed.x, landed.y)
+}
+
 // The traces taken as one: every trace of a group together, or one trace on
 // its own. Frames are never held, so they are no unit. `of` limits it to the
 // units that have a trace among those ids; `groups` are the ids of the groups

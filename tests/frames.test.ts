@@ -1,7 +1,37 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { ARRANGE_GAP, carriedFrameId, frameAround, frameAt, freshIds, heldBy, masonry, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, type FrameBox } from '../src/lib/frames.ts'
+import { ARRANGE_GAP, carriedFrameId, frameAround, frameAt, frameOfCopy, freshIds, heldBy, masonry, placeUnits, putInFrame, readingOrder, unitMiddle, unitsOf, withHeld, type FrameBox } from '../src/lib/frames.ts'
+
+test('withHeld gives a frame with what it holds, and nothing else', () => {
+  const all = [
+    { id: 'f', type: 'frame' },
+    { id: 'a', type: 'shape', frameId: 'f' },
+    { id: 'b', type: 'shape', frameId: 'other' },
+    { id: 'c', type: 'shape' },
+  ]
+  assert.deepEqual(withHeld([all[0]], all).map(t => t.id), ['f', 'a'])
+  assert.deepEqual(withHeld([all[2]], all).map(t => t.id), ['b'])
+  assert.deepEqual(withHeld([all[1], all[0]], all).map(t => t.id), ['f', 'a'])
+})
+
+test("a copy goes in its frame's copy, keeps its group's frame, or joins where it lands", () => {
+  const box = (cx: number, cy: number) => ({ cx, cy, halfW: 50, halfH: 50 })
+  const frames = [{ id: 'f', box: box(0, 0) }, { id: 'g', box: box(500, 0) }]
+  const ids = new Map([['f', 'f2'], ['a', 'a2']])
+  const held = { id: 'a', type: 'shape', frameId: 'f' }
+  const elsewhere = { x: 2000, y: 2000 }
+  assert.equal(frameOfCopy(held, ids, false, frames, elsewhere), 'f2')
+  assert.equal(frameOfCopy({ id: 'f', type: 'frame' }, ids, false, frames, { x: 0, y: 0 }), null)
+  // Its frame not copied: where it lands, wherever it came from.
+  const alone = { id: 'b', type: 'shape', frameId: 'g' }
+  assert.equal(frameOfCopy(alone, ids, false, frames, { x: 510, y: 0 }), 'g')
+  assert.equal(frameOfCopy(alone, ids, false, frames, { x: 0, y: 0 }), 'f')
+  assert.equal(frameOfCopy(alone, ids, false, frames, elsewhere), null)
+  // In its original's group: where the group is, wherever it lands.
+  assert.equal(frameOfCopy(alone, ids, true, frames, elsewhere), 'g')
+  assert.equal(frameOfCopy({ id: 'c', type: 'shape', frameId: 'gone' }, ids, true, frames, { x: 0, y: 0 }), null)
+})
 
 type T = { id: string; type: string; layerId?: string | null; frameId?: string | null; box: FrameBox }
 const trace = (id: string, cx: number, cy: number, extra: Partial<T> = {}): T =>
