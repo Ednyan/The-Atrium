@@ -96,10 +96,11 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   // reads as going a layer deeper rather than as a page being replaced.
   const [leaving, setLeaving] = useState(false)
   const [showContribute, setShowContribute] = useState(false)
-  // Evaluated once, on mount, and shouldShowAppeal itself only answers true
+  // Asked once, on mount, and shouldShowAppeal itself only answers true
   // once per launch -- coming back here after leaving an atrium is not a new
   // launch, and this must never appear over the canvas.
-  const [showAppeal, setShowAppeal] = useState(() => shouldShowAppeal())
+  const [showAppeal, setShowAppeal] = useState(false)
+  useEffect(() => { void shouldShowAppeal().then(show => { if (show) setShowAppeal(true) }) }, [])
   const [showFeedback, setShowFeedback] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // Read from cache on mount and refreshed behind the screen, so the bar is

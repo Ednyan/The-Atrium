@@ -86,6 +86,7 @@ const TABLES = [
     refunded integer not null default 0, hidden integer not null default 0, livemode integer not null default 0,
     counts_toward_goal integer not null default 1, created_at integer not null)`,
   'create index if not exists contributions_at on contributions (created_at)',
+  'create index if not exists contributions_email on contributions (contact_email collate nocase)',
   'create index if not exists contributions_payment on contributions (stripe_payment_id)',
   'create index if not exists contributions_subscription on contributions (stripe_subscription_id, created_at)',
   'create table if not exists settings (key text primary key, value text not null)',

@@ -57,6 +57,7 @@ const READS: Record<string, (body: Record<string, unknown>) => boolean> = {
   '/store/appdata': body => !('bytes' in body),
   '/themes': () => true,
   '/contributions/wall': () => true,
+  '/contributions/mine': () => true,
 }
 // The hosted store's public reads by id, asked with GET (lib/hostedStore):
 // a file's version, a folder's list.

@@ -13,7 +13,13 @@ const STORAGE_KEY = 'atrium_support_appeal_v1'
 const REQUIRED_TRACES = 20
 const REQUIRED_DAYS = 14
 const DAY_MS = 24 * 60 * 60 * 1000
-const SILENCE_AFTER_DONATION_MS = 90 * DAY_MS
+// A donation known of, from its date: on this device, whoever is signed in,
+// or nobody, and online or not.
+const SILENCE_AFTER_DONATION_MS = 183 * DAY_MS
+// Pressed Donate, which isn't yet having donated; "remind me later"; "not now".
+const SILENCE_AFTER_DONATE_PRESSED_MS = 7 * DAY_MS
+const SILENCE_AFTER_LATER_MS = 7 * DAY_MS
+const SILENCE_AFTER_NO_MS = REQUIRED_DAYS * DAY_MS
 
 // Stripe is live and the checkout function is deployed, so the appeal has
 // somewhere to send people. Left as a single switch: if contributions ever need
@@ -21,13 +27,13 @@ const SILENCE_AFTER_DONATION_MS = 90 * DAY_MS
 // absent endpoint as "say nothing" rather than as an error.
 export const DONATIONS_ENABLED = true
 
-interface AppealState {
+export interface AppealState {
   firstUseAt: number
   tracesCreated: number
-  // Silence until this timestamp. Set after a donation.
+  // Silence until this timestamp: after a donation, or an answer.
   silentUntil: number
-  // "Remind me later" -- show again on the next launch, regardless of counters,
-  // since they were already met when it was asked.
+  // "Remind me later", or a new version: show again once any silence is over,
+  // regardless of counters.
   remindNextLaunch: boolean
 }
 
@@ -109,34 +115,59 @@ export function noteVersionSeen(version: string) {
   }
   if (!previous || previous === version) return
 
-  // Set regardless of the silence a donation buys.
-  //
-  // Deliberate, and asked for: on desktop there is no account, so what this
-  // file knows about somebody's contributions is only what happened on this
-  // machine -- a donation made from the web, or from another computer, is
-  // invisible here. Suppressing the ask on that basis would be acting on an
-  // answer nobody gave. A version arriving is the one moment worth asking on
-  // regardless, and it happens rarely enough to be fair.
-  write({ ...read(), remindNextLaunch: true, silentUntil: 0 })
+  // A version arriving is a moment worth asking on, but within any silence: a
+  // donation's above all, now that the account can tell us of one made anywhere.
+  write({ ...read(), remindNextLaunch: true })
 }
 
-// Evaluated once per launch. Returning to the welcome screen after leaving an
-// atrium is not a new launch, and the appeal must never appear over the canvas.
-let evaluatedThisSession = false
-
-export function shouldShowAppeal(): boolean {
-  if (!DONATIONS_ENABLED) return false
-  if (evaluatedThisSession) return false
-  evaluatedThisSession = true
-
+// A donation, from its date, or a plan that's paid for until a date: silence for
+// as long as it lasts, kept here so it holds signed out and offline too.
+export function noteDonation(at: number) {
+  noteSilence(at + SILENCE_AFTER_DONATION_MS)
+}
+function noteSilence(until: number) {
   const state = read()
-  const now = Date.now()
+  if (until > state.silentUntil) write({ ...state, silentUntil: until, remindNextLaunch: false })
+}
 
+// What the account has given, or pays for (workers/rooms, contributions.ts,
+// 'mine'), if someone's signed in: asked once a launch, so what's learnt stays
+// here for when they aren't. No one signed in, or offline: nothing asked,
+// nothing lost. Read with the rest a page asks for (lib/worker).
+const ASK_MOST_MS = 3000
+async function learnStanding(): Promise<void> {
+  const { toWorker } = await import('./worker')
+  const asked = toWorker<{ donatedAt?: number | null; paidUntil?: number | null }>('/contributions/mine', {}, true)
+    .then(({ ok, answer }) => {
+      if (!ok || !answer) return
+      if (answer.donatedAt) noteDonation(answer.donatedAt)
+      if (answer.paidUntil) noteSilence(answer.paidUntil)
+    })
+    .catch(() => { /* signed out or offline */ })
+  await Promise.race([asked, new Promise(done => setTimeout(done, ASK_MOST_MS))])
+}
+
+export function appealDue(state: AppealState, now: number): boolean {
   if (now < state.silentUntil) return false
   if (state.remindNextLaunch) return true
-
   const longEnough = state.firstUseAt > 0 && now - state.firstUseAt >= REQUIRED_DAYS * DAY_MS
   return longEnough && state.tracesCreated >= REQUIRED_TRACES
+}
+
+// Once per launch, the same answer however often it's asked. Returning to the
+// welcome screen after leaving an atrium is not a new launch, and the appeal must
+// never appear over the canvas.
+let thisLaunch: Promise<boolean> | null = null
+let shownThisLaunch = false
+
+export function shouldShowAppeal(): Promise<boolean> {
+  if (!DONATIONS_ENABLED) return Promise.resolve(false)
+  thisLaunch ??= learnStanding().then(() => appealDue(read(), Date.now()))
+  return thisLaunch.then(due => {
+    if (!due || shownThisLaunch) return false
+    shownThisLaunch = true
+    return true
+  })
 }
 
 export type AppealResponse = 'donated' | 'not_now' | 'remind_later'
@@ -146,17 +177,17 @@ export function recordAppealResponse(response: AppealResponse) {
 
   switch (response) {
     case 'donated':
-      write({ ...state, silentUntil: Date.now() + SILENCE_AFTER_DONATION_MS, remindNextLaunch: false })
+      write({ ...state, silentUntil: Date.now() + SILENCE_AFTER_DONATE_PRESSED_MS, remindNextLaunch: false })
       break
 
     // Both counters restart, so it takes another fortnight and another twenty
     // traces before the question comes back. "No" should mean no for a while.
     case 'not_now':
-      write({ ...state, firstUseAt: Date.now(), tracesCreated: 0, remindNextLaunch: false })
+      write({ ...state, firstUseAt: Date.now(), tracesCreated: 0, remindNextLaunch: false, silentUntil: Date.now() + SILENCE_AFTER_NO_MS })
       break
 
     case 'remind_later':
-      write({ ...state, remindNextLaunch: true })
+      write({ ...state, remindNextLaunch: true, silentUntil: Date.now() + SILENCE_AFTER_LATER_MS })
       break
   }
 }

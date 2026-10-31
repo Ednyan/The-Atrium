@@ -1,0 +1,55 @@
+// The plans (docs/PLANS.md): what each gives, what a payer leaves, and how many
+// payers each way of running the Atrium needs. Shown only to the operator for
+// now (Developers > Plans): nothing here limits or charges anyone yet.
+
+export interface Plan {
+  cloudAtriums: number
+  cloudMb: number
+  fileMb: number
+  mirrorMb: number
+  ownTemplates: boolean
+}
+
+export const FREE_PLAN: Plan = { cloudAtriums: 1, cloudMb: 50, fileMb: 25, mirrorMb: 100, ownTemplates: false }
+export const PAID_PLAN: Plan = { cloudAtriums: 10, cloudMb: 5000, fileMb: 200, mirrorMb: 1000, ownTemplates: true }
+
+export const PRICE_MONTHLY = 4
+export const PRICE_YEARLY = 40
+
+// How a payment is taken, each as a share of the price and a fixed part, in euros.
+export const STRIPE = { share: 0.015 + 0.007 + 0.005, fixed: 0.25 } // card, Billing, Tax; EEA cards
+export const MERCHANT_OF_RECORD = { share: 0.05, fixed: 0.46 } // Paddle's 5% + $0.50
+
+const VAT = 0.21 // About the EU's average; each buyer's country's own rate applies.
+const USE_A_MONTH = 0.15 // A payer's own files and rooms, at most.
+const YEARLY_SHARE = 0.4 // Of payers, assumed.
+const LOST = 0.05 // Refunds, disputes, dearer cards from outside the EEA, assumed.
+const FREE_PERSON_A_MONTH = 0.001 // docs/SCALING.md.
+
+/** What one payment leaves, a month: after VAT, fees and the payer's own use. */
+export function leftAMonth(price: number, months: number, fees: { share: number; fixed: number }): number {
+  const withoutVat = price / (1 + VAT)
+  const fee = price * fees.share + fees.fixed
+  return (withoutVat - fee) / months - USE_A_MONTH
+}
+
+/** What a payer leaves a month, monthly and yearly payers together. */
+export function leftPerPayer(monthly: number, yearly: number, fees: { share: number; fixed: number }): number {
+  return ((1 - YEARLY_SHARE) * leftAMonth(monthly, 1, fees) + YEARLY_SHARE * leftAMonth(yearly, 12, fees)) * (1 - LOST)
+}
+
+/** Payers needed to cover `yearlyCost`, when `payingShare` of monthly users pay,
+ *  each of them carrying the free people behind them. */
+export function payersNeeded(yearlyCost: number, perPayer: number, payingShare = 0.01): number {
+  return Math.ceil(yearlyCost / 12 / (perPayer - FREE_PERSON_A_MONTH / payingShare))
+}
+
+// What a Portuguese company costs a year, before anything is paid out as
+// profit. Estimates, to be replaced by real quotes.
+const BASE = 2700 /* accountant, €225 a month */ + 200 /* invoicing, complaints book */ + 300 /* bank, insurance, sundries */
+export const RUNNING_COSTS = [
+  { id: 'other-job', yearly: BASE }, // Unpaid manager, covered by another job: no contributions.
+  { id: 'unpaid', yearly: BASE + Math.round(537.13 * 0.3475 * 12) }, // Unpaid manager, no other cover: on 1 IAS.
+  { id: 'minimum-wage', yearly: BASE + Math.round(920 * 14 * 1.2375) }, // Paying oneself the minimum wage.
+  { id: 'living', yearly: BASE + Math.round(2000 * 14 * 1.2375) }, // €2,000 gross, 14 times a year.
+] as const

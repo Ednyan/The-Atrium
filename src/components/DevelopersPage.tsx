@@ -10,6 +10,7 @@
 //   Save; the database refuses anyone else's changes either way.
 // - Bans (BansTool).
 // - Feedback (FeedbackTool): what the report form sends.
+// - Plans (PlansTool): what the free and paid plans would give, and what sustains them.
 // - Health (HealthTool): money, limits, usage, the worker's setup.
 // - Cloud atriums (CloudAtriumsTool): what's left in Supabase, held for its owners.
 
@@ -20,6 +21,7 @@ import { checkPlatformAdmin } from '../lib/platformAdmin'
 import { useLandingTheme } from '../lib/useLandingTheme'
 import BansTool from './BansTool'
 import FeedbackTool from './FeedbackTool'
+import PlansTool from './PlansTool'
 import HealthTool from './HealthTool'
 import CloudAtriumsTool from './CloudAtriumsTool'
 import Atmosphere from './Atmosphere'
@@ -39,6 +41,7 @@ import type { ThemeSettings } from '../types/database'
 const TOOLS = [
   { id: 'health', name: 'developers.health', about: 'developers.healthDesc', lead: 'developers.healthDesc' },
   { id: 'feedback', name: 'developers.feedback', about: 'developers.feedbackDesc', lead: 'developers.feedbackDesc' },
+  { id: 'plans', name: 'developers.plans', about: 'developers.plansDesc', lead: 'developers.plansDesc' },
   { id: 'cloud', name: 'developers.cloud', about: 'developers.cloudDesc', lead: 'developers.cloudDesc' },
   { id: 'special-themes', name: 'developers.specialThemes', about: 'developers.specialThemesDesc', lead: 'developers.specialThemesLead' },
   { id: 'bans', name: 'developers.bans', about: 'developers.bansDesc', lead: 'developers.bansDesc' },
@@ -116,11 +119,11 @@ export default function DevelopersPage({ onBack, onEnterAtrium }: { onBack: () =
         {allowed && tool === 'health' && <HealthTool />}
         {allowed && tool === 'cloud' && <CloudAtriumsTool />}
         {allowed && tool === 'special-themes' && <SpecialThemesTool onEnterAtrium={onEnterAtrium} />}
-        {allowed && (tool === 'bans' || tool === 'feedback') && (
+        {allowed && (tool === 'bans' || tool === 'feedback' || tool === 'plans') && (
           <div className="relative max-w-3xl mx-auto">
             <Brackets inset="-0.35rem" />
             <div className="border border-nier-border/30 p-5 sm:p-7" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.75)' }}>
-              {tool === 'bans' ? <BansTool /> : <FeedbackTool />}
+              {tool === 'bans' ? <BansTool /> : tool === 'feedback' ? <FeedbackTool /> : <PlansTool />}
             </div>
           </div>
         )}

@@ -7,13 +7,11 @@ interface SupportAppealProps {
   onFeedback: () => void
 }
 
-// The one time the app asks for money.
-//
-// Shown at launch, on the welcome screen, and never over an atrium -- being
-// interrupted mid-work by a request for money is how goodwill is spent rather
-// than earned. It appears only after someone has used the app enough to have
-// something invested in it, and every answer buys silence: months after a
-// donation, another fortnight and another twenty traces after a no.
+// The one time the app asks for money: a small card in the corner of the welcome
+// screen, never over an atrium. Nothing behind it is dimmed or blocked, so it
+// can be ignored and the screen used as if it weren't there. It appears only
+// after someone has used the app enough to have something invested in it, and
+// every answer buys silence (lib/supportAppeal).
 //
 // Three answers rather than two. "Not now" and "remind me later" are different
 // things, and collapsing them forces anyone willing to be asked again into
@@ -27,78 +25,34 @@ export default function SupportAppeal({ onDonate, onClose, onFeedback }: Support
     else onClose()
   }
 
-  // Writing in is not declining, so it records the same fortnight of silence as
-  // "remind me later" rather than the months a donation buys or the longer
-  // quiet of "not now". Somebody who took the trouble to say something should
-  // be asked again, just not tomorrow.
+  // Writing in is not declining: asked again later, as "remind me later" is.
   const sendFeedback = () => {
     recordAppealResponse('remind_later')
     onFeedback()
   }
 
+  const QUIET = 'text-nier-bg/70 hover:text-nier-strong transition-colors'
   return (
-    <div className="modal-backdrop fixed inset-0 bg-nier-black/85 flex items-center justify-center z-[10000300] pointer-events-auto" data-ui-element>
-      <div className="bg-nier-blackLight border border-nier-border/40 p-6 max-w-md w-full mx-4 relative">
-        <div className="absolute top-0 left-0 w-4 h-4 border-l border-t border-nier-border/60" />
-        <div className="absolute top-0 right-0 w-4 h-4 border-r border-t border-nier-border/60" />
-        <div className="absolute bottom-0 left-0 w-4 h-4 border-l border-b border-nier-border/60" />
-        <div className="absolute bottom-0 right-0 w-4 h-4 border-r border-b border-nier-border/60" />
-
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-1.5 h-1.5 rotate-45 border border-nier-border/60" />
-          <h3 className="text-nier-bg tracking-[0.15em] uppercase">{t('appeal.title')}</h3>
-        </div>
-
-        {/* Every string here now comes from the catalogue, the title and the
-            buttons included. Translating the paragraphs and leaving "Donate"
-            and "Not now" in English would have read worse than leaving all of
-            it in English. */}
-        <div className="space-y-3 text-xs text-nier-bg/80 tracking-wide leading-relaxed mb-6">
-          <p>{t('appeal.enjoying')}</p>
-          <p>{t('appeal.reminder')}</p>
-          <p>{t('appeal.credited')}</p>
-          <p className="text-nier-bg/70">{t('appeal.feedback')}</p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => answer('donated')}
-          className="cut-corner w-full inline-flex items-center justify-center h-[2.375rem] text-[11px] tracking-[0.18em] uppercase font-medium transition-transform hover:scale-[1.02] active:scale-[0.99]"
-          style={{ background: '#FF8A3D', color: 'rgb(var(--c-ground))', boxShadow: '0 0 22px rgba(255,138,61,0.30)' }}
-        >
-          ◇ {t('appeal.donate')}
-        </button>
-
-        <div className="flex gap-2 mt-2">
-          <button
-            type="button"
-            onClick={() => answer('remind_later')}
-            className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-          >
-            {t('appeal.remindLater')}
+    <aside
+      data-support-appeal=""
+      data-ui-element="true"
+      aria-label={t('appeal.title')}
+      className="ctx-menu fixed right-4 bottom-4 sm:right-6 sm:bottom-6 z-[10000] w-[calc(100vw-2rem)] sm:w-80 pointer-events-auto font-mono"
+    >
+      <div className="px-4 py-3">
+        <h3 className="mb-2 text-nier-strong text-[11px] tracking-[0.15em] uppercase">{t('appeal.title')}</h3>
+        <p className="text-xs text-nier-bg/80 leading-relaxed">{t('appeal.reminder')}</p>
+        <div className="mt-3 flex items-center gap-4 text-[11px]">
+          <button type="button" data-appeal="donate" onClick={() => answer('donated')} className="px-3 py-1.5 border border-nier-border/50 text-nier-strong hover:border-nier-bg transition-colors" style={{ color: 'rgb(var(--c-orange))' }}>
+            {t('appeal.donate')}
           </button>
-          <button
-            type="button"
-            onClick={() => answer('not_now')}
-            className="cut-corner flex-1 inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 text-[11px] tracking-[0.15em] uppercase leading-none hover:border-nier-border/70 hover:text-nier-strong transition-colors"
-          >
-            {t('appeal.notNow')}
-          </button>
+          <button type="button" data-appeal="later" onClick={() => answer('remind_later')} className={QUIET}>{t('appeal.remindLater')}</button>
+          <button type="button" data-appeal="no" onClick={() => answer('not_now')} className={QUIET}>{t('appeal.notNow')}</button>
         </div>
-
-        {/* The fourth, and deliberately the quietest. The panel is built around
-            three answers to one question -- give, later, no -- and this is not
-            a fourth answer to it, it is the invitation in the last paragraph
-            made clickable. Borderless, so the row of three above still reads as
-            the choice being offered. */}
-        <button
-          type="button"
-          onClick={sendFeedback}
-          className="w-full mt-3 text-[11px] tracking-[0.15em] uppercase text-nier-bg/55 hover:text-nier-strong transition-colors"
-        >
+        <button type="button" data-appeal="feedback" onClick={sendFeedback} className={`mt-2.5 text-[11px] ${QUIET}`}>
           {t('appeal.feedbackButton')} →
         </button>
       </div>
-    </div>
+    </aside>
   )
 }

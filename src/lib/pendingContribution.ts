@@ -15,6 +15,7 @@
 //     thanks is safe to show -- never over an open atrium, which would navigate
 //     away from unsaved traces -- and clears the record at that point.
 
+import { noteDonation } from './supportAppeal'
 import { fetchContributionStatus } from './donate'
 
 const KEY = 'atrium_pending_contribution_v1'
@@ -100,6 +101,7 @@ export function takeCompletedContribution(): { displayName: string } | null {
   if (!pending?.completed) return null
   write(null)
   rememberThanksName(pending.displayName)
+  noteDonation(Date.now())
   return { displayName: pending.displayName }
 }
 

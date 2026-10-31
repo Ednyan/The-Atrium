@@ -1,27 +1,19 @@
 # Plans: a free plan and a paid one
 
-Researched 2026-10-29, before any code: what the Atrium could charge, what it
-would give for free, and whether the paid plan carries the free one. The
-costs come from docs/SCALING.md; read that first for what each person costs
-and why.
+Researched 2026-10-29, before any charging code: what the Atrium could charge and what
+it gives for free. Costs per person come from docs/SCALING.md.
 
-**Recheck before deciding.** Competitors' prices come from their pricing
-pages or from price trackers, which sometimes disagree; Stripe's fees are as
-published for businesses in the EEA. None of this is tax advice: have an
-accountant confirm the VAT section before launch.
+**Recheck before deciding.** Competitors' prices come from their pricing pages or
+price trackers, which sometimes disagree. Stripe's fees are as published for Portugal.
 
 ## The short answer
 
-- **€3 a month covers the running costs many times over.** One paying
-  person leaves about €2.00 a month after VAT and fees; a free person costs
-  about €0.001. One subscriber carries about 2,000 free people, so costs
-  are covered once about 0.05% of people pay.
-- **Infrastructure isn't what sets the price.** Value and the market do:
-  comparable tools charge $6–12 a month for one person.
-- **Recommended:** launch at €4 a month or €36 a year (€3 also works). Sell
-  the paid plan on features, not storage.
+- **€4 a month or €40 a year.** Infrastructure doesn't set the price: a free person costs
+  about €0.001 a month. Value and the market do: comparable tools charge $6-12.
+- **Sell the paid plan on features, not storage.**
+- The business and tax side is kept outside this public repository.
 
-## Decided (2026-10-29)
+## The plans (decided 2026-10-29, price changed 2026-10-31)
 
 | | Free | Paid |
 |---|---|---|
@@ -30,37 +22,20 @@ accountant confirm the VAT section before launch.
 | A file, at most | 25 MB (as today) | 200 MB (video) |
 | Mirror of one's public Drive atriums | 100 MB | 1 GB |
 | Drive, browser and desktop atriums, live rooms | unlimited | unlimited |
-| Price | — | €4 a month, or €36 a year |
+| Digital Atrium templates | yes | yes |
+| Your own templates, folders, across devices | no | yes |
+| Donation reminders | yes | no |
+| Price | — | €4 a month, or €40 a year |
 
-- In a shared or public atrium, each person's files count against their
-  own space, whatever their plan.
-- 50 MB is today's amount, so nobody already using it goes over. Anyone
-  with more than 1 cloud atrium keeps them all but can't make another,
-  and the same when a subscription ends (see "Changing today's limits").
-- Not built yet: see "Building it".
-
-## The plans as proposed
-
-**Free**
-- 1 cloud atrium, which can be public, and 10 MB of the cloud for the person.
-- In a public atrium, each contributor's files count against their own
-  10 MB, so it grows with the people adding to it. The hosted store already
-  works this way: a new file belongs to whoever writes it
-  (`workers/rooms/src/store.ts`, `owner = row?.owner ?? who.id`).
-- Still free, and costing the Atrium almost nothing:
-  - unlimited atriums in the person's own Google Drive (only their public
-    atriums' mirror is ours to store);
-  - browser and desktop atriums;
-  - live rooms.
-
-**Paid**
-- 3 cloud atriums, public or shared, with 5 GB across them.
-- Others can add to a shared or public atrium, on their own space.
-
-Today's limits, for comparison: 3 atriums and 50 MB for everyone
-(`QUOTA_MB`, `MOST_ATRIUMS` in `workers/rooms/src/store.ts`), 25 MB a file
-(`MOST_FILE_BYTES`, `who.ts`), and 500 MB of mirror per public atriums'
-owner (`MOST_MB`, `mirror.ts`).
+- **Developers > Plans** shows this to the operator (`src/components/PlansTool.tsx`,
+  `src/lib/plans.ts`). Nothing limits or charges anyone yet.
+- **Not to sell:** the Pinterest import stays free (docs/PINTEREST.md).
+- In a shared or public atrium, each person's files count against their own space,
+  whatever their plan.
+- 50 MB is today's amount, so nobody already using it goes over. Anyone with more
+  than 1 cloud atrium keeps them all but can't make another, and the same when a
+  subscription ends.
+- Worth adding as it's built: a supporter mark.
 
 ## What similar tools charge
 
@@ -94,25 +69,6 @@ they pay for what the plan lets them do.
   their first month, 8% after a year and 25% after five years.
 - **Plan on 1%.** Anything above it is a bonus.
 
-## What one paying person leaves
-
-In euros, since Stripe settles the Atrium's payments in euros. An EU buyer,
-VAT included in the price (about 21% on average; each country's own rate
-applies). Stripe: 1.5% + €0.25 a payment (EEA cards; others cost more),
-0.7% for subscriptions (Billing), 0.5% for Stripe Tax. Up to €0.15 a month
-for the person's own use: 5 GB full (€0.075 in R2), saves, relay.
-
-| Price | VAT | Payment fees | Left each month |
-|---|---|---|---|
-| €3 a month | €0.52 | €0.33 (11%) | ~€2.00 |
-| €4 a month | €0.69 | €0.36 | ~€2.80 |
-| €5 a month | €0.87 | €0.39 | ~€3.60 |
-| €30 a year (€2.50 a month) | €0.43 | €0.09 (3.5%) | ~€1.83 |
-| €3 through a merchant of record (5% + $0.50, tax handled) | €0.52 | ~€0.61 | ~€1.72 |
-
-Stripe's fixed €0.25 is what hurts a small price: 11% of a €3 charge, 3.5%
-of a yearly one. Offer the yearly plan whatever the price.
-
 ## What a free person costs
 
 About €0.001 a month: docs/SCALING.md's tiers come to $0.0004–0.0012 per
@@ -120,21 +76,6 @@ monthly user, all services together (requests, rooms, D1, mail, relay,
 monitoring). Storage is a sliver of it: 10 MB, even full, is €0.00015 a
 month; 50 MB, €0.00075. The free cloud space can be set by what makes people
 want more, not by what it costs.
-
-## Sustainable? By tier, at €3 a month
-
-| Tier | Monthly users | Running cost | Payers to cover it | Left if 0.25% pay | Left if 1% pay |
-|---|---|---|---|---|---|
-| 1 | 30,000 | ~$7 | 4 | ~€140 | ~€590 |
-| 2 | 150,000 | $60–120 | 30–60 | ~€630 | ~€2,900 |
-| 3 | 450,000 | $280–480 | 140–240 | ~€1,800 | ~€8,500 |
-| 4 | 900,000 | $610–1,060 | 300–530 | ~€3,400 | ~€17,000 |
-
-Not counted: income tax, an accountant, refunds, and disputed payments
-(Stripe's dispute fee can be more than a subscription).
-
-A line for the plans page that's true at these numbers: "each subscriber
-keeps about 2,000 free atriums running".
 
 ## The paid plan's features
 
@@ -155,29 +96,12 @@ when they arrive: keep their files and atriums, pause new uploads until
 they're back under, and give a grace period. The same when a subscription
 ends.
 
-## Taxes and payments
-
-- **Inside the EU**, for a seller based there: up to €10,000 a year of sales
-  to consumers in *other* EU countries, the seller's own country's VAT
-  applies. Past it, each buyer's country's rate, declared in one quarterly
-  return through the EU's One-Stop Shop (OSS). Stripe Tax works out the tax
-  (0.5%); it doesn't file the returns.
-- **Outside the EU**, each country has its own rules.
-- **A merchant of record** sells on the Atrium's behalf and files all the
-  tax: Paddle and Lemon Squeezy 5% + $0.50 (Lemon Squeezy adds 1.5% for
-  cards outside the US, 0.5% for subscriptions), Creem 3.9% + $0.40, Polar
-  from 4% + $0.40, Stripe Managed Payments 3.5% on top of Stripe's fees. At
-  €3 a month, the fixed fee alone takes about 12–16%.
-- **Recommended:** start with Stripe, which the contributions already use
-  (`workers/rooms/src/contributions.ts`), with Stripe Tax and the yearly
-  plan. Reconsider a merchant of record if sales outside the EU grow.
-
 ## Building it
 
 Once the numbers are chosen:
-1. A plan on each account in D1, with when it ends.
-2. A Stripe subscription through the Checkout the contributions use; its
-   webhook sets and clears the plan.
+1. A plan on each account in D1, with when it ends. `/contributions/mine` then
+   also answers `paidUntil`, which already silences the donation card.
+2. A subscription; its webhook sets and clears the plan.
 3. The limits read from the plan: cloud space, cloud atriums, file size,
    mirror budget, relay.
 4. A plans page, and the plan shown in the account's settings.
@@ -204,7 +128,9 @@ Who pays:
 - [Miro (Sacra)](https://sacra.com/chat/h/41709844-438e-46a9-a009-5c004e2da936/)
 
 Fees and tax:
-- [Stripe EEA pricing](https://support.stripe.com/questions/pricing-updates-for-businesses-based-in-the-european-economic-area-(eea))
+- [Stripe's prices for Portugal](https://stripe.com/en-pt/pricing)
+- [Paddle's seller terms, summarised](https://fungies.io/paddle-review-2026)
+- [Stripe Managed Payments](https://stripe.com/en-pl/managed-payments)
 - [Stripe Billing's 0.7%](https://usagebox.com/articles/stripe-billing-fees-2026-the-07-percent-math)
 - [Stripe Tax pricing](https://support.stripe.com/questions/understanding-stripe-tax-pricing)
 - [EU VAT OSS threshold (Taxually)](https://www.taxually.com/blog/eu-vat-oss-ioss-distance-selling-2026)

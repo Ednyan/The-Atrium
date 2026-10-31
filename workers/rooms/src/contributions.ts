@@ -15,7 +15,7 @@
 import { nameProblem as problemOf, MAX_NAME_LENGTH } from '../../../supabase/functions/_shared/contributorName'
 import { BASE_CURRENCY, currencyByCode, isAllowedStep, isCurrencyCode, minorPerUnit } from '../../../supabase/functions/_shared/currencies'
 import { SITE, mailReady, toContributor } from './mail'
-import { allowedNow, isOperator, keep, setting, tablesIn } from './people'
+import { allowedNow, emailOf, isOperator, keep, setting, tablesIn } from './people'
 import { dropPublic, outbound, replies, samePublic, whoIs, type Env } from './who'
 
 const STRIPE_VERSION = '2026-07-29.dahlia'
@@ -96,6 +96,7 @@ export async function contributions(request: Request, env: Env, what: string): P
     return checkout(request, env)
   }
   if (what === 'status' && request.method === 'POST') return status(request, env)
+  if (what === 'mine' && request.method === 'POST') return mine(request, env, db)
   return open(404, { error: 'no such thing' })
 }
 
@@ -160,6 +161,21 @@ async function search(db: D1Database, query: string): Promise<Response> {
 
 // A Checkout page for a contribution: the amount checked against the same
 // table the page offers from, the name against the same rules.
+// When the account signed in last gave, by the address known to be theirs (a
+// confirmed or Google-verified one): so the app stops asking them to. A
+// donation needs no account, and one made from another address isn't seen.
+async function mine(request: Request, env: Env, db: D1Database): Promise<Response> {
+  let asked: { token?: unknown }
+  try { asked = await request.json() } catch { return open(400, { error: 'body' }) }
+  const who = await whoIs(typeof asked.token === 'string' ? asked.token : null, env)
+  if (!who) return open(401, { error: 'Not signed in' })
+  const email = await emailOf(env, who)
+  if (!email) return open(200, { donatedAt: null })
+  const row = await db.prepare('select max(created_at) as at from contributions where contact_email = ? collate nocase and refunded = 0 and livemode = 1')
+    .bind(email).first<{ at: number | null }>()
+  return open(200, { donatedAt: row?.at ?? null })
+}
+
 async function checkout(request: Request, env: Env): Promise<Response> {
   let asked: { amountCents?: unknown; monthly?: unknown; displayName?: unknown; currency?: unknown }
   try { asked = await request.json() } catch { return open(400, { error: 'body' }) }
