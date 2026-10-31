@@ -19,7 +19,7 @@ const size = (mb: number) => (mb >= 1000 ? `${mb / 1000} GB` : `${mb} MB`)
 
 // A value that's a word rather than a number, and its word.
 const PLAN_WORDS: Record<string, TranslationKey> = {
-  yes: 'plans.yes', no: 'plans.no', unlimited: 'plans.unlimited', slow: 'plans.slow', fast: 'plans.fast',
+  yes: 'plans.yes', no: 'plans.no', unlimited: 'plans.unlimited',
 }
 export const planValue = (shown: string, t: (key: TranslationKey) => string) => (PLAN_WORDS[shown] ? t(PLAN_WORDS[shown]) : shown)
 
@@ -31,7 +31,7 @@ export function planFeatures(): [TranslationKey, string, string][] {
     ['plans.row.file', size(FREE_PLAN.fileMb), size(PAID_PLAN.fileMb)],
     ['plans.row.mirror', size(FREE_PLAN.mirrorMb), size(PAID_PLAN.mirrorMb)],
     ['plans.row.elsewhere', 'unlimited', 'unlimited'],
-    ['plans.row.rooms', 'slow', 'fast'],
+    ['plans.row.rooms', 'yes', 'yes'],
     ['plans.row.own', 'no', 'yes'],
   ]
 }
