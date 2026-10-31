@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { appealDue } from '../src/lib/supportAppeal.ts'
-import { leftAMonth, leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS, STRIPE, YEARLY_A_MONTH, YEARLY_SAVES } from '../src/lib/plans.ts'
+import { leftAMonth, leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS, STRIPE, YEARLY_A_MONTH, YEARLY_SAVES_OVER } from '../src/lib/plans.ts'
 
 const near = (got: number, want: number, by = 0.01) => assert.ok(Math.abs(got - want) <= by, `${got} is not ${want}`)
 
@@ -30,7 +30,9 @@ test('payers needed: more for dearer ways of running it, and rounded up', () => 
 
 test('the yearly plan is the better deal, by what the page says', () => {
   near(YEARLY_A_MONTH, 3.33)
-  assert.equal(YEARLY_SAVES, 8)
+  // €40 against €48 saves 16.7%.
+  assert.equal(YEARLY_SAVES_OVER, 15)
+  assert.ok(1 - PRICE_YEARLY / (PRICE_MONTHLY * 12) > YEARLY_SAVES_OVER / 100)
   assert.ok(YEARLY_A_MONTH < PRICE_MONTHLY)
 })
 

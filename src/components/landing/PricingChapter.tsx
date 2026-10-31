@@ -6,7 +6,7 @@
 
 import { forwardRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
-import { planFeatures, PRICE_MONTHLY, PRICE_YEARLY, YEARLY_A_MONTH, YEARLY_SAVES } from '../../lib/plans'
+import { planFeatures, PRICE_MONTHLY, PRICE_YEARLY, YEARLY_A_MONTH, YEARLY_SAVES_OVER } from '../../lib/plans'
 import { ChapterLabel } from './parts'
 
 const euros = (amount: number) => `€${Number.isInteger(amount) ? amount : amount.toFixed(2)}`
@@ -25,7 +25,7 @@ const PricingChapter = forwardRef<HTMLElement, { index: number; enter: string; o
         <div className="mb-8 flex flex-wrap items-center gap-2" data-reveal>
           <button type="button" data-pricing-period="yearly" aria-pressed={yearly} onClick={() => setYearly(true)} className={choice(yearly)}>
             {t('landing.pricing.yearly')}
-            <span className="ml-2 normal-case tracking-normal" style={{ color: 'rgb(var(--c-orange))' }}>{t('landing.pricing.save', { amount: euros(YEARLY_SAVES) })}</span>
+            <span className="ml-2 normal-case tracking-normal" style={{ color: 'rgb(var(--c-orange))' }}>{t('landing.pricing.save', { percent: YEARLY_SAVES_OVER })}</span>
           </button>
           <button type="button" data-pricing-period="monthly" aria-pressed={!yearly} onClick={() => setYearly(false)} className={choice(!yearly)}>{t('landing.pricing.monthly')}</button>
         </div>
@@ -59,7 +59,7 @@ const PricingChapter = forwardRef<HTMLElement, { index: number; enter: string; o
             ) : (
               <p data-pricing-note="" className="mt-2 text-sm text-nier-bg/80">
                 <button type="button" data-pricing-switch="" onClick={() => setYearly(true)} className="underline underline-offset-2 hover:text-nier-strong transition-colors text-left">
-                  {t('landing.pricing.switchYearly', { month: euros(YEARLY_A_MONTH), amount: euros(YEARLY_SAVES) })}
+                  {t('landing.pricing.switchYearly', { month: euros(YEARLY_A_MONTH), percent: YEARLY_SAVES_OVER })}
                 </button>
               </p>
             )}
