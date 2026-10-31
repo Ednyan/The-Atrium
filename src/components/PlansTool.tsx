@@ -1,6 +1,6 @@
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
-import { leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, planFeatures, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS } from '../lib/plans'
+import { leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, planFeatures, planValue, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS } from '../lib/plans'
 
 const CELL = 'border border-nier-border/25 px-3 py-2 text-left align-top'
 const WAY: Record<typeof RUNNING_COSTS[number]['id'], TranslationKey> = {
@@ -16,9 +16,8 @@ const euros = (amount: number, digits = 0) => amount.toLocaleString('en-IE', { s
  *  here limits or charges anyone yet. */
 export default function PlansTool() {
   const { t } = useTranslation()
-  const word = (shown: string) => (shown === 'yes' ? t('plans.yes') : shown === 'no' ? t('plans.no') : shown === 'unlimited' ? t('plans.unlimited') : shown)
   const rows: [TranslationKey, string, string][] = [
-    ...planFeatures().map(([label, free, paid]): [TranslationKey, string, string] => [label, word(free), word(paid)]),
+    ...planFeatures().map(([label, free, paid]): [TranslationKey, string, string] => [label, planValue(free, t), planValue(paid, t)]),
     ['plans.row.appeal', t('plans.yes'), t('plans.no')],
   ]
   const perPayer = leftPerPayer(PRICE_MONTHLY, PRICE_YEARLY, MERCHANT_OF_RECORD)

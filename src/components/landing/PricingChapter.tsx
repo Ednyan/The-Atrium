@@ -6,7 +6,7 @@
 
 import { forwardRef, useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
-import { planFeatures, PRICE_MONTHLY, PRICE_YEARLY, YEARLY_A_MONTH, YEARLY_SAVES_OVER } from '../../lib/plans'
+import { planFeatures, planValue, PRICE_MONTHLY, PRICE_YEARLY, YEARLY_A_MONTH, YEARLY_SAVES_OVER } from '../../lib/plans'
 import { ChapterLabel } from './parts'
 
 const euros = (amount: number) => `€${Number.isInteger(amount) ? amount : amount.toFixed(2)}`
@@ -14,7 +14,6 @@ const euros = (amount: number) => `€${Number.isInteger(amount) ? amount : amou
 const PricingChapter = forwardRef<HTMLElement, { index: number; enter: string; onGetStarted: () => void; className: string }>(function PricingChapter({ index, enter, onGetStarted, className }, ref) {
   const { t } = useTranslation()
   const [yearly, setYearly] = useState(true)
-  const value = (shown: string) => (shown === 'yes' ? t('plans.yes') : shown === 'no' ? t('plans.no') : shown === 'unlimited' ? t('plans.unlimited') : shown)
   const features = planFeatures()
   const choice = (on: boolean) => `px-4 py-2 text-xs tracking-[0.15em] uppercase border transition-colors ${on ? 'border-nier-bg text-nier-strong' : 'border-nier-border/30 text-nier-bg/70 hover:text-nier-strong'}`
   return (
@@ -37,7 +36,7 @@ const PricingChapter = forwardRef<HTMLElement, { index: number; enter: string; o
               {features.map(([label, free]) => (
                 <li key={label} className="flex items-baseline justify-between gap-4 border-b border-nier-border/15 pb-2">
                   <span className="text-nier-bg/75">{t(label)}</span>
-                  <span className="shrink-0 text-nier-strong">{value(free)}</span>
+                  <span className="shrink-0 text-nier-strong">{planValue(free, t)}</span>
                 </li>
               ))}
             </ul>
@@ -67,7 +66,7 @@ const PricingChapter = forwardRef<HTMLElement, { index: number; enter: string; o
               {features.map(([label, , paid]) => (
                 <li key={label} className="flex items-baseline justify-between gap-4 border-b border-nier-border/15 pb-2">
                   <span className="text-nier-bg/75">{t(label)}</span>
-                  <span className="shrink-0 text-nier-strong">{value(paid)}</span>
+                  <span className="shrink-0 text-nier-strong">{planValue(paid, t)}</span>
                 </li>
               ))}
             </ul>

@@ -17,8 +17,13 @@ export const PAID_PLAN: Plan = { cloudAtriums: 10, cloudMb: 20000, fileMb: 200, 
 
 const size = (mb: number) => (mb >= 1000 ? `${mb / 1000} GB` : `${mb} MB`)
 
-// What each plan gives, for showing: a label, then free's and paid's ('yes',
-// 'no' and 'unlimited' for the words).
+// A value that's a word rather than a number, and its word.
+const PLAN_WORDS: Record<string, TranslationKey> = {
+  yes: 'plans.yes', no: 'plans.no', unlimited: 'plans.unlimited', slow: 'plans.slow', fast: 'plans.fast',
+}
+export const planValue = (shown: string, t: (key: TranslationKey) => string) => (PLAN_WORDS[shown] ? t(PLAN_WORDS[shown]) : shown)
+
+// What each plan gives, for showing: a label, then free's and paid's.
 export function planFeatures(): [TranslationKey, string, string][] {
   return [
     ['plans.row.atriums', String(FREE_PLAN.cloudAtriums), String(PAID_PLAN.cloudAtriums)],
@@ -26,8 +31,7 @@ export function planFeatures(): [TranslationKey, string, string][] {
     ['plans.row.file', size(FREE_PLAN.fileMb), size(PAID_PLAN.fileMb)],
     ['plans.row.mirror', size(FREE_PLAN.mirrorMb), size(PAID_PLAN.mirrorMb)],
     ['plans.row.elsewhere', 'unlimited', 'unlimited'],
-    ['plans.row.rooms', 'yes', 'yes'],
-    ['plans.row.builtin', 'yes', 'yes'],
+    ['plans.row.rooms', 'slow', 'fast'],
     ['plans.row.own', 'no', 'yes'],
   ]
 }
