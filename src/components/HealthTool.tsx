@@ -54,6 +54,8 @@ interface Usage {
   invites: number
   bans: number
   contributions: { count?: number; live?: number }
+  // Would people buy the paid plan; from a worker older than this, none.
+  interest?: { kind: string; answer: string; count: number }[]
 }
 interface Health {
   at: number
@@ -366,6 +368,8 @@ function Tile({ label, value, detail, warn }: { label: string; value: string; de
 const KINDS: Record<string, TranslationKey> = { charge: 'health.kind.payment', payment: 'health.kind.payment', refund: 'health.kind.refund', payment_refund: 'health.kind.refund', payout: 'health.kind.payout', stripe_fee: 'health.kind.fee' }
 
 /** Developers > Health: everything a developer needs to know of the Atrium's health. */
+const interestOf = (usage: Usage, kind: string, answer: string) => usage.interest?.find(row => row.kind === kind && row.answer === answer)?.count ?? 0
+
 export default function HealthTool() {
   const { t } = useTranslation()
   const f = useFormat()
@@ -520,6 +524,8 @@ export default function HealthTool() {
                 <Tile label={t('health.usage.invites')} value={f.number(usage.invites)} />
                 <Tile label={t('health.usage.bans')} value={f.number(usage.bans)} />
                 <Tile label={t('health.usage.contributions')} value={f.number(usage.contributions.count ?? 0)} detail={t('health.usage.contributionsDetail', { live: f.number(usage.contributions.live ?? 0) })} />
+                <Tile label={t('health.interest.accounts')} value={t('health.interest.counts', { yes: f.number(interestOf(usage, 'account', 'yes')), no: f.number(interestOf(usage, 'account', 'no')) })} />
+                <Tile label={t('health.interest.guests')} value={t('health.interest.counts', { yes: f.number(interestOf(usage, 'guest', 'yes')), no: f.number(interestOf(usage, 'guest', 'no')) })} />
               </div>
             )}
           </Panel>

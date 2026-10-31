@@ -337,7 +337,7 @@ async function usageOf(env: Env, now: number) {
   if (!db) throw new Error('the directory (D1) is not bound')
   await tablesIn(db)
   const week = now - 7 * DAY_MS
-  const [accounts, logins, signedIn, hosted, publicAtriums, mirrored, invites, bans, contributions] = await db.batch([
+  const [accounts, logins, signedIn, hosted, publicAtriums, mirrored, invites, bans, contributions, interest] = await db.batch([
     db.prepare('select kind, count(*) as count, coalesce(sum(created_at > ?), 0) as recent from accounts group by kind').bind(week),
     db.prepare('select count(*) as count, coalesce(sum(confirmed_at is not null), 0) as confirmed from logins'),
     db.prepare('select count(distinct account) as count from refresh_tokens where used_at > ?').bind(week),
@@ -347,6 +347,7 @@ async function usageOf(env: Env, now: number) {
     db.prepare('select count(*) as count from invites'),
     db.prepare('select count(*) as count from bans'),
     db.prepare('select count(*) as count, coalesce(sum(livemode = 1), 0) as live from contributions'),
+    db.prepare('select kind, answer, count(*) as count from plan_interest group by kind, answer'),
   ])
   const one = (result: D1Result) => (result.results[0] ?? {}) as Record<string, number>
   return {
@@ -359,5 +360,6 @@ async function usageOf(env: Env, now: number) {
     invites: one(invites).count ?? 0,
     bans: one(bans).count ?? 0,
     contributions: one(contributions),
+    interest: interest.results as { kind: string; answer: string; count: number }[],
   }
 }

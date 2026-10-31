@@ -105,6 +105,8 @@ const TABLES = [
   `create table if not exists special_themes (id text primary key, name text not null, mode text not null, theme_settings text not null,
     starts_on text, ends_on text, hidden integer not null default 0, preset text, updated_at integer not null)`,
   'create table if not exists visits (account text not null, lobby_id text not null, at integer not null, primary key (account, lobby_id))',
+  // Would people buy the paid plan (src/interest.ts): each voter a hash.
+  'create table if not exists plan_interest (voter text primary key, kind text not null, answer text not null, at integer not null)',
   // What the report form sends (src/feedback.ts).
   `create table if not exists feedback (id text primary key, at integer not null, motive text not null, subject text, description text not null,
     username text, atrium text, platform text, reply_to text, handled integer not null default 0)`,
