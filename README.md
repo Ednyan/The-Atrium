@@ -35,8 +35,7 @@ under a DOM layer for the traces. The desktop shell is Tauri, in Rust. The
 site is on Cloudflare: Pages for the app, and a Worker (`workers/rooms`) with
 D1, R2 and Durable Objects for accounts, hosted atriums, live rooms and mail.
 
-Supabase was the original backend. Almost everything has moved off it, and
-the last step is described in `docs/DECENTRALIZING.md`.
+Supabase was the original backend. Almost everything has moved off it.
 
 ## The source is public. It is not open source.
 
@@ -61,7 +60,7 @@ before the Atrium did. It was never true of this code.
 | `extension/` | The browser extension that sends a page to an atrium |
 | `tests/` | Unit tests (`npm test`) |
 | `scripts/` | Release, asset and code-history tooling |
-| `docs/` | Plans and decisions: decentralizing, scaling, the domain, being found |
+| `docs/` | The help articles, and notes on the domain and on being found |
 
 `CLAUDE.md` holds the working notes that matter before changing anything:
 what the desktop vault does not implement, how migrations are applied, and

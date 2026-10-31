@@ -64,3 +64,10 @@ graphify-out/
 # Cloudflare Workers (workers/*): local state and secrets
 .wrangler/
 .dev.vars
+
+# Private notes: kept here, out of a public repository.
+docs/IDEAS.md
+docs/PLANS.md
+docs/SCALING.md
+docs/DECENTRALIZING.md
+docs/PINTEREST.md

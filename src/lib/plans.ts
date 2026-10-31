@@ -1,6 +1,8 @@
-// The plans (docs/PLANS.md): what each gives, what a payer leaves, and how many
+// The plans: what each gives, what a payer leaves, and how many
 // payers each way of running the Atrium needs. Shown only to the operator for
 // now (Developers > Plans): nothing here limits or charges anyone yet.
+
+import type { TranslationKey } from '../locales/en'
 
 export interface Plan {
   cloudAtriums: number
@@ -11,7 +13,24 @@ export interface Plan {
 }
 
 export const FREE_PLAN: Plan = { cloudAtriums: 1, cloudMb: 50, fileMb: 25, mirrorMb: 100, ownTemplates: false }
-export const PAID_PLAN: Plan = { cloudAtriums: 10, cloudMb: 5000, fileMb: 200, mirrorMb: 1000, ownTemplates: true }
+export const PAID_PLAN: Plan = { cloudAtriums: 10, cloudMb: 20000, fileMb: 200, mirrorMb: 1000, ownTemplates: true }
+
+const size = (mb: number) => (mb >= 1000 ? `${mb / 1000} GB` : `${mb} MB`)
+
+// What each plan gives, for showing: a label, then free's and paid's ('yes',
+// 'no' and 'unlimited' for the words).
+export function planFeatures(): [TranslationKey, string, string][] {
+  return [
+    ['plans.row.atriums', String(FREE_PLAN.cloudAtriums), String(PAID_PLAN.cloudAtriums)],
+    ['plans.row.space', size(FREE_PLAN.cloudMb), size(PAID_PLAN.cloudMb)],
+    ['plans.row.file', size(FREE_PLAN.fileMb), size(PAID_PLAN.fileMb)],
+    ['plans.row.mirror', size(FREE_PLAN.mirrorMb), size(PAID_PLAN.mirrorMb)],
+    ['plans.row.elsewhere', 'unlimited', 'unlimited'],
+    ['plans.row.rooms', 'yes', 'yes'],
+    ['plans.row.builtin', 'yes', 'yes'],
+    ['plans.row.own', 'no', 'yes'],
+  ]
+}
 
 export const PRICE_MONTHLY = 4
 export const PRICE_YEARLY = 40
@@ -21,10 +40,10 @@ export const STRIPE = { share: 0.015 + 0.007 + 0.005, fixed: 0.25 } // card, Bil
 export const MERCHANT_OF_RECORD = { share: 0.05, fixed: 0.46 } // Paddle's 5% + $0.50
 
 const VAT = 0.21 // About the EU's average; each buyer's country's own rate applies.
-const USE_A_MONTH = 0.15 // A payer's own files and rooms, at most.
+const USE_A_MONTH = 0.355 // A payer's own use, at most: 20 GB full (€0.28 in R2), saves, relay.
 const YEARLY_SHARE = 0.4 // Of payers, assumed.
 const LOST = 0.05 // Refunds, disputes, dearer cards from outside the EEA, assumed.
-const FREE_PERSON_A_MONTH = 0.001 // docs/SCALING.md.
+const FREE_PERSON_A_MONTH = 0.001 // All services together, at list prices.
 
 /** What one payment leaves, a month: after VAT, fees and the payer's own use. */
 export function leftAMonth(price: number, months: number, fees: { share: number; fixed: number }): number {

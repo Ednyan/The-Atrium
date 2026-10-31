@@ -1,6 +1,6 @@
 import { useTranslation } from '../lib/i18n'
 import type { TranslationKey } from '../locales/en'
-import { FREE_PLAN, leftPerPayer, MERCHANT_OF_RECORD, PAID_PLAN, payersNeeded, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS } from '../lib/plans'
+import { leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, planFeatures, PRICE_MONTHLY, PRICE_YEARLY, RUNNING_COSTS } from '../lib/plans'
 
 const CELL = 'border border-nier-border/25 px-3 py-2 text-left align-top'
 const WAY: Record<typeof RUNNING_COSTS[number]['id'], TranslationKey> = {
@@ -10,24 +10,16 @@ const WAY: Record<typeof RUNNING_COSTS[number]['id'], TranslationKey> = {
   living: 'plans.way.living',
 }
 const euros = (amount: number, digits = 0) => amount.toLocaleString('en-IE', { style: 'currency', currency: 'EUR', minimumFractionDigits: digits, maximumFractionDigits: digits })
-const size = (mb: number) => (mb >= 1000 ? `${mb / 1000} GB` : `${mb} MB`)
 
-/** The Developers page's plans (lib/plans, docs/PLANS.md), for the operator alone:
+/** The Developers page's plans (lib/plans), for the operator alone:
  *  what each would give, and what it takes to keep the Atrium going. Nothing
  *  here limits or charges anyone yet. */
 export default function PlansTool() {
   const { t } = useTranslation()
-  const yes = t('plans.yes'), no = t('plans.no'), unlimited = t('plans.unlimited')
+  const word = (shown: string) => (shown === 'yes' ? t('plans.yes') : shown === 'no' ? t('plans.no') : shown === 'unlimited' ? t('plans.unlimited') : shown)
   const rows: [TranslationKey, string, string][] = [
-    ['plans.row.atriums', String(FREE_PLAN.cloudAtriums), String(PAID_PLAN.cloudAtriums)],
-    ['plans.row.space', size(FREE_PLAN.cloudMb), size(PAID_PLAN.cloudMb)],
-    ['plans.row.file', size(FREE_PLAN.fileMb), size(PAID_PLAN.fileMb)],
-    ['plans.row.mirror', size(FREE_PLAN.mirrorMb), size(PAID_PLAN.mirrorMb)],
-    ['plans.row.elsewhere', unlimited, unlimited],
-    ['plans.row.rooms', yes, yes],
-    ['plans.row.builtin', yes, yes],
-    ['plans.row.own', no, yes],
-    ['plans.row.appeal', yes, no],
+    ...planFeatures().map(([label, free, paid]): [TranslationKey, string, string] => [label, word(free), word(paid)]),
+    ['plans.row.appeal', t('plans.yes'), t('plans.no')],
   ]
   const perPayer = leftPerPayer(PRICE_MONTHLY, PRICE_YEARLY, MERCHANT_OF_RECORD)
   return (

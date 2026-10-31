@@ -36,6 +36,9 @@ import InsideChapter from './landing/InsideChapter'
 import TraceRibbon from './landing/TraceRibbon'
 import ToolChapters from './landing/ToolChapters'
 import WhyChapter from './landing/WhyChapter'
+import PricingChapter from './landing/PricingChapter'
+import { checkPlatformAdmin, knownPlatformAdmin } from '../lib/platformAdmin'
+import { useGamePick } from '../store/gameStore'
 import CodeRoots from './landing/CodeRoots'
 
 interface LandingPageProps {
@@ -340,6 +343,7 @@ const sections = [
   { id: 'tools', title: 'What you can do' },
   { id: 'why', title: 'Why' },
   { id: 'desktop', title: 'Web & Desktop' },
+  { id: 'pricing', title: 'Pricing' },
   { id: 'support', title: 'Support' },
 ]
 const sectionIndex = (id: string) => sections.findIndex(section => section.id === id)
@@ -363,6 +367,10 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   const insideRef = useRef<HTMLElement | null>(null)
   const codeButtonRef = useRef<HTMLAnchorElement>(null)
   const enter = isAuthenticated ? t('landing.continue') : t('landing.enter')
+  // Asks only if someone's signed in (lib/platformAdmin).
+  const { userId } = useGamePick('userId')
+  const [isOperator, setIsOperator] = useState(knownPlatformAdmin)
+  useEffect(() => { void checkPlatformAdmin().then(setIsOperator) }, [userId])
   // A decorative loop stays still for anyone who asked for less motion.
   const still = useMemo(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches, [])
 
@@ -475,7 +483,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
   // indexing rather than removed. The desktop app has no Web & Desktop.
   const navItems = sections
     .map((entry, index) => ({ ...entry, index }))
-    .filter(({ id }) => id !== 'hero' && !(isDesktop && id === 'desktop'))
+    .filter(({ id }) => id !== 'hero' && !(isDesktop && id === 'desktop') && (id !== 'pricing' || isOperator))
 
   // Scrolled by hand, the bar's height taken off: scrollIntoView put every
   // heading under the bar.
@@ -554,7 +562,7 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
       <nav aria-label={t('landing.sections')} className="fixed right-8 top-1/2 -translate-y-1/2 z-40 hidden xl:flex flex-col items-end gap-6">
         {sections
           .map((entry, index) => ({ entry, index }))
-          .filter(({ entry }) => !(isDesktop && entry.id === 'desktop'))
+          .filter(({ entry }) => !(isDesktop && entry.id === 'desktop') && (entry.id !== 'pricing' || isOperator))
           .map(({ entry, index }) => {
             const isActive = activeSection === index
             return (
@@ -670,6 +678,9 @@ export default function LandingPage({ onGetStarted, isAuthenticated, section }: 
               </div>
             </section>
           )}
+
+          {/* The plans: for the operator alone, until they can be bought. */}
+          {isOperator && <PricingChapter ref={el => { sectionRefs.current[sectionIndex('pricing')] = el }} index={chapter('pricing')} enter={enter} onGetStarted={onGetStarted} className={sectionClass} />}
 
           {/* What keeps it going. */}
           <section ref={el => { sectionRefs.current[sectionIndex('support')] = el }} className={sectionClass}>

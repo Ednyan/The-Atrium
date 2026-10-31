@@ -8,12 +8,12 @@ import { leftAMonth, leftPerPayer, MERCHANT_OF_RECORD, payersNeeded, PRICE_MONTH
 
 const near = (got: number, want: number, by = 0.01) => assert.ok(Math.abs(got - want) <= by, `${got} is not ${want}`)
 
-test('a €4 month by card leaves about €2.80', () => {
-  near(leftAMonth(4, 1, STRIPE), 2.80)
+test('a €4 month by card leaves about €2.60', () => {
+  near(leftAMonth(4, 1, STRIPE), 2.60)
 })
 
 test('the yearly plan leaves less a month, for fewer fees', () => {
-  near(leftAMonth(40, 12, STRIPE), 2.50)
+  near(leftAMonth(40, 12, STRIPE), 2.29)
   assert.ok(leftAMonth(40, 12, STRIPE) < leftAMonth(4, 1, STRIPE))
 })
 
