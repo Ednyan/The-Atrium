@@ -11,7 +11,7 @@ article a file: `docs/help/<section>/<id>.md`. The tree below is the one list of
 what exists and where it goes; the help search and the AI both follow it.
 
 Articles ship with the app, for the help search (docs/IDEAS.md). They're translated
-once the English has settled: 59 articles in 11 languages isn't worth doing twice.
+once the English has settled: 60 articles in 11 languages isn't worth doing twice.
 
 ## How to write an article
 
@@ -78,6 +78,7 @@ first. Web and Desktop mean only there; no mark means both.
 |---|---|---|---|
 | `quick-bar` | The tools, armed or instant, reorder it, More | 1 | Yes |
 | `drop-and-paste` | Files, folders, links, the clipboard; several at once; square or circle layout | 1 | Yes |
+| [`templates`](bringing-things-in/templates.md) | **Written.** The sidebar, folders, placing one, quick slots | 1 | |
 
 **3.2 Words, shapes and drawing**
 

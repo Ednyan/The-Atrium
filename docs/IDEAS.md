@@ -45,12 +45,16 @@ saved to be used again; the inventory is where they live.
 - **Folders**, as on a computer, inside each other as deep as wanted: the person
   makes, renames, moves and deletes them.
 - **"Digital Atrium" folder**: always there, can't be deleted or changed. Holds
-  the templates made here, and new ones reach everyone without a release.
+  the templates made here.
 - **Quick slots**: a row of a few chosen templates at the foot of the sidebar,
   to drag from without opening a folder. Chosen as the Customization footer's
   buttons are (`PanelFooter`, `FooterChooser`).
 - **Saving**: "Save as template" in the trace menu, or a selection dragged into
   a folder (`panelDrop` already carries a drag from the canvas into a panel).
+
+**Built 2026-10-31:** the sidebar, the Digital Atrium folder and its nested folders,
+dragging or clicking to place, and pinned quick slots (`TemplatesPanel`,
+`src/lib/templates.ts`). Not built: making your own, which waits for the plans.
 
 **Free or paid (the user, 2026-10-30): custom templates are a paid feature.**
 - Free: using the Digital Atrium folder.
@@ -62,9 +66,8 @@ A template is a small `.atrium` file. That format already keeps pictures and
 files inside it, and carries groups, frames and connections
 (`atriumFileBlob`, `importIntoAtrium` in `src/lib/atriumFile.ts`). Dropping one
 is an import at the point of the drop, as one undo step, with new ids.
-- **Digital Atrium folder**: a list plus `.atrium` files in the public bucket
-  (files.digitalatrium.org), fetched when the sidebar first opens, and cached.
-  Costs almost nothing; no worker request.
+- **Digital Atrium folder**: made in code, not fetched, so its words come in the
+  person's language and its colours from the atrium. New ones ship with the app.
 - **A person's templates**: since they're paid, they belong to the account and
   follow it across devices, in its hosted space, counted against its 5 GB. The
   folders and quick slots are a small list in the account's app data
@@ -72,10 +75,12 @@ is an import at the point of the drop, as one undo step, with new ids.
 
 ### Decisions made here
 
-- **Up to 8 quick slots**, shared across the person's devices.
+- **Up to 8 quick slots**, on this device for now; across devices once there's
+  an account's list of templates.
 - **A drop keeps the size the template was saved at**, whatever the zoom, and
   lands centred on the pointer.
-- **Dropped into a frame, it joins the frame**, as anything put down there does.
+- **Dropped into a frame, it should join the frame**, as anything put down there
+  does. Not built yet: for now it lands on top of the frame without joining.
 
 ### Things to watch
 

@@ -1,7 +1,7 @@
 // Help: the articles (docs/help) searched and read, in the page. They come with
 // the app, in this panel's own chunk, so opening it and searching ask nothing
-// of the server, and it works offline. What's not found can be suggested: the
-// report form, with what was searched for as its subject.
+// of the server, and it works offline. Reporting a problem or suggesting what's
+// not found is here too: the report form, with what was searched for as its subject.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
@@ -180,14 +180,14 @@ export default function HelpPanel({ onClose, username, atriumName }: { onClose: 
         <footer className="shrink-0 flex flex-wrap items-center justify-end gap-3 px-4 py-2.5 border-t border-nier-border/25 text-xs">
           <span className="text-nier-bg/70">{t('help.notFound')}</span>
           <button type="button" data-help-suggest="" onClick={() => setSuggesting(true)} className="px-3 py-1.5 border border-nier-border/40 text-nier-strong text-[11px] tracking-[0.15em] uppercase hover:border-nier-bg transition-colors">
-            {t('help.suggest')}
+            {t('browser.reportProblem')}
           </button>
         </footer>
       </div>
 
       {suggesting && (
         <div onClick={e => e.stopPropagation()}>
-          <ReportFeedbackModal onClose={() => setSuggesting(false)} username={username} atriumName={atriumName} initialMotive="feature" initialSubject={query.trim()} />
+          <ReportFeedbackModal onClose={() => setSuggesting(false)} username={username} atriumName={atriumName} initialMotive={query.trim() ? 'feature' : 'bug'} initialSubject={query.trim()} />
         </div>
       )}
     </div>

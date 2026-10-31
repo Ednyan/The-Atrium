@@ -63,6 +63,7 @@ import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
 const HelpPanel = lazy(() => import('./HelpPanel'))
+const TemplatesPanel = lazy(() => import('./TemplatesPanel'))
 import PinterestImportPanel from './PinterestImportPanel'
 import Minimap, { type MinimapHandle } from './Minimap'
 import { fileNameOf, saveFile } from '../lib/fileSave'
@@ -89,7 +90,7 @@ import { DECK_FILE } from '../lib/deck'
 import { importSpreadsheet } from '../lib/sheetTraces'
 import { filePaths, followFiles } from '../lib/liveFiles'
 import { SPREADSHEET_FILE } from '../lib/spreadsheet'
-import { AtriumFileError, parseAtriumFile } from '../lib/atriumFormat'
+import { AtriumFileError, parseAtriumFile, type AtriumFile } from '../lib/atriumFormat'
 import { loadLaserSettings, saveLaserSettings, type LaserSettings } from '../lib/laser'
 import BrushGlyph, { BRUSH_LABELS } from './BrushGlyph'
 import { placementOnScreen, pointToWorld, sameView, strokeOnScreen } from '../lib/drawingView'
@@ -729,6 +730,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     setShowThemeCustomization(false)
     setShowProfileCustomization(false)
     setShowQuickBarEditor(false)
+    setShowTemplates(false)
   }, [])
   // The atrium's locations live in the store and are saved with the rest, each change
   // a step of undo (lib/locations). Presentation mode is here, not in
@@ -1079,6 +1081,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
 
   const [showReportForm, setShowReportForm] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -2421,20 +2424,30 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const atriumFileInputRef = useRef<HTMLInputElement>(null)
   const importAnchorRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const importAtriumHere = async (file: File, at: { x: number; y: number }) => {
+    try {
+      await placeAtriumFile(parseAtriumFile(await file.text()), at)
+    } catch (e: any) {
+      if (e instanceof AtriumFileError) {
+        showToast(t(e.reason === 'badVersion' ? 'transfer.import.badVersion' : e.reason === 'badFormat' ? 'transfer.import.badFormat' : 'transfer.import.parseFailed'))
+      } else {
+        showToast(t('atrium.import.failed', { message: e?.message ?? '' }))
+      }
+    }
+  }
+  // A file's traces, added here at `at`. `quietly`, a template's: what's placed
+  // shows for itself, so only what went wrong is said.
+  const placeAtriumFile = async (parsed: AtriumFile, at: { x: number; y: number }, quietly = false) => {
     if (!canEditRef.current || !userId) return
     try {
-      const parsed = parseAtriumFile(await file.text())
-      setImportProgress({ done: 0, total: 1, percent: true })
-      const result = await importIntoAtrium(parsed, at, lobbyId, userId, (done, total) => setImportProgress({ done, total, percent: true }))
-      const said = [tCount('atrium.import.added', result.added)]
+      if (!quietly) setImportProgress({ done: 0, total: 1, percent: true })
+      const result = await importIntoAtrium(parsed, at, lobbyId, userId, quietly ? undefined : (done, total) => setImportProgress({ done, total, percent: true }))
+      const said = quietly ? [] : [tCount('atrium.import.added', result.added)]
       if (result.missing > 0) said.push(t('atrium.import.missing', { count: result.missing }))
       if (result.failed > 0) said.push(t('atrium.import.refused', { count: result.failed }))
-      showToast(said.join(' · '))
+      if (said.length > 0) showToast(said.join(' · '))
     } catch (e: any) {
       if (e instanceof ImportTooLargeError) {
         showToast(t('atrium.import.tooLarge', { needed: (e.needed / (1024 * 1024)).toFixed(1), free: (e.free / (1024 * 1024)).toFixed(1) }))
-      } else if (e instanceof AtriumFileError) {
-        showToast(t(e.reason === 'badVersion' ? 'transfer.import.badVersion' : e.reason === 'badFormat' ? 'transfer.import.badFormat' : 'transfer.import.parseFailed'))
       } else {
         showToast(t('atrium.import.failed', { message: e?.message ?? '' }))
       }
@@ -4819,12 +4832,18 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
     return () => window.removeEventListener('message', onMessage)
   }, [canEdit])
 
+  // What the templates are made with: the atrium's colours, this person's words.
+  const templateContext = useMemo(() => (userId ? {
+    userId, username: username ?? '', colours: currentTracePreset(lobbyId), ink: textColourOn(viewTheme?.backgroundColor), t,
+  } : null), [userId, username, lobbyId, viewTheme?.backgroundColor, t])
+
   // The parts of the interface a phone lays out differently (narrow): made
   // once, and placed where the layout puts them.
   const viewItems: MenuItem[] = [
     { id: 'layers', icon: MENU_ICONS.layers, label: t('atrium.layers.title'), open: showLayerPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLayerPanel(open => !open) } },
     { id: 'locations', icon: MENU_ICONS.locations, label: t('atrium.locations.title'), open: showLocationsPanel, onSelect: () => { setShowThemeCustomization(false); setShowProfileCustomization(false); setShowLocationsPanel(open => !open) } },
     { id: 'palette', icon: MENU_ICONS.palette, label: t('atrium.hud.palette'), open: showPalette, onSelect: () => setShowPalette(open => !open) },
+    ...(canEdit ? [{ id: 'templates', icon: MENU_ICONS.templates, label: t('templates.title'), open: showTemplates, onSelect: () => { const was = showTemplates; closeSidePanels(); setShowTemplates(!was) } }] : []),
     // The minimap, on unless turned off here; lit while it's on.
     ...(narrow ? [] : [{ id: 'minimap', icon: MENU_ICONS.minimap, label: t('atrium.hud.minimap'), apart: true, lit: showMinimap, onSelect: () => setShowMinimap(!showMinimap) }]),
     { id: 'recenter', icon: MENU_ICONS.recenter, label: t('atrium.hud.recenter'), hint: 'Shift+1', apart: narrow, onSelect: recenter },
@@ -6118,6 +6137,16 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           exporting={presentationBusy}
           themeBackground={viewTheme?.backgroundColor || '#0a0a0f'}
         />
+      )}
+
+      {showTemplates && templateContext && (
+        <Suspense fallback={null}>
+          <TemplatesPanel
+            context={templateContext}
+            onClose={() => setShowTemplates(false)}
+            onPlace={(file, screen) => void placeAtriumFile(file, screen ? screenToWorld(screen.x, screen.y) : screenToWorld(window.innerWidth / 2, window.innerHeight / 2), true)}
+          />
+        </Suspense>
       )}
 
       {/* Layer Panel */}

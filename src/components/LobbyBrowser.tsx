@@ -19,7 +19,6 @@ import { anotherAccountsDriveAtrium, askToJoin, isLeftHere, ownElsewhere, replac
 import { previewFromWorker, publicAtriums, publicPreviewUrl } from '../lib/people'
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
-import { ReportFeedbackModal } from './ReportFeedbackModal'
 const HelpPanel = lazy(() => import('./HelpPanel'))
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
@@ -373,7 +372,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
     morph(() => flushSync(() => setView(next)))
   }
   const [vaultPath, setVaultPath] = useState<string | null>(null)
-  const [showReportForm, setShowReportForm] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const { username } = useGamePick('username')
   const [vaultBusy, setVaultBusy] = useState(false)
@@ -1513,6 +1511,17 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 px-5 sm:px-8 h-16" style={{ backgroundColor: 'rgb(var(--c-ground) / 0.85)', backdropFilter: 'blur(6px)' }}>
         <button onClick={onClose} className="landing-link text-xs tracking-[0.2em] uppercase">◁ {t('common.back')}</button>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-browser-help=""
+            onClick={() => setShowHelp(true)}
+            title={t('help.title')}
+            aria-label={t('help.title')}
+            className="cut-corner inline-flex items-center justify-center h-[2.125rem] px-4 border border-nier-border/40 text-nier-bg/80 hover:text-nier-strong hover:border-nier-border/80 text-xs transition-colors"
+            style={{ backgroundColor: 'rgb(var(--c-ground) / 0.94)' }}
+          >
+            ?
+          </button>
           <ThemeToggle />
           <DonateButton onClick={() => setShowContribute(true)} className="mr-1" />
           {/* The lists as cards or as rows: the one in use lit, the light sliding to it. */}
@@ -1832,15 +1841,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
 
           {googleOpen && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
-        {/* At the foot of the page, where it's out of the lists' way. */}
-        <div className="mt-16 flex flex-wrap justify-center gap-x-6 gap-y-2 text-center">
-          <button data-browser-help="" onClick={() => setShowHelp(true)} className="landing-link text-nier-bg/75 hover:text-nier-strong text-xs tracking-[0.2em] uppercase">
-            {t('help.title')}
-          </button>
-          <button onClick={() => setShowReportForm(true)} className="landing-link text-nier-bg/75 hover:text-nier-strong text-xs tracking-[0.15em] uppercase">
-            {t('browser.reportProblem')}
-          </button>
-        </div>
       </main>
 
       {/* Atrium settings, without going in: a Drive atrium's, or a cloud one's -- the same window. */}
@@ -2096,12 +2096,6 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
       )}
 
       {showHelp && <Suspense fallback={null}><HelpPanel onClose={() => setShowHelp(false)} username={username} /></Suspense>}
-      {showReportForm && (
-        <ReportFeedbackModal
-          onClose={() => setShowReportForm(false)}
-          username={username}
-        />
-      )}
 
       {/* CSS for animations */}
       <style>{`

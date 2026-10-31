@@ -4,7 +4,7 @@ title: Report a problem or suggest a feature
 section: 9 Help and support
 summary: Send a problem or an idea to the developer from a form in the app.
 keywords: report, problem, bug, broken, suggest, suggestion, feature, idea, request, feedback, contact, support, email, developer, missing
-where: Atrium menu > Report a Problem; the foot of the atrium browser; Help > Suggest it
+where: Atrium menu > Report a Problem; Help > Report a problem or suggest a feature
 works_on: web, desktop
 related: when-something-breaks, supporting-the-atrium
 video: none
@@ -22,8 +22,7 @@ stay where you are.
 | From | Do this |
 |---|---|
 | An atrium | **Atrium menu** > **Report a Problem** |
-| The atrium browser | **Report a problem or suggest a feature**, at the foot of the page |
-| Help | **Suggest it**: what you searched for becomes the subject |
+| Anywhere | Open **Help** (**?** in an atrium, or the **?** button at the top of the atrium browser), then **Report a problem or suggest a feature** at its foot. What you searched for becomes the subject |
 
 ## Fill it in
 
