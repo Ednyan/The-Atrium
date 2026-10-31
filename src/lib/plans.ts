@@ -34,6 +34,9 @@ export function planFeatures(): [TranslationKey, string, string][] {
 
 export const PRICE_MONTHLY = 4
 export const PRICE_YEARLY = 40
+// What the yearly plan comes to: a month, and saved over a year of the monthly one.
+export const YEARLY_A_MONTH = PRICE_YEARLY / 12
+export const YEARLY_SAVES = PRICE_MONTHLY * 12 - PRICE_YEARLY
 
 // How a payment is taken, each as a share of the price and a fixed part, in euros.
 export const STRIPE = { share: 0.015 + 0.007 + 0.005, fixed: 0.25 } // card, Billing, Tax; EEA cards
