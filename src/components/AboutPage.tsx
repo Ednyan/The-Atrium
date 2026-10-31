@@ -3,7 +3,7 @@
 // the tutorials will be, the controls, and who made it. From the welcome
 // screen's About.
 
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from '../lib/i18n'
 import { isDesktop } from '../lib/supabase'
 import { ControlsList } from './AtriumMenu'
@@ -27,9 +27,12 @@ function Heading({ children }: { children: string }) {
   )
 }
 
+const HelpPanel = lazy(() => import('./HelpPanel'))
+
 export default function AboutPage({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const [version, setVersion] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
   useEffect(() => {
     if (!isDesktop) return
     import('@tauri-apps/api/app').then(({ getVersion }) => getVersion()).then(setVersion).catch(() => {})
@@ -72,12 +75,12 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
           </div>
         </section>
 
-        {/* Where the tutorials go, as they're made. */}
+        {/* The help's articles; the tutorials go there as they're made. */}
         <section data-about-tutorials="" className="mb-12">
           <Heading>{t('about.tutorials')}</Heading>
-          <div className="border border-dashed border-nier-border/40 p-6 text-center text-nier-bg/60 text-xs tracking-wider leading-relaxed">
-            {t('about.tutorialsSoon')}
-          </div>
+          <button type="button" data-about-help="" onClick={() => setShowHelp(true)} className="w-full border border-nier-border/40 hover:border-nier-bg p-5 text-center text-nier-strong text-xs tracking-[0.2em] uppercase transition-colors">
+            ◇ {t('help.title')}
+          </button>
         </section>
 
         <section className="mb-12">
@@ -97,6 +100,7 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
           </button>
         </section>
       </div>
+      {showHelp && <Suspense fallback={null}><HelpPanel onClose={() => setShowHelp(false)} /></Suspense>}
     </div>
   )
 }

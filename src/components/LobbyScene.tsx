@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { refOf, specialThemeDraft, useSpecialThemes } from '../lib/specialThemes'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import { resolveLocalStreamUrl } from '../lib/localMedia'
@@ -62,6 +62,7 @@ import { PINTEREST_CONNECTED_EVENT, getPinterestConnectionStatus, importAfterPin
 import PinterestConnectionPanel from './PinterestConnectionPanel'
 import { clampZoomSensitivity, getStoredZoomSensitivity } from '../lib/zoomSensitivity'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
+const HelpPanel = lazy(() => import('./HelpPanel'))
 import PinterestImportPanel from './PinterestImportPanel'
 import Minimap, { type MinimapHandle } from './Minimap'
 import { fileNameOf, saveFile } from '../lib/fileSave'
@@ -1077,6 +1078,7 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
   const shownSave = saveBarActive ? { label: saveLabel, dim: saveDim, icon: saveIcon } : lastSaveLookRef.current
 
   const [showReportForm, setShowReportForm] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [kickTarget, setKickTarget] = useState<{ userId: string; username: string } | null>(null)
   const [isKicking, setIsKicking] = useState(false)
   const [isConvertingEmbeds, setIsConvertingEmbeds] = useState(false)
@@ -2243,6 +2245,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
         e.preventDefault()
         cameraFlyToRef.current = null
         targetZoomRef.current = 1
+        return
+      }
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        setShowHelp(true)
         return
       }
       // Shift+1 frames the traces, as Excalidraw's zoom to fit.
@@ -5281,6 +5288,10 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
             onSelect: () => { void handleConvertAllEmbeds() },
           }] : []),
           {
+            id: 'help', icon: MENU_ICONS.help, label: t('help.title'),
+            onSelect: fromMenu(() => setShowHelp(true)),
+          },
+          {
             id: 'report', icon: MENU_ICONS.report, label: t('atrium.hud.reportProblem'),
             onSelect: fromMenu(() => setShowReportForm(true)),
           },
@@ -5519,6 +5530,11 @@ export default function LobbyScene({ lobbyId, onLeaveLobby, onKicked }: LobbySce
           username={username}
           atriumName={currentLobby?.name ?? lobbyId}
         />
+      )}
+      {showHelp && (
+        <Suspense fallback={null}>
+          <HelpPanel onClose={() => setShowHelp(false)} username={username} atriumName={currentLobby?.name ?? lobbyId} />
+        </Suspense>
       )}
 
 

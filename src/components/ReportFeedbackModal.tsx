@@ -9,6 +9,9 @@ interface ReportFeedbackModalProps {
   onClose: () => void
   username?: string
   atriumName?: string
+  // Where it opens: a suggestion, with what was searched for (HelpPanel).
+  initialMotive?: 'bug' | 'feature' | 'other'
+  initialSubject?: string
 }
 
 // Report a problem / suggest a feature -- sent to the worker (lib/feedback), so
@@ -16,10 +19,10 @@ interface ReportFeedbackModalProps {
 // user's own mail client, subject/body pre-filled) if that isn't set up or
 // the call fails for any reason, so the feature never fully breaks. Shared
 // between the in-atrium HUD menu and the Atrium Browser.
-export function ReportFeedbackModal({ onClose, username, atriumName }: ReportFeedbackModalProps) {
+export function ReportFeedbackModal({ onClose, username, atriumName, initialMotive = 'bug', initialSubject = '' }: ReportFeedbackModalProps) {
   const { t } = useTranslation()
-  const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>('bug')
-  const [reportSubject, setReportSubject] = useState('')
+  const [reportMotive, setReportMotive] = useState<'bug' | 'feature' | 'other'>(initialMotive)
+  const [reportSubject, setReportSubject] = useState(initialSubject)
   const [reportDescription, setReportDescription] = useState('')
   const [isSendingReport, setIsSendingReport] = useState(false)
   const [reportSentMessage, setReportSentMessage] = useState<string | null>(null)

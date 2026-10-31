@@ -17,8 +17,8 @@
 // More (the three dots at its foot), with Customize quick bar, where the tools
 // are put in an order of one's own (QuickBarEditor) -- kept on this device.
 //
-// Keys 1 to 9 pick the first nine, in the order they come in, wherever they're
-// put; K the laser pointer.
+// Keys 1 to 8 pick the first eight, in the order they come in, wherever they're
+// put (9 is Other's place, a choice, with no key); K the laser pointer.
 // Each tool's name slides out beside it under the pointer, as the atrium
 // menu's do (SlideLabel) -- or, for a tool with a flyout, at the flyout's
 // start. What the tool in hand does is said at the foot of the screen

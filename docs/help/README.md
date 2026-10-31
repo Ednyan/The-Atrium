@@ -52,9 +52,9 @@ first. Web and Desktop mean only there; no mark means both.
 
 | Article | Covers | Order | Video |
 |---|---|---|---|
-| `what-is-an-atrium` | Atriums, traces, how the pieces fit | 1 | Yes |
+| [`what-is-an-atrium`](getting-started/what-is-an-atrium.md) | **Written.** Atriums, traces, how the pieces fit | 1 | Yes |
 | `first-atrium` | Make one, bring things in, arrange, share | 1 | Yes |
-| `where-atriums-live` | This browser, the Atrium's cloud, Google Drive, the desktop vault; differences, limits | 1 | |
+| [`where-atriums-live`](getting-started/where-atriums-live.md) | **Written.** This browser, the Atrium's cloud, Google Drive, the desktop vault; differences, limits | 1 | |
 | `accounts` | Email, Google, no account; username against display name | 2 | |
 | `atrium-browser` | Your atriums, shared, public; cards or list; join by ID; settings without going in | 2 | |
 | `web-or-desktop` | What each does, moving between them | 2 | |
@@ -64,8 +64,8 @@ first. Web and Desktop mean only there; no mark means both.
 
 | Article | Covers | Order | Video |
 |---|---|---|---|
-| `moving-around` | Pan, zoom, Move the view (H), recenter (Shift+1), 100% (0), coordinates | 1 | Yes |
-| `keyboard-shortcuts` | Every key, one page | 1 | |
+| [`moving-around`](moving-around/moving-around.md) | **Written.** Pan, zoom, Move the view (H), recenter (Shift+1), 100% (0), coordinates | 1 | Yes |
+| [`keyboard-shortcuts`](moving-around/keyboard-shortcuts.md) | **Written.** Every key, one page | 1 | |
 | `minimap-and-view` | Minimap, off-screen arrows, fade at the edge, hide UI, fullscreen | 3 | |
 | `locations-and-presenting` | Saved views, locking, presentation mode, export as slides or web page | 2 | Yes |
 | `phones-and-tablets` | The bar along the foot, what changes with touch | 3 | |
@@ -182,20 +182,10 @@ first. Web and Desktop mean only there; no mark means both.
 
 | Article | Covers | Order | Video |
 |---|---|---|---|
-| `report-or-suggest` | Reporting a problem, suggesting a feature | 1 | |
+| [`report-or-suggest`](help-and-support/report-or-suggest.md) | **Written.** Reporting a problem, suggesting a feature | 1 | |
 | `when-something-breaks` | Won't load, a missing file, an embed refuses, can't save, can't sign in | 2 | |
 | `supporting-the-atrium` | Donating, monthly, the contributors wall | 3 | |
 
 ## Left out on purpose
 
 Developers' tools, Health, bans, the names panel: only the operator sees them.
-
-## Found while making this list
-
-Text on screen that doesn't match the app. Not changed yet.
-
-- **Landing page: "1 to 9"** (`landing.controls.numbersKey`). The keys are 1 to 8;
-  9 does nothing, as Other has no key (`LobbyScene.tsx`, the digit keys). The
-  Controls list has it right.
-- **"The Pinterest integration is still in testing"** (`profile.pinterestNote`),
-  though Standard access was approved on 2026-10-13.

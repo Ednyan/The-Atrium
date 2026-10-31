@@ -20,6 +20,7 @@ import { previewFromWorker, publicAtriums, publicPreviewUrl } from '../lib/peopl
 import DriveSettings from './DriveSettings'
 import { LobbyManagement } from './LobbyManagement'
 import { ReportFeedbackModal } from './ReportFeedbackModal'
+const HelpPanel = lazy(() => import('./HelpPanel'))
 import DownloadAtriumPanel, { type DownloadableAtrium } from './DownloadAtriumPanel'
 import ContributePanel from './ContributePanel'
 import DonateButton, { DONATE_CUT } from './DonateButton'
@@ -373,6 +374,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
   }
   const [vaultPath, setVaultPath] = useState<string | null>(null)
   const [showReportForm, setShowReportForm] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const { username } = useGamePick('username')
   const [vaultBusy, setVaultBusy] = useState(false)
   const [vaultError, setVaultError] = useState<string | null>(null)
@@ -1831,7 +1833,10 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
           {googleOpen && isOperator && <Suspense fallback={null}><DriveSpike /></Suspense>}
         </div>
         {/* At the foot of the page, where it's out of the lists' way. */}
-        <div className="mt-16 text-center">
+        <div className="mt-16 flex flex-wrap justify-center gap-x-6 gap-y-2 text-center">
+          <button data-browser-help="" onClick={() => setShowHelp(true)} className="landing-link text-nier-bg/75 hover:text-nier-strong text-xs tracking-[0.2em] uppercase">
+            {t('help.title')}
+          </button>
           <button onClick={() => setShowReportForm(true)} className="landing-link text-nier-bg/75 hover:text-nier-strong text-xs tracking-[0.15em] uppercase">
             {t('browser.reportProblem')}
           </button>
@@ -2090,6 +2095,7 @@ export function LobbyBrowser({ onJoinLobby, onClose, guest = false, onSignIn }: 
         />
       )}
 
+      {showHelp && <Suspense fallback={null}><HelpPanel onClose={() => setShowHelp(false)} username={username} /></Suspense>}
       {showReportForm && (
         <ReportFeedbackModal
           onClose={() => setShowReportForm(false)}

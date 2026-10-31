@@ -14,8 +14,10 @@ rest should work.
 is the first article. The About page already has an empty Tutorials section waiting
 (`about.tutorials`, `src/components/AboutPage.tsx`).
 
-**Search.** A search bar over the articles, in the page itself: no server, no
-requests, works offline and on desktop. The articles ship with the app.
+**Search. Built 2026-10-31.** `HelpPanel` searches and shows the articles, in the
+page itself: no server, no requests, and the articles ship with the app. It opens
+from the atrium menu, **?**, the atrium browser, the welcome screen and About.
+Articles are in English for now, and the panel says so in other languages.
 
 **Suggestions and reports: saved, not emailed. Built 2026-10-30.** The form
 (`ReportFeedbackModal`) sends to `/feedback` (`workers/rooms/src/feedback.ts`) on

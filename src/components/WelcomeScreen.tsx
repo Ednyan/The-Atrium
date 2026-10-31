@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useGamePick } from '../store/gameStore'
 import { toggleFullscreen, useFullscreen } from '../lib/fullscreen'
 import ProfileSettings from './ProfileSettings'
@@ -36,6 +36,8 @@ interface WelcomeScreenProps {
   // Developers (DevelopersPage), offered to the platform's operator alone.
   onDevelopers?: () => void
 }
+
+const HelpPanel = lazy(() => import('./HelpPanel'))
 
 export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDevelopers }: WelcomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false)
@@ -99,6 +101,7 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
   // launch, and this must never appear over the canvas.
   const [showAppeal, setShowAppeal] = useState(() => shouldShowAppeal())
   const [showFeedback, setShowFeedback] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   // Read from cache on mount and refreshed behind the screen, so the bar is
   // there on the first frame and offline, rather than appearing a moment later
   // and pushing the menu down.
@@ -516,6 +519,17 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
               </button>
             )}
 
+            {/* The help's articles, searched (HelpPanel). */}
+            <button
+              data-welcome-help=""
+              onClick={() => setShowHelp(true)}
+              onMouseEnter={() => setIsHovered('help')}
+              onMouseLeave={() => setIsHovered(null)}
+              className="menu-row"
+            >
+              <span className="relative z-10">◇ {t('help.title')}</span>
+            </button>
+
             {/* The language picker. Renders nothing until there is more than
                 one language to pick, so it can sit here from the day the
                 plumbing lands. */}
@@ -616,6 +630,8 @@ export default function WelcomeScreen({ onEnter, onBackToLanding, onAbout, onDev
           }}
         />
       )}
+
+      {showHelp && <Suspense fallback={null}><HelpPanel onClose={() => setShowHelp(false)} username={username} /></Suspense>}
 
       {/* The same modal the atrium and the browser use, so feedback sent from
           here arrives by the route everything else does. */}

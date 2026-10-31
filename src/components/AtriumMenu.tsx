@@ -42,6 +42,8 @@ export const MENU_ICONS = {
   discard: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M10 10l4 4m0 -4l-4 4',
   close: 'M18 6l-12 12M6 6l12 12',
   controls: 'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2zM6 10v.01M10 10v.01M14 10v.01M18 10v.01M6 14v.01M18 14v.01M10 14h4',
+  // A question mark in a ring (Tabler's help-circle, MIT).
+  help: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M12 17v.01M12 13.5a1.5 1.5 0 0 1 1 -1.5a2.6 2.6 0 1 0 -3 -4',
   // Swatches (Tabler's color-swatch, MIT).
   palette: 'M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
   overlay: 'M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2zM6 8h.01M9 8h.01',
@@ -305,7 +307,7 @@ const CONTROLS = [
   'atrium.controls.quickBar', 'atrium.controls.leaveTrace', 'atrium.controls.draw', 'atrium.controls.laser', 'atrium.controls.palette', 'atrium.controls.cancel', 'atrium.controls.finishPath',
   'atrium.controls.editTrace', 'atrium.controls.multiSelect', 'atrium.controls.directSelect', 'atrium.controls.groupUngroup',
   'atrium.controls.copyPaste', 'atrium.controls.copyPasteStyle', 'atrium.controls.deleteSelected', 'atrium.controls.undoRedo',
-  'atrium.controls.saveChanges', 'atrium.controls.export', 'atrium.controls.presenting',
+  'atrium.controls.saveChanges', 'atrium.controls.export', 'atrium.controls.presenting', 'atrium.controls.help',
 ] as const
 
 // The list, beside the menu, from its top to the screen's foot at most, and

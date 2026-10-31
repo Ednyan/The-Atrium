@@ -174,10 +174,6 @@ export default function PinterestConnectionPanel({ onClose, onConnected, onConne
               {t('profile.pinterestConnect')}
             </button>
           )}
-
-          <p className="text-nier-bg/70 text-[0.8rem] leading-relaxed tracking-wide">
-            {t('profile.pinterestNote')}
-          </p>
         </div>
       </div>
     </div>
